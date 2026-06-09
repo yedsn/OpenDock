@@ -102,12 +102,12 @@ async function handleSearchKeydown(event: KeyboardEvent) {
     return;
   }
   if (event.key === "Escape") {
-    if (store.state.search) {
-      event.preventDefault();
-      store.state.search = "";
-      return;
-    }
+    event.preventDefault();
+    store.state.search = "";
     searchInputRef.value?.blur();
+    const { getCurrentWindow } = await import("@tauri-apps/api/window");
+    await getCurrentWindow().hide().catch(() => {});
+    return;
   }
 }
 
