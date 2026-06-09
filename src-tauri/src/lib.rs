@@ -411,6 +411,20 @@ fn test_webdav_connection(server_url: String, username: String) -> OpenActionRes
 
 #[tauri::command]
 fn sync_webdav_now() -> OpenActionResult { success("WebDAV sync completed in prototype mode") }
+/// Write a UTF-8 text file to the given absolute path. Used for export-to-file flows.
+#[tauri::command]
+fn write_text_file(path: String, contents: String) -> Result<u64, String> {
+    let target = std::path::PathBuf::from(&path);
+    if let Some(parent) = target.parent() {
+        if !parent.as_os_str().is_empty() {
+            std::fs::create_dir_all(parent).map_err(|e| format!("Create dir failed: {e}"))?;
+        }
+    }
+    std::fs::write(&target, contents.as_bytes()).map_err(|e| format!("Write failed: {e}"))?;
+    let size = std::fs::metadata(&target).map(|m| m.len()).unwrap_or_else(|_| contents.len() as u64);
+    Ok(size)
+}
+
 
 // ---- Tauri commands: database ----
 
@@ -630,6 +644,7 @@ pub fn run() {
     let state = AppState { db: Mutex::new(conn) };
 
     tauri::Builder::default()
+        .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
             // Triggered when a second instance tries to launch: surface the existing window.
             show_main_window(app);
@@ -666,7 +681,7 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             open_path, open_url, open_file, open_application, scan_open_tools, run_command,
-            test_webdav_connection, sync_webdav_now, set_global_hotkey,
+            test_webdav_connection, sync_webdav_now, set_global_hotkey, write_text_file,
             db_init, db_execute, db_execute_params, db_get_value, db_set_value, db_list_table, db_bulk_insert
         ])
         .run(tauri::generate_context!())
