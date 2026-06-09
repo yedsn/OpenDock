@@ -1,5 +1,6 @@
 ﻿# Dependencies
 node_modules
+.cargo-home
 # Build output
 dist
 target
@@ -11,6 +12,3 @@ target
 .idea/
 *.log
 
-
-package-lock.json
-Cargo.lock
