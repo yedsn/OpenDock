@@ -1,0 +1,172 @@
+﻿<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>OpenDock</title>
+  <link rel="stylesheet" href="./styles.css" />
+</head>
+<body>
+  <div class="desktop-shell">
+    <aside class="vault-pane" aria-label="资源库">
+      <div class="app-titlebar">
+        <span class="app-mark">OD</span>
+        <span class="app-name">OpenDock</span>
+      </div>
+      <div class="command-box">
+        <i data-lucide="search" aria-hidden="true"></i>
+        <input id="searchInput" type="search" placeholder="命令、场景、集合、资源" />
+        <kbd>Ctrl K</kbd>
+      </div>
+      <div class="tree-section">
+        <div class="tree-title">快速视图</div>
+        <div id="workspaceNav"></div>
+      </div>
+
+      <div class="tree-section grow">
+        <div class="tree-title title-with-action"><span>场景列表</span><button id="quickSceneButton" class="mini-title-button" title="新建场景"><i data-lucide="plus"></i></button></div>
+        <nav id="sceneList" class="scene-list"></nav>
+      </div>
+
+      <div class="vault-footer">
+        <div class="footer-actions">
+          <button id="workspaceMenuButton" class="footer-workspace-button" title="切换工作区">
+            <i data-lucide="database"></i>
+            <span class="workspace-copy"><span id="workspaceTitle" class="vault-title">OpenDock</span></span>
+            <i data-lucide="chevrons-up-down"></i>
+          </button>
+          <button id="sidebarSettingsButton" class="footer-settings-button" title="设置">
+            <i data-lucide="settings"></i><span>设置</span>
+          </button>
+        </div>
+      </div>
+      <div id="workspaceDropdown" class="workspace-dropdown" hidden></div>
+    </aside>
+
+    <main class="workbench">
+      <header class="tab-bar" aria-label="标签页">
+        <div id="tabList" class="tabs"></div>
+        <div class="tab-actions">
+          <button class="icon-button" title="拆分视图"><i data-lucide="columns-3"></i></button>
+          <button class="icon-button" title="更多"><i data-lucide="more-horizontal"></i></button>
+        </div>
+      </header>
+
+      <section class="workspace">
+        <section class="collection-pane" aria-label="集合">
+          <div class="pane-header">
+            <div>
+              <h1 id="sceneTitle">官网项目</h1>
+              <p id="sceneMeta">项目场景 · 5 个集合 · 19 个资源</p>
+            </div>
+            <button id="openSceneButton" class="run-button"><i data-lucide="play"></i><span>打开当前视图</span></button>
+          </div>
+
+          <div class="pane-tools">
+            <button class="tool-chip active" data-mode="collections"><i data-lucide="layers"></i><span>集合</span></button>
+            <button class="tool-chip" data-mode="web"><i data-lucide="globe"></i><span>网页</span></button>
+            <button class="tool-chip" data-mode="tool"><i data-lucide="wrench"></i><span>工具</span></button>
+            <span class="tool-spacer"></span>
+            <button id="newCollectionButton" class="tool-chip action"><i data-lucide="folder-plus"></i><span>新建集合</span></button>
+          </div>
+
+          <div id="dockStrip" class="collection-list"></div>
+        </section>
+
+        <section class="resource-pane" aria-label="资源详情">
+          <div class="resource-header">
+            <div>
+              <div id="collectionType" class="type-label">网页集合</div>
+              <h2 id="collectionTitle">官网-开发环境网页</h2>
+              <p id="collectionDescription">开发环境的前台、后台、接口文档和发布系统入口。</p>
+            </div>
+            <div class="resource-actions">
+              <button id="newItemButton" class="icon-button" title="添加资源"><i data-lucide="plus"></i></button>
+              <button class="icon-button" title="编辑"><i data-lucide="pencil"></i></button>
+              <button class="icon-button" title="更多"><i data-lucide="more-horizontal"></i></button>
+            </div>
+          </div>
+
+          <div class="launch-strip">
+            <div class="launch-tool">
+              <span>默认工具</span>
+              <button class="tool-select"><i id="toolIcon" data-lucide="chrome"></i><span id="defaultTool">Chrome</span><i data-lucide="chevron-down"></i></button>
+            </div>
+            <button id="openCollectionButton" class="launch-button"><i data-lucide="rocket"></i><span>打开集合</span></button>
+          </div>
+
+          <div class="resource-table-head">
+            <span>资源 <small id="itemCount">4 个资源</small></span>
+            <span>工具</span>
+            <span>操作</span>
+          </div>
+          <div id="itemList" class="resource-list"></div>
+
+          <section class="console-pane">
+            <div class="console-title">
+              <span>Console</span>
+              <small>打开记录</small>
+            </div>
+            <div id="activityLog" class="activity-log">
+              <div class="empty-log">等待操作。</div>
+            </div>
+          </section>
+        </section>
+      </section>
+      <section id="settingsPage" class="settings-page" hidden>
+        <aside class="settings-nav" aria-label="设置分类">
+          <div class="settings-nav-title">Settings</div>
+          <div id="settingsNavList" class="settings-nav-list"></div>
+        </aside>
+        <section class="settings-content" aria-label="设置内容">
+          <header class="settings-header">
+            <div>
+              <div id="settingsEyebrow" class="type-label">General</div>
+              <h1 id="settingsTitle">通用设置</h1>
+              <p id="settingsDescription">配置 OpenDock 的基础行为和默认入口。</p>
+            </div>
+            <button id="saveSettingsButton" class="run-button"><i data-lucide="save"></i><span>保存设置</span></button>
+          </header>
+          <div id="settingsBody" class="settings-body"></div>
+        </section>
+      </section>
+
+      <footer class="status-bar">
+        <span><i data-lucide="database"></i> <b id="workspaceStatusText">local workspace</b></span>
+        <span><i data-lucide="layers"></i> <b id="statusResourceCount">0 resources</b></span>
+        <span><i data-lucide="plug"></i> <b id="statusPluginState">0 plugin collections</b></span>
+        <span><i data-lucide="activity"></i> <b id="statusActivityCount">0 actions</b></span>
+      </footer>
+    </main>
+  </div>
+
+  <div id="modalBackdrop" class="modal-backdrop" hidden>
+    <section class="modal-card" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
+      <header class="modal-header">
+        <div>
+          <div id="modalEyebrow" class="modal-eyebrow">Create</div>
+          <h2 id="modalTitle">新建</h2>
+        </div>
+        <button id="modalCloseButton" class="icon-button" title="关闭"><i data-lucide="x"></i></button>
+      </header>
+      <form id="modalForm" class="modal-form">
+        <div id="modalFields" class="modal-fields"></div>
+        <div id="modalError" class="modal-error" hidden></div>
+        <footer class="modal-footer">
+          <button id="modalCancelButton" type="button" class="form-button secondary">取消</button>
+          <button id="modalSubmitButton" type="submit" class="form-button primary">保存</button>
+        </footer>
+      </form>
+    </section>
+  </div>
+
+  <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
+  <script src="./app.js"></script>
+</body>
+</html>
+
+
+
+
+
+

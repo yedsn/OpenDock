@@ -1,0 +1,242 @@
+export type SceneType = "项目" | "办公" | "工程" | "设计" | "通用" | "自定义";
+export type CollectionType = "目录集合" | "网页集合" | "命令集合" | "Office 集合" | "CAD 集合" | "文件集合" | "应用集合" | "插件集合";
+export type ItemType = "目录" | "URL" | "命令" | "Excel" | "CAD" | "文件" | "应用" | "插件资源";
+export type ToolType = "编辑器" | "浏览器" | "终端" | "Office" | "CAD" | "系统" | "应用" | "插件";
+export type OpenStrategy = "single" | "batch" | "all";
+export type QuickViewId = "all" | "favorites" | "recent" | "unbound";
+export type MainView = "workspace" | "settings";
+export type CollectionMode = "collections" | "web" | "tool";
+
+export interface ThemeColorTokens {
+  bg: string;
+  bg2: string;
+  bg3: string;
+  bg4: string;
+  text: string;
+  muted: string;
+  faint: string;
+  line: string;
+  lineStrong: string;
+  accent: string;
+  accentSoft: string;
+  green: string;
+  red: string;
+  titlebarBg: string;
+  titlebarLine: string;
+  cardActiveBg: string;
+  consoleBg: string;
+  shadow: string;
+}
+
+export interface ThemeDefinition {
+  id: string;
+  name: string;
+  kind: "dark" | "light";
+  source: "built-in" | "plugin";
+  pluginId?: string;
+  swatches: string[];
+  colors: ThemeColorTokens;
+}
+
+export interface Workspace {
+  id: string;
+  name: string;
+  storage: string;
+  remark: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface Scene {
+  id: string;
+  workspaceId: string;
+  name: string;
+  type: SceneType;
+  description: string;
+  icon: string;
+  color: string;
+  favorite: boolean;
+  unbound?: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface Collection {
+  id: string;
+  workspaceId: string;
+  sceneId: string | null;
+  name: string;
+  type: CollectionType;
+  description: string;
+  defaultToolId: string;
+  tool: string;
+  icon: string;
+  color: string;
+  openStrategy: OpenStrategy;
+  favorite: boolean;
+  recent: boolean;
+  recentAt?: string;
+  unbound: boolean;
+  pluginId?: string;
+  sort: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CollectionItem {
+  id: string;
+  workspaceId: string;
+  collectionId: string;
+  name: string;
+  type: ItemType;
+  value: string;
+  workingDirectory?: string;
+  toolId?: string;
+  tool: string;
+  args?: string;
+  icon: string;
+  color: string;
+  remark?: string;
+  pluginData?: Record<string, unknown>;
+  sort: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface OpenTool {
+  id: string;
+  name: string;
+  type: ToolType;
+  path: string;
+  args: string;
+  default: boolean;
+}
+
+export interface PluginManifest {
+  id: string;
+  name: string;
+  version: string;
+  category: string;
+  capability: string;
+  permissions: string[];
+  installed: boolean;
+  enabled: boolean;
+  configurable: boolean;
+  status?: string;
+  theme?: ThemeDefinition;
+}
+
+export interface SearchSuggestion {
+  id: string;
+  kind: "scene" | "collection" | "item";
+  title: string;
+  subtitle: string;
+  sceneId?: string;
+  collectionId?: string;
+  itemId?: string;
+  isUrl?: boolean;
+  score: number;
+}
+
+export interface PluginStoreEntry {
+  name: string;
+  category: string;
+  capability: string;
+  permissions: string[];
+  configurable?: boolean;
+  theme?: ThemeDefinition;
+}
+
+export interface WebDavSyncConfig {
+  serverUrl: string;
+  username: string;
+  credentialRef: string;
+  remotePath: string;
+  autoSync: boolean;
+  syncInterval: string;
+  syncScope: "当前工作区" | "全部工作区";
+  conflictPolicy: "本地优先" | "远端优先" | "保留两份" | "手动处理";
+  lastSyncAt: string;
+  status: string;
+}
+
+export interface GeneralSettings {
+  defaultView: string;
+  recentLimit: number;
+  confirmBeforeOpen: boolean;
+  logOpenFailures: boolean;
+  openWebInNewWindow: boolean;
+  closeWindowAfterOpen: boolean;
+  language: string;
+}
+
+export type SearchEnterBehavior = "open" | "navigate";
+
+export interface SearchSettings {
+  sceneEnterBehavior: SearchEnterBehavior;
+  collectionEnterBehavior: SearchEnterBehavior;
+  itemEnterBehavior: SearchEnterBehavior;
+}
+
+export interface AppearanceSettings {
+  theme: string;
+  density: string;
+  sidebarWidth: number;
+  interfaceFontFamily: string;
+  monospaceFontFamily: string;
+  baseFontSize: number;
+  showConsole: boolean;
+}
+
+export interface ShortcutSetting {
+  action: string;
+  key: string;
+}
+
+export interface AppSettings {
+  general: GeneralSettings;
+  search: SearchSettings;
+  templates: string[];
+  shortcuts: ShortcutSetting[];
+  appearance: AppearanceSettings;
+  webdavSync: WebDavSyncConfig;
+}
+
+export interface ActivityEntry {
+  id: string;
+  text: string;
+  createdAt: string;
+}
+
+export interface AppData {
+  schemaVersion: number;
+  activeWorkspaceId: string;
+  activeSceneId: string;
+  activeCollectionId: string;
+  workspaces: Workspace[];
+  scenes: Scene[];
+  collections: Collection[];
+  items: CollectionItem[];
+  tools: OpenTool[];
+  plugins: PluginManifest[];
+  pluginStore: PluginStoreEntry[];
+  settings: AppSettings;
+  activity: ActivityEntry[];
+}
+
+
+export interface Tab {
+  id: string;
+  kind: "workspace" | "settings" | "collection" | "scene" | "quickview";
+  title: string;
+  sceneId?: string;
+  collectionId?: string;
+  quickViewId?: QuickViewId;
+  pinned?: boolean;
+}
+
+export interface ModalState {
+  kind: "scene" | "collection" | "item" | "workspace" | "manageWorkspaces" | "confirmDelete" | null;
+  editingId?: string;
+}
+
