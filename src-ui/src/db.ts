@@ -1,4 +1,4 @@
-import { invoke } from "@tauri-apps/api/core";
+﻿import { invoke } from "@tauri-apps/api/core";
 
 let dbReady = false;
 
@@ -48,4 +48,51 @@ export async function dbBulkInsert(table: string, rows: string[]): Promise<numbe
 /** Delete all rows from a table. */
 export async function dbClearTable(table: string): Promise<void> {
   await dbExecute("DELETE FROM " + table);
+}
+
+// ---- Snapshot helpers ----
+
+import type { SnapshotKind, SnapshotRecord } from "./types";
+
+function snapshotUnavailable(e: unknown): Error {
+  const msg = e instanceof Error ? e.message : String(e);
+  return new Error(
+    `快照功能不可用: ${msg}。请重启应用以加载新功能，或确认当前运行环境支持 Tauri。`
+  );
+}
+
+export async function snapshotCreate(id: string, kind: SnapshotKind, label: string, createdAt: string, payload: string): Promise<void> {
+  await ensureDb();
+  try {
+    await invoke("snapshot_create", { id, kind, label, createdAt, payload });
+  } catch (e) { throw snapshotUnavailable(e); }
+}
+
+export async function snapshotList(): Promise<SnapshotRecord[]> {
+  await ensureDb();
+  try {
+    return await invoke<SnapshotRecord[]>("snapshot_list");
+  } catch (e) { throw snapshotUnavailable(e); }
+}
+
+export async function snapshotGet(id: string): Promise<string | undefined> {
+  await ensureDb();
+  try {
+    const result = await invoke<string | null>("snapshot_get", { id });
+    return result ?? undefined;
+  } catch (e) { throw snapshotUnavailable(e); }
+}
+
+export async function snapshotDelete(id: string): Promise<void> {
+  await ensureDb();
+  try {
+    await invoke("snapshot_delete", { id });
+  } catch (e) { throw snapshotUnavailable(e); }
+}
+
+export async function snapshotPrune(kind: SnapshotKind, keep: number): Promise<number> {
+  await ensureDb();
+  try {
+    return await invoke<number>("snapshot_prune", { kind, keep });
+  } catch (e) { throw snapshotUnavailable(e); }
 }

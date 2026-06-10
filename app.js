@@ -992,6 +992,9 @@ function handleWorkspaceManageClick(event) {
       return;
     }
     const workspace = workspaces.find((item) => item.id === workspaceId);
+    if (!window.confirm(`确定要删除工作区「${workspace?.name || workspaceId}」吗？此操作不可恢复。`)) {
+      return;
+    }
     workspaces = workspaces.filter((item) => item.id !== workspaceId);
     if (activeWorkspaceId === workspaceId) {
       activeWorkspaceId = workspaces[0].id;

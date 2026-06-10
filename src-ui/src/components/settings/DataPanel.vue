@@ -1,11 +1,12 @@
 <script setup lang="ts">
 import { computed, ref } from "vue";
-import { Archive, Check, ClipboardCopy, Download, Eraser, RefreshCw, RotateCcw, ShieldAlert, Upload } from "lucide-vue-next";
+import { Camera, Download, Eraser, RefreshCw, RotateCcw, ShieldAlert, Trash2, Upload } from "lucide-vue-next";
 import { invoke } from "@tauri-apps/api/core";
 import { save } from "@tauri-apps/plugin-dialog";
 import { useOpenDockStore } from "../../store";
 import { importAppData } from "../../storage";
 import { schemaVersion } from "../../seed";
+import { confirmDelete } from "../../dialog";
 
 const isTauri = typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
 
@@ -19,7 +20,6 @@ interface Feedback {
 
 const importFeedback = ref<Feedback | null>(null);
 const exportFeedback = ref<Feedback | null>(null);
-const exportCopied = ref(false);
 
 const data = computed(() => store.state.data);
 const webdav = computed(() => data.value.settings.webdavSync);
@@ -48,19 +48,7 @@ const stats = computed<StatTile[]>(() => {
   ];
 });
 
-const exportSize = computed(() => {
-  const text = store.state.selectedExport;
-  if (!text) return "";
-  return formatBytes(new Blob([text]).size);
-});
-
 const lastActivityAt = computed(() => data.value.activity[0]?.createdAt || "—");
-
-function generateExport() {
-  store.exportData();
-  exportFeedback.value = { kind: "success", text: `已生成导出预览（${exportSize.value}），未包含 WebDAV 凭据。` };
-  exportCopied.value = false;
-}
 
 function suggestedFileName(): string {
   return `opendock-export-${formatStamp(new Date())}.json`;
@@ -73,7 +61,7 @@ function formatBytes(bytes: number): string {
 }
 
 async function downloadExport() {
-  if (!store.state.selectedExport) store.exportData();
+  store.exportData();
   const content = store.state.selectedExport;
   const fileName = suggestedFileName();
 
@@ -106,24 +94,6 @@ function browserDownload(fileName: string, content: string) {
 }
 
 
-async function copyExport() {
-  if (!store.state.selectedExport) store.exportData();
-  try {
-    await navigator.clipboard.writeText(store.state.selectedExport);
-    exportCopied.value = true;
-    exportFeedback.value = { kind: "success", text: "导出 JSON 已写入剪贴板。" };
-    setTimeout(() => { exportCopied.value = false; }, 1600);
-  } catch (error) {
-    exportFeedback.value = { kind: "error", text: `复制失败：${describeError(error)}` };
-  }
-}
-
-function clearExportPreview() {
-  store.state.selectedExport = "";
-  exportFeedback.value = null;
-  exportCopied.value = false;
-}
-
 async function onImport(event: Event) {
   const input = event.target as HTMLInputElement;
   const file = input.files?.[0];
@@ -132,13 +102,17 @@ async function onImport(event: Event) {
   const reader = new FileReader();
   reader.onload = async () => {
     try {
+      if (!(await confirmDelete(`导入将覆盖当前所有数据，系统会先自动拍摄一个快照以便回滚。确定要导入 ${file.name} 吗？`))) {
+        importFeedback.value = { kind: "info", text: "已取消导入。" };
+        return;
+      }
       const text = String(reader.result || "");
       const parsed = await importAppData(text);
       await store.replaceData(parsed);
       store.log(`已从 ${file.name} 导入数据`);
       importFeedback.value = {
         kind: "success",
-        text: `已导入 ${file.name}：${parsed.collections.length} 个集合、${parsed.items.length} 个资源。`
+        text: `已导入 ${file.name}：${parsed.collections.length} 个集合、${parsed.items.length} 个资源。系统已自动拍摄导入前快照。`
       };
     } catch (error) {
       const message = describeError(error);
@@ -155,20 +129,20 @@ async function onImport(event: Event) {
   reader.readAsText(file);
 }
 
-function confirmClearRecent() {
+async function confirmClearRecent() {
   const count = data.value.collections.filter((c) => c.recent).length;
   if (count === 0) {
     importFeedback.value = null;
     store.log("没有最近打开记录可清空");
     return;
   }
-  if (!window.confirm(`将清空 ${count} 条最近打开记录，并移除相关活动日志，确认继续？`)) return;
+  if (!(await confirmDelete(`将清空 ${count} 条最近打开记录，并移除相关活动日志，确认继续？`))) return;
   store.clearRecent();
 }
 
 async function confirmReset() {
-  if (!window.confirm("重置后将恢复到内置示例数据，当前的工作区、集合、资源都会被清除。建议先导出备份。是否继续？")) return;
-  if (!window.confirm("再次确认：此操作不可撤销。")) return;
+  if (!(await confirmDelete("重置后将恢复到内置示例数据，当前的工作区、集合、资源都会被清除。建议先导出备份。是否继续？"))) return;
+  if (!(await confirmDelete("再次确认：此操作不可撤销。"))) return;
   await store.resetData();
   exportFeedback.value = null;
   importFeedback.value = { kind: "success", text: "已重置为内置示例数据。" };
@@ -200,6 +174,73 @@ function formatStamp(date: Date): string {
     pad(date.getSeconds())
   );
 }
+
+const snapshotBusy = ref(false);
+const snapshotFeedback = ref<Feedback | null>(null);
+
+async function takeManualSnapshot() {
+  snapshotBusy.value = true;
+  snapshotFeedback.value = { kind: "info", text: "正在拍摄快照..." };
+  try {
+    await store.takeSnapshot("", "manual");
+    snapshotFeedback.value = { kind: "success", text: "快照拍摄成功。" };
+  } catch (e) {
+    snapshotFeedback.value = { kind: "error", text: `快照失败：${describeError(e)}` };
+  } finally {
+    snapshotBusy.value = false;
+  }
+}
+
+async function refreshSnapshotList() {
+  snapshotBusy.value = true;
+  try {
+    await store.refreshSnapshots();
+    snapshotFeedback.value = { kind: "success", text: `已刷新，共 ${store.state.snapshots.length} 个快照。` };
+  } catch (e) {
+    snapshotFeedback.value = { kind: "error", text: `刷新失败：${describeError(e)}` };
+  } finally {
+    snapshotBusy.value = false;
+  }
+}
+
+async function onRestoreSnapshot(id: string, label: string) {
+  if (!(await confirmDelete(`确定要恢复到快照「${label}」吗？当前数据将被替换。`))) return;
+  snapshotBusy.value = true;
+  snapshotFeedback.value = { kind: "info", text: "正在恢复..." };
+  try {
+    await store.restoreSnapshot(id);
+    snapshotFeedback.value = { kind: "success", text: "快照已恢复。" };
+  } catch (e) {
+    snapshotFeedback.value = { kind: "error", text: `恢复失败：${describeError(e)}` };
+  } finally {
+    snapshotBusy.value = false;
+  }
+}
+
+async function onDeleteSnapshot(id: string, label: string) {
+  if (!(await confirmDelete(`确定要删除快照「${label}」吗？此操作不可恢复。`))) return;
+  snapshotBusy.value = true;
+  try {
+    await store.removeSnapshot(id);
+    snapshotFeedback.value = { kind: "success", text: "快照已删除。" };
+  } catch (e) {
+    snapshotFeedback.value = { kind: "error", text: `删除失败：${describeError(e)}` };
+  } finally {
+    snapshotBusy.value = false;
+  }
+}
+
+function snapshotKindLabel(kind: string): string {
+  if (kind === "auto") return "自动";
+  if (kind === "pre-import") return "导入前";
+  return "手动";
+}
+
+function formatSnapshotTime(iso: string): string {
+  const d = new Date(iso);
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
 </script>
 
 <template>
@@ -219,29 +260,12 @@ function formatStamp(date: Date): string {
   </section>
 
   <section class="settings-card">
-    <div class="settings-card-title">
-      <span>导出备份</span>
-      <span class="data-meta" v-if="exportSize">预览 {{ exportSize }}</span>
-    </div>
+    <div class="settings-card-title">导出备份</div>
     <div class="settings-card-description">导出 JSON 用于本地归档或迁移。WebDAV 凭据明文不会写入，仅保留引用占位。</div>
     <div class="data-actions">
       <button class="settings-action-button" type="button" @click="downloadExport"><Download />下载 JSON</button>
-      <button class="settings-action-button" type="button" @click="generateExport"><Archive />生成预览</button>
-      <button class="settings-action-button" type="button" :disabled="!store.state.selectedExport" @click="copyExport">
-        <component :is="exportCopied ? Check : ClipboardCopy" />{{ exportCopied ? "已复制" : "复制 JSON" }}
-      </button>
-      <button class="settings-action-button" type="button" :disabled="!store.state.selectedExport" @click="clearExportPreview">
-        <Eraser />关闭预览
-      </button>
     </div>
     <p v-if="exportFeedback" class="data-feedback" :class="exportFeedback.kind">{{ exportFeedback.text }}</p>
-    <textarea
-      v-if="store.state.selectedExport"
-      class="export-preview"
-      :value="store.state.selectedExport"
-      readonly
-      spellcheck="false"
-    ></textarea>
   </section>
 
   <section class="settings-card">
@@ -276,6 +300,34 @@ function formatStamp(date: Date): string {
       <button class="settings-action-button" type="button" @click="store.testWebdav()">测试连接</button>
       <button class="settings-action-button" type="button" @click="store.syncWebdavNow()">立即同步</button>
     </div>
+  </section>
+
+  <section class="settings-card">
+    <div class="settings-card-title">
+      <span>数据快照</span>
+      <div class="snapshot-title-actions">
+        <button class="settings-action-button" type="button" :disabled="snapshotBusy" @click="takeManualSnapshot"><Camera />立即拍摄快照</button>
+        <button class="settings-action-button" type="button" :disabled="snapshotBusy" @click="refreshSnapshotList"><RefreshCw />刷新</button>
+      </div>
+    </div>
+    <div class="settings-card-description">
+      快照存在本地数据库，可在导入或重置出错时一键还原。自动快照间隔在 <strong>常规</strong> 设置中配置，自动快照最多保留 10 条。
+    </div>
+    <p v-if="snapshotFeedback" class="data-feedback" :class="snapshotFeedback.kind">{{ snapshotFeedback.text }}</p>
+    <div v-if="!store.state.snapshots.length" class="snapshot-empty">尚无快照。点击「立即拍摄快照」开始备份。</div>
+    <ul v-else class="snapshot-list">
+      <li v-for="snap in store.state.snapshots" :key="snap.id" class="snapshot-row">
+        <span class="snapshot-kind" :class="snap.kind">{{ snapshotKindLabel(snap.kind) }}</span>
+        <span class="snapshot-main">
+          <strong>{{ snap.label }}</strong>
+          <small>{{ formatSnapshotTime(snap.createdAt) }} · {{ formatBytes(snap.size) }}</small>
+        </span>
+        <span class="snapshot-actions">
+          <button class="settings-action-button" type="button" :disabled="snapshotBusy" @click="onRestoreSnapshot(snap.id, snap.label)"><RotateCcw />恢复</button>
+          <button class="settings-action-button" type="button" :disabled="snapshotBusy" @click="onDeleteSnapshot(snap.id, snap.label)"><Trash2 /></button>
+        </span>
+      </li>
+    </ul>
   </section>
 
   <section class="settings-card danger-card">
@@ -363,21 +415,6 @@ function formatStamp(date: Date): string {
   background: color-mix(in srgb, #f87171 8%, var(--bg-3));
   border: 1px solid color-mix(in srgb, #f87171 24%, var(--line));
 }
-.export-preview {
-  width: 100%;
-  min-height: 160px;
-  max-height: 360px;
-  overflow: auto;
-  padding: 8px 10px;
-  color: var(--muted);
-  font-family: var(--font-mono, "Cascadia Code", Consolas, monospace);
-  font-size: 11px;
-  white-space: pre;
-  resize: vertical;
-  background: var(--bg);
-  border: 1px solid var(--line);
-  border-radius: var(--radius);
-}
 .sync-status-strip {
   display: flex;
   flex-wrap: wrap;
@@ -408,5 +445,54 @@ function formatStamp(date: Date): string {
 .data-danger:hover {
   background: color-mix(in srgb, #f87171 22%, var(--accent-soft)) !important;
   border-color: color-mix(in srgb, #f87171 62%, transparent) !important;
+}
+.snapshot-title-actions {
+  display: flex;
+  gap: 8px;
+}
+.snapshot-empty {
+  color: var(--muted);
+  font-size: 12px;
+  padding: 8px 0;
+}
+.snapshot-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 320px;
+  overflow-y: auto;
+}
+.snapshot-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+}
+.snapshot-main {
+  flex: 1;
+  min-width: 0;
+}
+.snapshot-main strong { display: block; }
+.snapshot-main small { color: var(--muted); font-size: 11px; }
+.snapshot-kind {
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  padding: 2px 6px;
+  border-radius: 3px;
+  white-space: nowrap;
+}
+.snapshot-kind.manual { background: color-mix(in srgb, #60a5fa 16%, var(--bg-3)); color: #60a5fa; }
+.snapshot-kind.auto { background: color-mix(in srgb, #4ade80 16%, var(--bg-3)); color: #4ade80; }
+.snapshot-kind.pre-import { background: color-mix(in srgb, #fbbf24 16%, var(--bg-3)); color: #fbbf24; }
+.snapshot-actions {
+  display: flex;
+  gap: 4px;
 }
 </style>

@@ -253,10 +253,27 @@ fn init_db(conn: &Connection) -> rusqlite::Result<()> {
         CREATE TABLE IF NOT EXISTS items (id TEXT PRIMARY KEY, value TEXT NOT NULL);
         CREATE TABLE IF NOT EXISTS tools (id TEXT PRIMARY KEY, value TEXT NOT NULL);
         CREATE TABLE IF NOT EXISTS plugins (id TEXT PRIMARY KEY, value TEXT NOT NULL);
-        CREATE TABLE IF NOT EXISTS plugin_store (id INTEGER PRIMARY KEY AUTOINCREMENT, value TEXT NOT NULL);
+        CREATE TABLE IF NOT EXISTS plugin_store (id TEXT PRIMARY KEY, value TEXT NOT NULL);
         CREATE TABLE IF NOT EXISTS activity (id TEXT PRIMARY KEY, value TEXT NOT NULL, created_at TEXT NOT NULL);
+        CREATE TABLE IF NOT EXISTS snapshots (id TEXT PRIMARY KEY, kind TEXT NOT NULL, label TEXT NOT NULL, created_at TEXT NOT NULL, payload TEXT NOT NULL);
         CREATE TABLE IF NOT EXISTS app_state (key TEXT PRIMARY KEY, value TEXT NOT NULL);
-    ")
+    ")?;
+
+    // Migration: older builds created plugin_store with an INTEGER PK; the row writer now stores text ids,
+    // so drop the legacy table when its column type does not match. Plugin store data is rebuilt from seed/import.
+    let plugin_store_id_type: String = conn
+        .query_row(
+            "SELECT type FROM pragma_table_info('plugin_store') WHERE name = 'id'",
+            [],
+            |row| row.get::<_, String>(0),
+        )
+        .unwrap_or_default();
+    if !plugin_store_id_type.eq_ignore_ascii_case("TEXT") {
+        conn.execute_batch(
+            "DROP TABLE IF EXISTS plugin_store; CREATE TABLE plugin_store (id TEXT PRIMARY KEY, value TEXT NOT NULL);",
+        )?;
+    }
+    Ok(())
 }
 
 // ---- Tauri commands: open actions ----
@@ -495,11 +512,109 @@ fn db_bulk_insert(state: tauri::State<AppState>, table: String, rows: Vec<String
     // Rows are JSON strings containing the full entity. Parse to get the id field.
     for row_json in &rows {
         let obj: serde_json::Value = serde_json::from_str(row_json).map_err(|e| e.to_string())?;
-        let id = obj.get("id").and_then(|v| v.as_str()).ok_or("Missing id field")?;
+        let id = obj
+            .get("id").and_then(|v| v.as_str())
+            .or_else(|| obj.get("name").and_then(|v| v.as_str()))
+            .ok_or("Missing id/name field")?;
         db.execute(&sql, rusqlite::params![id, row_json]).map_err(|e| e.to_string())?;
         count += 1;
     }
     Ok(count)
+}
+
+// ---- Snapshot commands ----
+
+#[derive(Debug, Serialize, Clone)]
+struct SnapshotRecord {
+    id: String,
+    kind: String,
+    label: String,
+    #[serde(rename = "createdAt")]
+    created_at: String,
+    size: usize,
+}
+
+/// Insert a snapshot row. Replaces any existing row with the same id.
+#[tauri::command]
+fn snapshot_create(
+    state: tauri::State<AppState>,
+    id: String,
+    kind: String,
+    label: String,
+    #[allow(non_snake_case)] createdAt: String,
+    payload: String,
+) -> Result<(), String> {
+    let db = state.db.lock().map_err(|e| e.to_string())?;
+    db.execute(
+        "INSERT OR REPLACE INTO snapshots (id, kind, label, created_at, payload) VALUES (?1, ?2, ?3, ?4, ?5)",
+        rusqlite::params![id, kind, label, createdAt, payload],
+    )
+    .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+/// List snapshots ordered by created_at desc, returning lightweight metadata only.
+#[tauri::command]
+fn snapshot_list(state: tauri::State<AppState>) -> Result<Vec<SnapshotRecord>, String> {
+    let db = state.db.lock().map_err(|e| e.to_string())?;
+    let mut stmt = db
+        .prepare("SELECT id, kind, label, created_at, LENGTH(payload) FROM snapshots ORDER BY created_at DESC")
+        .map_err(|e| e.to_string())?;
+    let rows = stmt
+        .query_map([], |row| {
+            Ok(SnapshotRecord {
+                id: row.get(0)?,
+                kind: row.get(1)?,
+                label: row.get(2)?,
+                created_at: row.get(3)?,
+                size: row.get::<_, i64>(4)? as usize,
+            })
+        })
+        .map_err(|e| e.to_string())?;
+    let mut out = Vec::new();
+    for r in rows {
+        out.push(r.map_err(|e| e.to_string())?);
+    }
+    Ok(out)
+}
+
+/// Return the snapshot payload (full AppData JSON) for a given id, or None if missing.
+#[tauri::command]
+fn snapshot_get(state: tauri::State<AppState>, id: String) -> Result<Option<String>, String> {
+    let db = state.db.lock().map_err(|e| e.to_string())?;
+    let mut stmt = db
+        .prepare("SELECT payload FROM snapshots WHERE id = ?1")
+        .map_err(|e| e.to_string())?;
+    let mut rows = stmt.query(rusqlite::params![id]).map_err(|e| e.to_string())?;
+    if let Some(row) = rows.next().map_err(|e| e.to_string())? {
+        let payload: String = row.get(0).map_err(|e| e.to_string())?;
+        Ok(Some(payload))
+    } else {
+        Ok(None)
+    }
+}
+
+#[tauri::command]
+fn snapshot_delete(state: tauri::State<AppState>, id: String) -> Result<(), String> {
+    let db = state.db.lock().map_err(|e| e.to_string())?;
+    db.execute("DELETE FROM snapshots WHERE id = ?1", rusqlite::params![id])
+        .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+/// Keep the newest `keep` snapshots of the given kind; delete the rest. Returns deleted count.
+#[tauri::command]
+fn snapshot_prune(state: tauri::State<AppState>, kind: String, keep: i64) -> Result<u64, String> {
+    if keep < 0 { return Err("keep must be >= 0".into()); }
+    let db = state.db.lock().map_err(|e| e.to_string())?;
+    // SQLite trick: delete rows whose id is NOT in the newest `keep` for this kind.
+    let affected = db
+        .execute(
+            "DELETE FROM snapshots WHERE kind = ?1 AND id NOT IN (SELECT id FROM snapshots WHERE kind = ?1 ORDER BY created_at DESC LIMIT ?2)",
+            rusqlite::params![kind, keep],
+        )
+        .map_err(|e| e.to_string())?;
+    Ok(affected as u64)
 }
 
 // ---- Entry point ----
@@ -682,7 +797,8 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             open_path, open_url, open_file, open_application, scan_open_tools, run_command,
             test_webdav_connection, sync_webdav_now, set_global_hotkey, write_text_file,
-            db_init, db_execute, db_execute_params, db_get_value, db_set_value, db_list_table, db_bulk_insert
+            db_init, db_execute, db_execute_params, db_get_value, db_set_value, db_list_table, db_bulk_insert,
+            snapshot_create, snapshot_list, snapshot_get, snapshot_delete, snapshot_prune
         ])
         .run(tauri::generate_context!())
         .expect("error while running OpenDock");

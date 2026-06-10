@@ -168,6 +168,7 @@ export interface GeneralSettings {
   openWebInNewWindow: boolean;
   closeWindowAfterOpen: boolean;
   language: string;
+  autoSnapshotIntervalMinutes: number;
 }
 
 export type SearchEnterBehavior = "open" | "navigate";
@@ -222,6 +223,17 @@ export interface AppData {
   pluginStore: PluginStoreEntry[];
   settings: AppSettings;
   activity: ActivityEntry[];
+}
+
+export type SnapshotKind = "manual" | "auto" | "pre-import";
+
+export interface SnapshotRecord {
+  id: string;
+  kind: SnapshotKind;
+  label: string;
+  createdAt: string;
+  /** Byte length of the stored payload. */
+  size: number;
 }
 
 

@@ -14,6 +14,7 @@ import {
   Wrench
 } from "lucide-vue-next";
 import { useOpenDockStore } from "../store";
+import { confirmDelete } from "../dialog";
 
 const store = useOpenDockStore();
 
@@ -48,9 +49,10 @@ function editScene(sceneId: string) {
   store.state.modal.kind = "scene";
 }
 
-function deleteSceneConfirm(sceneId: string) {
+async function deleteSceneConfirm(sceneId: string) {
   const scene = store.state.data.scenes.find((s) => s.id === sceneId);
-  if (scene && window.confirm(`确认删除场景「${scene.name}」？此场景下的集合将变为无场景集合。`)) {
+  if (!scene) return;
+  if (await confirmDelete(`确认删除场景「${scene.name}」？此场景下的集合将变为无场景集合。`)) {
     store.deleteScene(sceneId);
   }
 }
@@ -60,9 +62,10 @@ function editCollection(collectionId: string) {
   store.state.modal.kind = "collection";
 }
 
-function deleteCollectionConfirm(collectionId: string) {
+async function deleteCollectionConfirm(collectionId: string) {
   const coll = store.state.data.collections.find((c) => c.id === collectionId);
-  if (coll && window.confirm(`确认删除集合「${coll.name}」及其所有资源？`)) {
+  if (!coll) return;
+  if (await confirmDelete(`确认删除集合「${coll.name}」及其所有资源？`)) {
     store.deleteCollection(collectionId);
   }
 }
@@ -72,9 +75,10 @@ function editItem(itemId: string) {
   store.state.modal.kind = "item";
 }
 
-function deleteItemConfirm(itemId: string) {
+async function deleteItemConfirm(itemId: string) {
   const item = store.state.data.items.find((i) => i.id === itemId);
-  if (item && window.confirm(`确认删除资源「${item.name}」？`)) {
+  if (!item) return;
+  if (await confirmDelete(`确认删除资源「${item.name}」？`)) {
     store.deleteItem(itemId);
   }
 }

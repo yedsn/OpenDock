@@ -3,6 +3,7 @@ import { Plus, Radar, Trash2 } from "lucide-vue-next";
 import { reactive, ref } from "vue";
 import { useOpenDockStore } from "../../store";
 import type { ToolType } from "../../types";
+import { confirmDelete } from "../../dialog";
 
 const store = useOpenDockStore();
 const scanning = ref(false);
@@ -35,10 +36,10 @@ async function scanTools() {
   }
 }
 
-function deleteTool(id: string) {
+async function deleteTool(id: string) {
   const tool = store.state.data.tools.find((entry) => entry.id === id);
   if (!tool) return;
-  if (window.confirm(`确认删除打开工具「${tool.name}」？关联资源将改回默认工具。`)) {
+  if (await confirmDelete(`确认删除打开工具「${tool.name}」？关联资源将改回默认工具。`)) {
     store.deleteTool(id);
   }
 }

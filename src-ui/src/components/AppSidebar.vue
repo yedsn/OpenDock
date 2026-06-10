@@ -16,6 +16,7 @@ import {
 } from "lucide-vue-next";
 import { useOpenDockStore } from "../store";
 import SearchOverlay from "./SearchOverlay.vue";
+import { confirmDelete } from "../dialog";
 
 const store = useOpenDockStore();
 
@@ -43,9 +44,10 @@ function editScene(id: string) {
   store.state.modal.kind = "scene";
 }
 
-function deleteSceneConfirm(id: string) {
+async function deleteSceneConfirm(id: string) {
   const scene = store.state.data.scenes.find((s) => s.id === id);
-  if (scene && window.confirm(`确认删除场景「${scene.name}」？此场景下的集合将变为无场景集合。`)) {
+  if (!scene) return;
+  if (await confirmDelete(`确认删除场景「${scene.name}」？此场景下的集合将变为无场景集合。`)) {
     store.deleteScene(id);
   }
 }
@@ -55,13 +57,14 @@ function editWorkspace(id: string) {
   store.state.modal.kind = "workspace";
 }
 
-function deleteWorkspaceConfirm(id: string) {
+async function deleteWorkspaceConfirm(id: string) {
   if (store.state.data.workspaces.length <= 1) {
     window.alert("至少保留一个工作区");
     return;
   }
   const ws = store.state.data.workspaces.find((w) => w.id === id);
-  if (ws && window.confirm(`确认删除工作区「${ws.name}」？所有关联的场景、集合和资源将被删除。`)) {
+  if (!ws) return;
+  if (await confirmDelete(`确认删除工作区「${ws.name}」？所有关联的场景、集合和资源将被删除。`)) {
     store.deleteWorkspace(id);
   }
 }

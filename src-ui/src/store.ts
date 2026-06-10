@@ -2,10 +2,11 @@ import { computed, reactive, watch } from "vue";
 import { invoke } from "@tauri-apps/api/core";
 import { collectionMeta, itemMeta, sceneMeta } from "./seed";
 import { exportAppData, loadAppData, resetAppData, saveAppData } from "./storage";
+import { createSnapshot, listSnapshots, loadSnapshot, deleteSnapshot, pruneSnapshots } from "./storage";
 import { createSeedData } from "./seed";
 import { nowIso, makeId, expandToolArgs, templateToCollectionType, toolTypesByCollection } from "./helpers";
 import { builtInThemes } from "./themes";
-import type { AppData, Collection, CollectionItem, CollectionMode, CollectionType, ItemType, MainView, ModalState, OpenTool, PluginManifest, QuickViewId, Scene, SceneType, Tab, ThemeDefinition, Workspace } from "./types";
+import type { AppData, Collection, CollectionItem, CollectionMode, CollectionType, ItemType, MainView, ModalState, OpenTool, PluginManifest, QuickViewId, Scene, SnapshotKind, SnapshotRecord, SceneType, Tab, ThemeDefinition, Workspace } from "./types";
 import type { SearchSuggestion } from "./types";
 import { matchesSearchText, scoreSearchText, createSearchText } from "./pinyin";
 
@@ -66,6 +67,7 @@ const state = reactive({
   modal: { kind: null } as ModalState,
   workspaceMenuOpen: false,
   selectedExport: "",
+  snapshots: [] as SnapshotRecord[],
   tabs: [] as Tab[],
   activeTabId: "" as string
 });
@@ -155,6 +157,17 @@ async function init() {
   }
   state.mainView = 'workspace';
   await applyToggleWindowHotkey();
+
+  // Backfill defaults that older data may not have, then boot the snapshot pipeline.
+  if (state.data.settings.general.autoSnapshotIntervalMinutes === undefined) {
+    state.data.settings.general.autoSnapshotIntervalMinutes = 60;
+  }
+  try {
+    await refreshSnapshots();
+  } catch (e) {
+    console.error("Snapshot init failed:", e);
+  }
+  startAutoSnapshotTimer();
 }
 // ---- Computed ----
 
@@ -625,10 +638,80 @@ async function syncWebdavNow(): Promise<void> {
   log(`WebDAV Sync 立即同步: ${result.message}`);
 }
 
+// ---- Snapshots ----
+
+let autoSnapshotTimer: ReturnType<typeof setInterval> | null = null;
+
+async function takeSnapshot(label: string = "", kind: SnapshotKind = "manual"): Promise<SnapshotRecord> {
+  const record = await createSnapshot(state.data, kind, label || formatSnapshotLabel(kind));
+  state.snapshots = await listSnapshots();
+  return record;
+}
+
+async function restoreSnapshot(id: string): Promise<AppData> {
+  const data = await loadSnapshot(id);
+  state.data = data;
+  // Take a pre-import snapshot before replacing, then async save
+  state.snapshots = await listSnapshots();
+  return data;
+}
+
+async function removeSnapshot(id: string): Promise<void> {
+  await deleteSnapshot(id);
+  state.snapshots = state.snapshots.filter((s) => s.id !== id);
+}
+
+async function refreshSnapshots(): Promise<void> {
+  state.snapshots = await listSnapshots();
+}
+
+async function pruneAutoSnapshots(keep: number = 10): Promise<number> {
+  const deleted = await pruneSnapshots("auto", keep);
+  state.snapshots = await listSnapshots();
+  return deleted;
+}
+
+function formatSnapshotLabel(kind: SnapshotKind): string {
+  const now = new Date();
+  const pad = (n: number) => String(n).padStart(2, "0");
+  const ts = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())} ${pad(now.getHours())}:${pad(now.getMinutes())}`;
+  return kind === "auto" ? `自动快照 ${ts}` : kind === "pre-import" ? `导入前快照 ${ts}` : `手动快照 ${ts}`;
+}
+
+function startAutoSnapshotTimer(): void {
+  stopAutoSnapshotTimer();
+  const minutes = state.data.settings.general.autoSnapshotIntervalMinutes;
+  if (!minutes || minutes <= 0) return;
+  const ms = minutes * 60 * 1000;
+  autoSnapshotTimer = setInterval(async () => {
+    try {
+      await takeSnapshot("", "auto");
+      await pruneAutoSnapshots(10);
+    } catch (e) {
+      console.error("Auto snapshot failed:", e);
+    }
+  }, ms);
+}
+
+function stopAutoSnapshotTimer(): void {
+  if (autoSnapshotTimer) {
+    clearInterval(autoSnapshotTimer);
+    autoSnapshotTimer = null;
+  }
+}
+
 // ---- Data lifecycle ----
 
 async function resetData(): Promise<void> {
+  // Save current data as a "pre-import" snapshot so the user can undo a reset.
+  try {
+    await createSnapshot(state.data, "pre-import", `重置前快照 ${new Date().toLocaleString()}`);
+  } catch (e) {
+    console.error("Pre-reset snapshot failed:", e);
+  }
   state.data = await resetAppData();
+  await refreshSnapshots();
+  startAutoSnapshotTimer();
   log("重置应用数据");
 }
 
@@ -639,7 +722,16 @@ function clearRecent(): void {
 }
 
 async function replaceData(data: AppData): Promise<void> {
+  // Save current data as a "pre-import" snapshot so the user can undo a bad import.
+  try {
+    await createSnapshot(state.data, "pre-import", `导入前快照 ${new Date().toLocaleString()}`);
+  } catch (e) {
+    console.error("Pre-import snapshot failed:", e);
+  }
   state.data = data;
+  await refreshSnapshots();
+  // Restart the auto-snapshot timer in case the new data has a different interval.
+  startAutoSnapshotTimer();
   log("已替换数据");
 }
 
@@ -994,5 +1086,11 @@ export function useOpenDockStore() {
     searchSuggestions,
     executeSuggestion,
     executeSuggestionAndMaybeHide,
+    takeSnapshot,
+    restoreSnapshot,
+    removeSnapshot,
+    refreshSnapshots,
+    startAutoSnapshotTimer,
+    stopAutoSnapshotTimer
   };
 }

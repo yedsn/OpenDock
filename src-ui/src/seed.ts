@@ -211,7 +211,7 @@ export function createSeedData(): AppData {
       { name: "Ink Blue Theme", category: "主题", capability: "安装后提供深蓝墨色主题", permissions: ["appearance:theme"], configurable: false, theme: pluginStoreTheme }
     ],
     settings: {
-      general: { defaultView: "全部资源", recentLimit: 12, confirmBeforeOpen: true, logOpenFailures: true, openWebInNewWindow: true, closeWindowAfterOpen: false, language: "简体中文" },
+      general: { defaultView: "全部资源", recentLimit: 12, confirmBeforeOpen: true, logOpenFailures: true, openWebInNewWindow: true, closeWindowAfterOpen: false, language: "简体中文", autoSnapshotIntervalMinutes: 60 },
       search: { sceneEnterBehavior: "open", collectionEnterBehavior: "open", itemEnterBehavior: "open" },
       templates: ["代码目录", "本地网页", "开发环境网页", "线上环境网页", "常用命令"],
       shortcuts: [
