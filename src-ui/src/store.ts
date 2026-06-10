@@ -162,6 +162,9 @@ async function init() {
   if (state.data.settings.general.autoSnapshotIntervalMinutes === undefined) {
     state.data.settings.general.autoSnapshotIntervalMinutes = 60;
   }
+  if (state.data.settings.general.autoSnapshotKeepCount === undefined) {
+    state.data.settings.general.autoSnapshotKeepCount = 7;
+  }
   try {
     await refreshSnapshots();
   } catch (e) {
@@ -686,7 +689,7 @@ function startAutoSnapshotTimer(): void {
   autoSnapshotTimer = setInterval(async () => {
     try {
       await takeSnapshot("", "auto");
-      await pruneAutoSnapshots(10);
+      await pruneAutoSnapshots(state.data.settings.general.autoSnapshotKeepCount || 7);
     } catch (e) {
       console.error("Auto snapshot failed:", e);
     }

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref } from "vue";
+import { computed, ref, watch } from "vue";
 import { Camera, Download, Eraser, RefreshCw, RotateCcw, ShieldAlert, Trash2, Upload } from "lucide-vue-next";
 import { invoke } from "@tauri-apps/api/core";
 import { save } from "@tauri-apps/plugin-dialog";
@@ -11,6 +11,8 @@ import { confirmDelete } from "../../dialog";
 const isTauri = typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
 
 const store = useOpenDockStore();
+const general = store.state.data.settings.general;
+watch(() => general.autoSnapshotIntervalMinutes, () => store.startAutoSnapshotTimer());
 
 type FeedbackKind = "info" | "success" | "error";
 interface Feedback {
@@ -311,7 +313,23 @@ function formatSnapshotTime(iso: string): string {
       </div>
     </div>
     <div class="settings-card-description">
-      快照存在本地数据库，可在导入或重置出错时一键还原。自动快照间隔在 <strong>常规</strong> 设置中配置，自动快照最多保留 10 条。
+      快照存在本地数据库，可在导入或重置出错时一键还原。自动快照配置见下方。
+    </div>
+    <div class="snapshot-config">
+      <label class="setting-field">
+        <span>自动快照间隔（分钟）</span>
+        <div class="snapshot-interval-input">
+          <input v-model.number="general.autoSnapshotIntervalMinutes" type="number" min="0" max="1440" />
+          <small>设为 0 关闭自动快照</small>
+        </div>
+      </label>
+      <label class="setting-field">
+        <span>最多保留自动快照（个）</span>
+        <div class="snapshot-interval-input">
+          <input v-model.number="general.autoSnapshotKeepCount" type="number" min="1" max="100" />
+          <small>超出部分下次快照时自动清理</small>
+        </div>
+      </label>
     </div>
     <p v-if="snapshotFeedback" class="data-feedback" :class="snapshotFeedback.kind">{{ snapshotFeedback.text }}</p>
     <div v-if="!store.state.snapshots.length" class="snapshot-empty">尚无快照。点击「立即拍摄快照」开始备份。</div>
@@ -495,4 +513,9 @@ function formatSnapshotTime(iso: string): string {
   display: flex;
   gap: 4px;
 }
+.snapshot-config { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px 16px; }
+.snapshot-config .setting-field { max-width: 360px; }
+.snapshot-interval-input { display: flex; align-items: center; gap: 10px; }
+.snapshot-interval-input input { flex: 0 0 96px; height: 28px; padding: 0 8px; color: var(--text); background: var(--bg); border: 1px solid var(--line); border-radius: var(--radius); font-size: 12px; }
+.snapshot-interval-input small { color: var(--muted); font-size: 11px; }
 </style>

@@ -1,9 +1,7 @@
 ﻿<script setup lang="ts">
-import { watch } from "vue";
 import { useOpenDockStore } from "../../store";
 const store = useOpenDockStore();
 const general = store.state.data.settings.general;
-watch(() => general.autoSnapshotIntervalMinutes, () => store.startAutoSnapshotTimer());
 </script>
 
 <template>
@@ -47,11 +45,6 @@ watch(() => general.autoSnapshotIntervalMinutes, () => store.startAutoSnapshotTi
         <span class="setting-switch">
           <input v-model="general.logOpenFailures" type="checkbox" /><span></span>
         </span>
-      </label>
-      <label class="setting-field">
-        <span>自动快照间隔（分钟）</span>
-        <input v-model.number="general.autoSnapshotIntervalMinutes" type="number" min="0" max="1440" />
-        <small>设为 0 关闭自动快照</small>
       </label>
     </div>
   </section>

@@ -169,6 +169,7 @@ export interface GeneralSettings {
   closeWindowAfterOpen: boolean;
   language: string;
   autoSnapshotIntervalMinutes: number;
+  autoSnapshotKeepCount: number;
 }
 
 export type SearchEnterBehavior = "open" | "navigate";
