@@ -15,13 +15,79 @@ import {
 } from "lucide-vue-next";
 import { useOpenDockStore } from "../store";
 import { confirmDelete } from "../dialog";
+import VirtualList from "./VirtualList.vue";
 
 const store = useOpenDockStore();
 
 const activeCollection = computed(() => store.activeCollection());
+const activeCollectionId = computed(() => activeCollection.value?.id || "");
 const activeItems = computed(() =>
   activeCollection.value ? store.collectionItems(activeCollection.value.id) : []
 );
+
+// Cache scene-name lookup so each row does not pay an O(N) find() on every render.
+const sceneNameById = computed(() => {
+  const map = new Map<string, string>();
+  for (const scene of store.state.data.scenes) {
+    map.set(scene.id, scene.name);
+  }
+  return map;
+});
+
+interface CollectionRow {
+  id: string;
+  name: string;
+  type: string;
+  sceneId: string | null;
+  favorite: boolean;
+  subtitle: string;
+  source: any;
+}
+
+const collectionRows = computed<CollectionRow[]>(() => {
+  const sceneMap = sceneNameById.value;
+  return store.visibleCollections.value.map((collection) => {
+    const sceneName = collection.sceneId ? (sceneMap.get(collection.sceneId) || "无场景") : "无场景";
+    return {
+      id: collection.id,
+      name: collection.name,
+      type: collection.type,
+      sceneId: collection.sceneId,
+      favorite: collection.favorite,
+      subtitle: `${collection.type} · ${sceneName}`,
+      source: collection
+    };
+  });
+});
+
+interface ItemRow {
+  id: string;
+  name: string;
+  type: string;
+  value: string;
+  subtitle: string;
+  source: any;
+}
+
+const itemRows = computed<ItemRow[]>(() =>
+  activeItems.value.map((item) => ({
+    id: item.id,
+    name: item.name,
+    type: item.type,
+    value: item.value,
+    subtitle: `${item.type} · ${item.value}`,
+    source: item
+  }))
+);
+
+// Row stride tracks CSS density so virtual scroll positions stay flush with the cards.
+const isComfortable = computed(() => store.state.data.settings.appearance.density === "舒适");
+const cardPad = computed(() => (isComfortable.value ? 12 : 10));
+const rowGap = computed(() => (isComfortable.value ? 10 : 8));
+const listPad = computed(() => (isComfortable.value ? 12 : 10));
+const collectionItemHeight = computed(() => 36 + cardPad.value * 2);
+const itemPad = computed(() => (isComfortable.value ? 12 : 9));
+const itemRowHeight = computed(() => 36 + itemPad.value * 2);
 
 const quickViewLabels: Record<string, string> = {
   all: "全部资源",
@@ -34,15 +100,10 @@ const activeTab = computed(() => store.state.tabs.find((tab) => tab.id === store
 const isQuickViewTab = computed(() => activeTab.value?.kind === "quickview");
 const paneTitle = computed(() => isQuickViewTab.value ? quickViewLabels[store.state.quickView] : store.activeScene().name);
 const paneDescription = computed(() => {
-  const count = store.visibleCollections.value.length;
+  const count = collectionRows.value.length;
   if (isQuickViewTab.value) return `全部场景 · ${count} 个集合`;
   return `${store.activeScene().type}场景 · ${count} 个集合`;
 });
-
-function collectionSceneLabel(collection: { sceneId: string | null }): string {
-  if (!collection.sceneId) return "无场景";
-  return store.state.data.scenes.find((scene) => scene.id === collection.sceneId)?.name || "无场景";
-}
 
 function editScene(sceneId: string) {
   store.state.modal.editingId = sceneId;
@@ -93,10 +154,9 @@ function selectCollection(collection: { id: string; name: string; sceneId: strin
     store.state.data.activeCollectionId = fullCollection.id;
     return;
   }
-  store.openTab({ id: 'collection-' + collection.id, kind: 'collection', title: collection.name, collectionId: collection.id, sceneId: collection.sceneId || undefined });
+  store.openTab({ id: "collection-" + collection.id, kind: "collection", title: collection.name, collectionId: collection.id, sceneId: collection.sceneId || undefined });
 }
 </script>
-
 <template>
   <section class="workspace">
     <section class="collection-pane">
@@ -120,29 +180,42 @@ function selectCollection(collection: { id: string; name: string; sceneId: strin
         <button class="tool-chip action" @click="store.state.modal.kind = 'collection'; store.state.modal.editingId = undefined;"><FolderPlus />新建集合</button>
       </div>
 
-      <div class="collection-list">
-        <div v-for="collection in store.visibleCollections.value" :key="collection.id"
-          class="collection-card"
-          :class="{ active: activeCollection?.id === collection.id }"
-          role="button"
-          tabindex="0"
-          @click="selectCollection(collection)"
-          @keydown.enter.prevent="selectCollection(collection)"
-          @keydown.space.prevent="selectCollection(collection)">
-          <span class="card-icon"><Layers /></span>
-          <span>
-            <strong>{{ collection.name }}</strong>
-            <small>{{ collection.type }} · {{ collectionSceneLabel(collection) }}</small>
-          </span>
-          <span class="card-actions">
-            <button class="icon-button" type="button" title="编辑" @click.stop="editCollection(collection.id)"><Pencil /></button>
-            <button class="icon-button danger" type="button" title="删除" @click.stop="deleteCollectionConfirm(collection.id)"><Trash2 /></button>
-            <button class="icon-button" type="button" @click.stop="store.toggleFavorite(collection)">
-              <Star :fill="collection.favorite ? 'currentColor' : 'none'" />
-            </button>
-          </span>
-        </div>
-        <div v-if="!store.visibleCollections.value.length" class="empty-state">没有匹配的集合</div>
+      <VirtualList
+        v-if="collectionRows.length"
+        class="collection-list virtual-collection-list"
+        :items="collectionRows"
+        :item-height="collectionItemHeight"
+        :gap="rowGap"
+        :padding="listPad"
+      >
+        <template #row="{ item }">
+          <div
+            class="collection-card"
+            :class="{ active: activeCollectionId === item.id }"
+            role="button"
+            tabindex="0"
+            :style="{ height: collectionItemHeight + 'px' }"
+            @click="selectCollection(item.source)"
+            @keydown.enter.prevent="selectCollection(item.source)"
+            @keydown.space.prevent="selectCollection(item.source)"
+          >
+            <span class="card-icon"><Layers /></span>
+            <span class="card-text">
+              <strong>{{ item.name }}</strong>
+              <small>{{ item.subtitle }}</small>
+            </span>
+            <span class="card-actions">
+              <button class="icon-button" type="button" title="编辑" @click.stop="editCollection(item.id)"><Pencil /></button>
+              <button class="icon-button danger" type="button" title="删除" @click.stop="deleteCollectionConfirm(item.id)"><Trash2 /></button>
+              <button class="icon-button" type="button" @click.stop="store.toggleFavorite(item.source)">
+                <Star :fill="item.favorite ? 'currentColor' : 'none'" />
+              </button>
+            </span>
+          </div>
+        </template>
+      </VirtualList>
+      <div v-else class="collection-list collection-list-empty">
+        <div class="empty-state">没有匹配的集合</div>
       </div>
     </section>
 
@@ -160,20 +233,31 @@ function selectCollection(collection: { id: string; name: string; sceneId: strin
         </div>
       </div>
 
-      <div class="item-list">
-        <div v-for="item in activeItems" :key="item.id" class="item-row">
-          <span class="card-icon"><FileText /></span>
-          <span class="item-main">
-            <strong>{{ item.name }}</strong>
-            <small>{{ item.type }} · {{ item.value }}</small>
-          </span>
-          <span class="item-actions">
-            <button class="row-open" @click="store.openItem(item)"><Play />打开</button>
-            <button class="icon-button" title="编辑" @click="editItem(item.id)"><Pencil /></button>
-            <button class="icon-button danger" title="删除" @click="deleteItemConfirm(item.id)"><Trash2 /></button>
-          </span>
-        </div>
-        <div v-if="!activeItems.length" class="empty-state">这个集合还没有资源</div>
+      <VirtualList
+        v-if="itemRows.length"
+        class="item-list virtual-item-list"
+        :items="itemRows"
+        :item-height="itemRowHeight"
+        :gap="rowGap"
+        :padding="listPad"
+      >
+        <template #row="{ item }">
+          <div class="item-row" :style="{ height: itemRowHeight + 'px' }">
+            <span class="card-icon"><FileText /></span>
+            <span class="item-main">
+              <strong>{{ item.name }}</strong>
+              <small>{{ item.subtitle }}</small>
+            </span>
+            <span class="item-actions">
+              <button class="row-open" @click="store.openItem(item.source)"><Play />打开</button>
+              <button class="icon-button" title="编辑" @click="editItem(item.id)"><Pencil /></button>
+              <button class="icon-button danger" title="删除" @click="deleteItemConfirm(item.id)"><Trash2 /></button>
+            </span>
+          </div>
+        </template>
+      </VirtualList>
+      <div v-else class="item-list item-list-empty">
+        <div class="empty-state">这个集合还没有资源</div>
       </div>
 
       <section v-if="store.state.data.settings.appearance.showConsole" class="console-pane">
@@ -185,11 +269,17 @@ function selectCollection(collection: { id: string; name: string; sceneId: strin
     </section>
   </section>
 </template>
-
 <style scoped>
 .pane-header-actions { display: flex; align-items: center; gap: 6px; }
 .card-actions { display: flex; align-items: center; gap: 2px; }
 .item-actions { display: flex; align-items: center; gap: 4px; }
 .icon-button.danger { color: var(--red); }
 .icon-button.danger:hover { background: rgba(210, 109, 109, 0.15); }
+.collection-list-empty,
+.item-list-empty {
+  min-height: 110px;
+  display: grid;
+  place-items: center;
+  padding: var(--list-pad, 10px);
+}
 </style>
