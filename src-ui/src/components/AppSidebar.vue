@@ -176,10 +176,10 @@ onUnmounted(() => {
     <div class="tree-section">
       <div class="tree-title">快速视图</div>
       <div class="tree-list">
-        <button v-for="view in quickViews" :key="view.id" class="tree-row" :class="{ active: store.state.activeTabId === `quickview-${view.id}` }" @click="openQuickViewTab(view)">
+        <button v-for="view in quickViews" :key="view.id" v-memo="[view.id, quickViewCounts[view.id], store.state.activeTabId === `quickview-${view.id}`]" class="tree-row" :class="{ active: store.state.activeTabId === `quickview-${view.id}` }" @click="openQuickViewTab(view)">
           <component :is="view.icon" />
           <span><span>{{ view.label }}</span><small>{{ view.hint }}</small></span>
-          <span class="tree-count">{{ countForQuickView(view.id) }}</span>
+          <span class="tree-count">{{ quickViewCounts[view.id] }}</span>
         </button>
       </div>
     </div>
@@ -191,6 +191,7 @@ onUnmounted(() => {
       </div>
       <div class="tree-list">
         <button v-for="scene in store.activeScenes.value" :key="scene.id"
+          v-memo="[scene.id, scene.name, scene.description, scene.type, store.state.activeTabId === 'scene-' + scene.id]"
           class="scene-button"
           :class="{ active: store.state.activeTabId === 'scene-' + scene.id }"
           @click="store.openTab({ id: 'scene-' + scene.id, kind: 'scene', title: scene.name, sceneId: scene.id })">
