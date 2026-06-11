@@ -96,3 +96,16 @@ export async function snapshotPrune(kind: SnapshotKind, keep: number): Promise<n
     return await invoke<number>("snapshot_prune", { kind, keep });
   } catch (e) { throw snapshotUnavailable(e); }
 }
+
+// ---- WebDAV credential helpers ----
+
+export async function webdavSetCredential(password: string): Promise<void> {
+  await ensureDb();
+  await invoke("webdav_set_credential", { password });
+}
+
+export async function webdavGetCredential(): Promise<string> {
+  await ensureDb();
+  const result = await invoke<string>("webdav_get_credential");
+  return result ?? "";
+}

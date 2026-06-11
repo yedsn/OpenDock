@@ -3,6 +3,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { collectionMeta, itemMeta, sceneMeta } from "./seed";
 import { exportAppData, loadAppData, resetAppData, saveActiveState, saveAppData } from "./storage";
 import { createSnapshot, listSnapshots, loadSnapshot, deleteSnapshot, pruneSnapshots } from "./storage";
+import { webdavSetCredential, webdavGetCredential } from "./db";
 import { createSeedData } from "./seed";
 import { nowIso, makeId, expandToolArgs, templateToCollectionType, toolTypesByCollection } from "./helpers";
 import { builtInThemes } from "./themes";
@@ -113,6 +114,9 @@ watch(() => [state.data.activeWorkspaceId, state.data.activeSceneId, state.data.
 });
 
 /** Load data from SQLite, replacing seed data. Call once at app startup. */
+
+let webdavAutoSyncTimer: ReturnType<typeof setInterval> | null = null;
+
 async function init() {
   try {
     const data = await loadAppData();
@@ -204,6 +208,7 @@ async function init() {
   }
   startAutoSnapshotTimer();
 }
+  startWebdavAutoSync();
 // ---- Computed ----
 
 const currentCollections = computed(() =>
@@ -705,15 +710,44 @@ function togglePlugin(plugin: PluginManifest): void {
 
 async function testWebdav(): Promise<void> {
   const config = state.data.settings.webdavSync;
-  const result = await callOpenCommand("test_webdav_connection", { serverUrl: config.serverUrl, username: config.username });
+  const password = await webdavGetCredential();
+  const result = await callOpenCommand("test_webdav_connection", { serverUrl: config.serverUrl, username: config.username, password });
   config.status = result.ok ? "连接正常" : "连接失败";
   log(`WebDAV Sync 测试连接: ${result.message}`);
 }
 
 async function syncWebdavNow(): Promise<void> {
-  const result = await callOpenCommand("sync_webdav_now", {});
   const config = state.data.settings.webdavSync;
-  config.status = result.ok ? "同步成功" : "同步失败";
+  const password = await webdavGetCredential();
+  const localData = exportAppData(state.data);
+  const result = await callOpenCommand("sync_webdav_now", {
+    serverUrl: config.serverUrl,
+    username: config.username,
+    password,
+    remotePath: config.remotePath,
+    conflictPolicy: config.conflictPolicy,
+    localData,
+  });
+
+  if (result.ok) {
+    if (result.message.startsWith("SYNC_REMOTE_DATA:")) {
+      const remoteJson = result.message.slice("SYNC_REMOTE_DATA:".length);
+      try {
+        const { normalizeAppData } = await import("./storage");
+        const remoteData = normalizeAppData(JSON.parse(remoteJson));
+        state.data = remoteData;
+        config.status = "同步成功（远程优先）";
+      } catch {
+        config.status = "同步失败（远程数据解析错误）";
+      }
+    } else if (result.message.startsWith("SYNC_MANUAL:")) {
+      config.status = "需要手动处理冲突";
+    } else {
+      config.status = "同步成功";
+    }
+  } else {
+    config.status = "同步失败";
+  }
   config.lastSyncAt = new Date().toLocaleString("zh-CN", { hour12: false });
   log(`WebDAV Sync 立即同步: ${result.message}`);
 }
@@ -1114,6 +1148,45 @@ function pinTab(tabId: string): void {
   if (tab) tab.pinned = !tab.pinned;
 }
 
+// ---- WebDAV auto-sync ----
+
+function startWebdavAutoSync(): void {
+  stopWebdavAutoSync();
+  const config = state.data.settings.webdavSync;
+  if (!config.autoSync || config.syncInterval === "关闭") return;
+  const intervalMs = syncIntervalToMs(config.syncInterval);
+  if (intervalMs <= 0) return;
+  webdavAutoSyncTimer = setInterval(async () => {
+    try {
+      await syncWebdavNow();
+    } catch (e) {
+      console.error("WebDAV auto-sync failed:", e);
+    }
+  }, intervalMs);
+}
+
+function stopWebdavAutoSync(): void {
+  if (webdavAutoSyncTimer) {
+    clearInterval(webdavAutoSyncTimer);
+    webdavAutoSyncTimer = null;
+  }
+}
+
+function syncIntervalToMs(interval: string): number {
+  switch (interval) {
+    case "每 15 分钟": return 15 * 60 * 1000;
+    case "每 30 分钟": return 30 * 60 * 1000;
+    case "每 1 小时": return 60 * 60 * 1000;
+    case "每天": return 24 * 60 * 60 * 1000;
+    default: return 0;
+  }
+}
+
+async function saveWebdavPassword(password: string): Promise<void> {
+  await webdavSetCredential(password);
+  state.data.settings.webdavSync.credentialRef = password ? "secret:webdav-sync/default" : "";
+}
+
 export function useOpenDockStore() {
   return {
     state,
@@ -1147,6 +1220,9 @@ export function useOpenDockStore() {
     togglePlugin,
     testWebdav,
     syncWebdavNow,
+    saveWebdavPassword,
+    startWebdavAutoSync,
+    stopWebdavAutoSync,
     resetData,
     clearRecent,
     replaceData,

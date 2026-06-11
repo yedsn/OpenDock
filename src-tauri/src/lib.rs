@@ -13,6 +13,7 @@ use tauri_plugin_global_shortcut::{GlobalShortcutExt, Shortcut, ShortcutState};
 
 mod app_icon_rgba;
 mod app_icon_light_rgba;
+mod webdav;
 
 use base64::Engine as _Base64Engine;
 
@@ -427,14 +428,82 @@ fn run_command(command: String, working_directory: Option<String>) -> OpenAction
 }
 
 #[tauri::command]
-fn test_webdav_connection(server_url: String, username: String) -> OpenActionResult {
-    if server_url.trim().is_empty() || username.trim().is_empty() { return failure("WebDAV server URL and username are required"); }
-    success("WebDAV connection test completed in prototype mode")
+fn test_webdav_connection(server_url: String, username: String, password: String) -> OpenActionResult {
+    if server_url.trim().is_empty() { return failure("WebDAV 地址不能为空"); }
+    if username.trim().is_empty() { return failure("用户名不能为空"); }
+    let r = webdav::test_connection(&server_url, &username, &password, "/");
+    OpenActionResult { ok: r.ok, message: r.message }
 }
 
 #[tauri::command]
-fn sync_webdav_now() -> OpenActionResult { success("WebDAV sync completed in prototype mode") }
-/// Write a UTF-8 text file to the given absolute path. Used for export-to-file flows.
+fn sync_webdav_now(
+    _state: tauri::State<AppState>,
+    server_url: String,
+    username: String,
+    password: String,
+    remote_path: String,
+    conflict_policy: String,
+    local_data: String,
+) -> OpenActionResult {
+    if server_url.trim().is_empty() { return failure("WebDAV 地址未配置"); }
+    if username.trim().is_empty() { return failure("WebDAV 用户名未配置"); }
+    if remote_path.trim().is_empty() { return failure("远程目录未配置"); }
+
+    let remote_file_path = format!("{}/opendock-sync.json", remote_path.trim_end_matches('/'));
+
+    // Check if remote data exists
+    let remote_exists = webdav::remote_exists(&server_url, &username, &password, &remote_file_path).unwrap_or(false);
+
+    if remote_exists {
+        let remote_data = match webdav::download(&server_url, &username, &password, &remote_file_path) {
+            Ok(data) => data,
+            Err(e) => return failure(format!("下载远程数据失败: {e}")),
+        };
+
+        match conflict_policy.as_str() {
+            "本地优先" => {
+                // Upload local data, overwrite remote
+                let result = webdav::upload(&server_url, &username, &password, &remote_file_path, &local_data);
+                if result.ok { success("同步成功（本地优先，已覆盖远程数据）") } else { failure(format!("上传失败: {}", result.message)) }
+            }
+            "远程优先" => {
+                // Return remote data to the frontend; it will replace local
+                success(format!("SYNC_REMOTE_DATA:{remote_data}"))
+            }
+            _ => {
+                // "保留两份" or "手动处理" — return both to the frontend
+                success(format!("SYNC_MANUAL:远程数据:\n{remote_data}"))
+            }
+        }
+    } else {
+        // No remote data: just upload local
+        let result = webdav::upload(&server_url, &username, &password, &remote_file_path, &local_data);
+        if result.ok { success("同步成功（首次上传本地数据到远程）") } else { failure(format!("上传失败: {}", result.message)) }
+    }
+}
+
+/// Store WebDAV password in app_state (obfuscated storage, not true encryption).
+#[tauri::command]
+fn webdav_set_credential(state: tauri::State<AppState>, password: String) -> Result<(), String> {
+    let db = state.db.lock().map_err(|e| e.to_string())?;
+    db.execute(
+        "INSERT OR REPLACE INTO app_state (key, value) VALUES ('secret:webdav-sync/default', ?1)",
+        rusqlite::params![password],
+    ).map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+/// Retrieve stored WebDAV password from app_state.
+#[tauri::command]
+fn webdav_get_credential(state: tauri::State<AppState>) -> Result<String, String> {
+    let db = state.db.lock().map_err(|e| e.to_string())?;
+    let result = db.query_row(
+        "SELECT value FROM app_state WHERE key = 'secret:webdav-sync/default'",
+        [],
+        |row| row.get::<_, String>(0),
+    ).ok().unwrap_or_default();
+    Ok(result)
+}
 #[tauri::command]
 fn write_text_file(path: String, contents: String) -> Result<u64, String> {
     let target = std::path::PathBuf::from(&path);
@@ -869,7 +938,7 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             open_path, open_url, open_file, open_application, scan_open_tools, run_command,
-            test_webdav_connection, sync_webdav_now, set_global_hotkey, set_app_icon_style, write_text_file,
+            test_webdav_connection, sync_webdav_now, webdav_set_credential, webdav_get_credential, set_global_hotkey, set_app_icon_style, write_text_file,
             db_init, db_execute, db_execute_params, db_get_value, db_set_value, db_list_table, db_bulk_insert,
             snapshot_create, snapshot_list, snapshot_get, snapshot_delete, snapshot_prune
         ])
