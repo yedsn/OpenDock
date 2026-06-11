@@ -12,6 +12,18 @@ import { themeCssVars } from "./themes";
 
 const store = useOpenDockStore();
 const appWindow = getCurrentWindow();
+
+const activeAppIconSource = computed(() => {
+  const appearance = store.state.data.settings.appearance as typeof store.state.data.settings.appearance & {
+    appIconStyle?: "dark" | "light" | "custom";
+    customAppIconDataUrl?: string;
+  };
+  if (appearance.appIconStyle === "custom" && appearance.customAppIconDataUrl) {
+    return appearance.customAppIconDataUrl;
+  }
+  return appearance.appIconStyle === "light" ? "/icons/opendock-o-dock-light.svg" : "/icons/opendock-o-dock-dark.svg";
+});
+
 const isMaximized = ref(false);
 let unlistenResize: UnlistenFn | null = null;
 
@@ -143,7 +155,7 @@ onUnmounted(() => {
   <div class="desktop-shell" :class="rootClass" :style="rootStyle">
     <header class="custom-titlebar">
       <div class="window-drag-region" @mousedown="startWindowDrag" @dblclick="toggleMaximizeWindow">
-        <img class="titlebar-mark" src="/app-icon.png" alt="" />
+        <img class="titlebar-mark" :src="activeAppIconSource" alt="" />
         <span class="titlebar-title">OpenDock</span>
         <span class="titlebar-divider"></span>
         <span class="titlebar-context">{{ store.activeWorkspace().name }}</span>
