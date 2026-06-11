@@ -74,7 +74,10 @@ kbd { height: 19px; display: inline-grid; place-items: center; padding: 0 5px; c
 .tree-section.grow { overflow: hidden; }
 .tree-title { height: 24px; display: flex; align-items: center; justify-content: space-between; padding: 0 6px; color: var(--faint); font-size: var(--sidebar-detail-size, 10px); font-weight: 760; text-transform: uppercase; }
 .tree-list { min-height: 0; overflow: auto; display: grid; gap: 4px; scrollbar-gutter: stable; }
-.tree-row, .scene-button { width: 100%; min-height: calc(var(--row-min, 34px) + 8px); display: grid; grid-template-columns: 18px minmax(0, 1fr) auto; align-items: center; gap: 8px; padding: 9px 10px; color: var(--text); background: transparent; border: 1px solid transparent; border-radius: 8px; text-align: left; cursor: pointer; }
+.tree-row { width: 100%; min-height: calc(var(--row-min, 34px) + 8px); display: grid; grid-template-columns: 18px minmax(0, 1fr) auto; align-items: center; gap: 8px; padding: 9px 10px; color: var(--text); background: transparent; border: 1px solid transparent; border-radius: 8px; text-align: left; cursor: pointer; }
+.scene-button { width: 100%; min-height: calc(var(--row-min, 34px) + 22px); display: grid; grid-template-columns: 18px minmax(0, 1fr) auto; align-items: center; gap: 8px; padding: 10px 10px; color: var(--text); background: transparent; border: 1px solid transparent; border-radius: 8px; text-align: left; cursor: pointer; }
+.scene-button > span:not(.scene-actions) { min-width: 0; display: flex; flex-direction: column; justify-content: center; gap: 3px; }
+.scene-button > span:not(.scene-actions) > .scene-detail { margin-top: 0; }
 .tree-row:hover, .scene-button:hover { color: var(--text); background: color-mix(in srgb, var(--bg-3) 72%, transparent); border-color: transparent; }
 .tree-row.active, .scene-button.active { color: var(--text); border-color: transparent; background: var(--bg-3); }
 .icon-button:hover, .tool-chip:hover, .tab:hover { color: var(--text); background: var(--bg-3); }
