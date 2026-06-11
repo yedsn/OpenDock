@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed } from "vue";
+import { computed, ref, watch } from "vue";
 import {
   Activity,
   FileText,
@@ -20,9 +20,20 @@ import VirtualList from "./VirtualList.vue";
 const store = useOpenDockStore();
 
 const activeCollection = computed(() => store.activeCollection());
-const activeCollectionId = computed(() => activeCollection.value?.id || "");
+const activeCollectionId = computed(() => store.state.data.activeCollectionId);
+const deferredActiveCollectionId = ref(store.state.data.activeCollectionId);
+let pendingItemsFrame = 0;
+
+watch(activeCollectionId, (collectionId) => {
+  if (pendingItemsFrame) cancelAnimationFrame(pendingItemsFrame);
+  pendingItemsFrame = requestAnimationFrame(() => {
+    deferredActiveCollectionId.value = collectionId;
+    pendingItemsFrame = 0;
+  });
+});
+
 const activeItems = computed(() =>
-  activeCollection.value ? store.collectionItems(activeCollection.value.id) : []
+  deferredActiveCollectionId.value ? store.collectionItems(deferredActiveCollectionId.value) : []
 );
 
 // Cache scene-name lookup so each row does not pay an O(N) find() on every render.
@@ -145,16 +156,13 @@ async function deleteItemConfirm(itemId: string) {
 }
 
 function selectCollection(collection: { id: string; name: string; sceneId: string | null }) {
-  const fullCollection = store.state.data.collections.find((item) => item.id === collection.id);
+  const fullCollection = store.findCollectionById(collection.id);
   if (!fullCollection) return;
-  if (!(isQuickViewTab.value && store.state.quickView === "recent")) {
-    store.markCollectionRecent(fullCollection);
-  }
   if (isQuickViewTab.value) {
-    store.state.data.activeCollectionId = fullCollection.id;
+    if (store.state.data.activeCollectionId !== fullCollection.id) store.state.data.activeCollectionId = fullCollection.id;
     return;
   }
-  store.openTab({ id: "collection-" + collection.id, kind: "collection", title: collection.name, collectionId: collection.id, sceneId: collection.sceneId || undefined });
+  store.setActiveCollection(fullCollection);
 }
 </script>
 <template>
@@ -191,6 +199,7 @@ function selectCollection(collection: { id: string; name: string; sceneId: strin
         <template #row="{ item }">
           <div
             class="collection-card"
+            v-memo="[item.id, item.favorite, activeCollectionId === item.id, collectionItemHeight]"
             :class="{ active: activeCollectionId === item.id }"
             role="button"
             tabindex="0"
@@ -242,7 +251,7 @@ function selectCollection(collection: { id: string; name: string; sceneId: strin
         :padding="listPad"
       >
         <template #row="{ item }">
-          <div class="item-row" :style="{ height: itemRowHeight + 'px' }">
+          <div class="item-row" v-memo="[item.id, item.subtitle, itemRowHeight]" :style="{ height: itemRowHeight + 'px' }">
             <span class="card-icon"><FileText /></span>
             <span class="item-main">
               <strong>{{ item.name }}</strong>

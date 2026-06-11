@@ -73,6 +73,13 @@ export async function saveAppData(data: AppData): Promise<void> {
   await upsert("activity", data.activity);
 }
 
+/** Persist lightweight navigation state without rewriting entity tables. */
+export async function saveActiveState(data: Pick<AppData, "activeWorkspaceId" | "activeSceneId" | "activeCollectionId">): Promise<void> {
+  await dbSetValue(ACTIVE_WORKSPACE_KEY, data.activeWorkspaceId);
+  await dbSetValue(ACTIVE_SCENE_KEY, data.activeSceneId);
+  await dbSetValue(ACTIVE_COLLECTION_KEY, data.activeCollectionId);
+}
+
 /** Reset to seed data. */
 export async function resetAppData(): Promise<AppData> {
   const seed = createSeedData();

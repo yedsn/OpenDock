@@ -27,13 +27,15 @@ const quickViews = [
   { id: "unbound" as const, label: "无场景集合", hint: "独立收藏", icon: Circle }
 ] as const;
 
-function countForQuickView(id: string): number {
+const quickViewCounts = computed(() => {
   const collections = store.state.data.collections.filter((item) => item.workspaceId === store.state.data.activeWorkspaceId);
-  if (id === "favorites") return collections.filter((item) => item.favorite).length;
-  if (id === "recent") return collections.filter((item) => item.recent).length;
-  if (id === "unbound") return collections.filter((item) => item.unbound || !item.sceneId).length;
-  return collections.length;
-}
+  return {
+    all: collections.length,
+    favorites: collections.filter((item) => item.favorite).length,
+    recent: collections.filter((item) => item.recent).length,
+    unbound: collections.filter((item) => item.unbound || !item.sceneId).length
+  };
+});
 
 function openQuickViewTab(view: typeof quickViews[number]) {
   store.openTab({ id: `quickview-${view.id}`, kind: "quickview", title: view.label, quickViewId: view.id });

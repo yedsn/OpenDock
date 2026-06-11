@@ -1,7 +1,7 @@
 import { computed, reactive, watch } from "vue";
 import { invoke } from "@tauri-apps/api/core";
 import { collectionMeta, itemMeta, sceneMeta } from "./seed";
-import { exportAppData, loadAppData, resetAppData, saveAppData } from "./storage";
+import { exportAppData, loadAppData, resetAppData, saveActiveState, saveAppData } from "./storage";
 import { createSnapshot, listSnapshots, loadSnapshot, deleteSnapshot, pruneSnapshots } from "./storage";
 import { createSeedData } from "./seed";
 import { nowIso, makeId, expandToolArgs, templateToCollectionType, toolTypesByCollection } from "./helpers";
@@ -73,12 +73,44 @@ const state = reactive({
 });
 
 let saveTimer: ReturnType<typeof setTimeout> | null = null;
-watch(() => state.data, () => {
+watch(() => ({
+  schemaVersion: state.data.schemaVersion,
+  workspaces: state.data.workspaces,
+  scenes: state.data.scenes,
+  collections: state.data.collections,
+  items: state.data.items,
+  tools: state.data.tools,
+  plugins: state.data.plugins,
+  pluginStore: state.data.pluginStore,
+  settings: state.data.settings,
+  activity: state.data.activity
+}), () => {
   if (saveTimer) clearTimeout(saveTimer);
   saveTimer = setTimeout(() => {
     saveAppData(state.data).catch((e) => console.error("DB save failed:", e));
   }, 300);
 }, { deep: true });
+
+let activeStateSaveTimer: ReturnType<typeof setTimeout> | null = null;
+let activeStateIdleHandle: number | null = null;
+watch(() => [state.data.activeWorkspaceId, state.data.activeSceneId, state.data.activeCollectionId] as const, () => {
+  if (activeStateSaveTimer) clearTimeout(activeStateSaveTimer);
+  if (activeStateIdleHandle !== null && typeof window !== "undefined" && "cancelIdleCallback" in window) {
+    window.cancelIdleCallback(activeStateIdleHandle);
+    activeStateIdleHandle = null;
+  }
+  activeStateSaveTimer = setTimeout(() => {
+    const save = () => saveActiveState(state.data).catch((e) => console.error("DB active-state save failed:", e));
+    if (typeof window !== "undefined" && "requestIdleCallback" in window) {
+      activeStateIdleHandle = window.requestIdleCallback(() => {
+        activeStateIdleHandle = null;
+        save();
+      }, { timeout: 1500 });
+    } else {
+      save();
+    }
+  }, 800);
+});
 
 /** Load data from SQLite, replacing seed data. Call once at app startup. */
 async function init() {
@@ -182,6 +214,36 @@ const activeScenes = computed(() =>
   state.data.scenes.filter((s) => s.workspaceId === state.data.activeWorkspaceId)
 );
 
+const collectionById = computed(() => {
+  const map = new Map<string, Collection>();
+  for (const collection of state.data.collections) map.set(collection.id, collection);
+  return map;
+});
+
+const itemsByCollectionId = computed(() => {
+  const map = new Map<string, CollectionItem[]>();
+  for (const item of state.data.items) {
+    const items = map.get(item.collectionId);
+    if (items) items.push(item);
+    else map.set(item.collectionId, [item]);
+  }
+  for (const items of map.values()) items.sort((a, b) => a.sort - b.sort);
+  return map;
+});
+
+const firstCollectionIdByScene = computed(() => {
+  const candidates = new Map<string, { id: string; sort: number }>();
+  for (const collection of state.data.collections) {
+    if (collection.workspaceId !== state.data.activeWorkspaceId || !collection.sceneId) continue;
+    const existing = candidates.get(collection.sceneId);
+    if (!existing || collection.sort < existing.sort) {
+      candidates.set(collection.sceneId, { id: collection.id, sort: collection.sort });
+      continue;
+    }
+  }
+  return new Map(Array.from(candidates, ([sceneId, collection]) => [sceneId, collection.id]));
+});
+
 function sceneForCollection(collection: Collection): Scene | undefined {
   return state.data.scenes.find((s) => s.id === collection.sceneId);
 }
@@ -234,7 +296,12 @@ function activeScene(): Scene {
 }
 
 function activeCollection(): Collection | undefined {
-  return visibleCollections.value.find((c) => c.id === state.data.activeCollectionId);
+  const collection = collectionById.value.get(state.data.activeCollectionId);
+  return collection?.workspaceId === state.data.activeWorkspaceId ? collection : undefined;
+}
+
+function findCollectionById(id: string): Collection | undefined {
+  return collectionById.value.get(id);
 }
 
 function availableThemes(): ThemeDefinition[] {
@@ -253,7 +320,7 @@ function activeTheme(): ThemeDefinition {
 }
 
 function collectionItems(collectionId: string): CollectionItem[] {
-  return state.data.items.filter((i) => i.collectionId === collectionId).sort((a, b) => a.sort - b.sort);
+  return itemsByCollectionId.value.get(collectionId) || [];
 }
 
 // ---- Id helpers ----
@@ -294,17 +361,17 @@ function log(text: string): void {
 }
 
 function setActiveCollection(collection: Collection): void {
-  state.data.activeCollectionId = collection.id;
-  if (collection.sceneId) state.data.activeSceneId = collection.sceneId;
-  state.mainView = "workspace";
+  if (state.data.activeCollectionId !== collection.id) state.data.activeCollectionId = collection.id;
+  if (collection.sceneId && state.data.activeSceneId !== collection.sceneId) state.data.activeSceneId = collection.sceneId;
+  if (state.mainView !== "workspace") state.mainView = "workspace";
 }
 
 function setActiveScene(sceneId: string): void {
-  state.data.activeSceneId = sceneId;
-  state.quickView = "all";
-  const first = state.data.collections.find((c) => c.sceneId === sceneId);
-  state.data.activeCollectionId = first?.id || "";
-  state.mainView = "workspace";
+  const nextCollectionId = firstCollectionIdByScene.value.get(sceneId) || "";
+  if (state.data.activeSceneId !== sceneId) state.data.activeSceneId = sceneId;
+  if (state.quickView !== "all") state.quickView = "all";
+  if (state.data.activeCollectionId !== nextCollectionId) state.data.activeCollectionId = nextCollectionId;
+  if (state.mainView !== "workspace") state.mainView = "workspace";
 }
 
 function createDefaultCollections(scene: Scene): void {
@@ -384,6 +451,8 @@ function toggleFavorite(collection: Collection): void {
 }
 
 function markCollectionRecent(collection: Collection): void {
+  const lastRecentAt = collection.recentAt ? Date.parse(collection.recentAt) : 0;
+  if (collection.recent && Date.now() - lastRecentAt < 5000) return;
   collection.recent = true;
   collection.recentAt = nowIso();
 }
@@ -518,7 +587,7 @@ function argsForUrlBatch(tool: OpenTool, urls: string[]): string[] {
   return args;
 }
 function resolveToolForItem(item: CollectionItem): OpenTool | undefined {
-  const collection = state.data.collections.find((c) => c.id === item.collectionId);
+  const collection = findCollectionById(item.collectionId);
   return state.data.tools.find((tool) => tool.id === item.toolId)
     || state.data.tools.find((tool) => tool.id === collection?.defaultToolId)
     || state.data.tools.find((tool) => tool.id === defaultToolForItem(item.type));
@@ -539,7 +608,7 @@ async function openItem(item: CollectionItem): Promise<void> {
   if (item.type === "命令" && state.data.settings.general.confirmBeforeOpen && !window.confirm(`确认执行命令？\n${item.value}`)) return;
   const tool = resolveToolForItem(item);
   const result = await openItemWithTool(item, tool);
-  const collection = state.data.collections.find((c) => c.id === item.collectionId);
+  const collection = findCollectionById(item.collectionId);
   if (collection) markCollectionRecent(collection);
   log(`${result.ok ? "打开" : "打开失败"}: ${item.name}${tool ? ` via ${tool.name}` : ""} - ${result.message}`);
 }
@@ -768,7 +837,7 @@ function deleteScene(id: string): void {
 }
 
 function updateCollection(id: string, patch: Partial<Collection>): void {
-  const collection = state.data.collections.find((c) => c.id === id);
+  const collection = findCollectionById(id);
   if (!collection) return;
   Object.assign(collection, patch, { updatedAt: nowIso() });
   if (patch.sceneId !== undefined) collection.unbound = !patch.sceneId;
@@ -782,7 +851,7 @@ function updateCollection(id: string, patch: Partial<Collection>): void {
 }
 
 function deleteCollection(id: string): void {
-  const collection = state.data.collections.find((c) => c.id === id);
+  const collection = findCollectionById(id);
   if (!collection) return;
   // Cascade-delete its items.
   state.data.items = state.data.items.filter((i) => i.collectionId !== id);
@@ -886,7 +955,7 @@ const searchSuggestions = computed<SearchSuggestion[]>(() => {
     const body = createSearchText([item.type, item.value, item.tool]);
     const score = scoreSearchText(item.name, body, keyword);
     if (score > 0) {
-      const collection = state.data.collections.find((c) => c.id === item.collectionId);
+      const collection = findCollectionById(item.collectionId);
       results.push({
         id: `item-${item.id}`,
         kind: "item",
@@ -913,7 +982,7 @@ async function executeSuggestion(suggestion: SearchSuggestion): Promise<void> {
     }
     openTab({ id: 'scene-' + suggestion.sceneId, kind: "scene", title: suggestion.title, sceneId: suggestion.sceneId });
   } else if (suggestion.kind === "collection" && suggestion.collectionId) {
-    const collection = state.data.collections.find((entry) => entry.id === suggestion.collectionId);
+    const collection = findCollectionById(suggestion.collectionId);
     if (!collection) return;
     if (state.data.settings.search.collectionEnterBehavior === "open") {
       await openCollection(collection);
@@ -927,7 +996,7 @@ async function executeSuggestion(suggestion: SearchSuggestion): Promise<void> {
       await openItem(item);
       return;
     }
-    const collection = state.data.collections.find((entry) => entry.id === item.collectionId);
+      const collection = findCollectionById(item.collectionId);
     if (collection) {
       openTab({ id: 'collection-' + collection.id, kind: "collection", title: collection.name, collectionId: collection.id, sceneId: collection.sceneId || undefined });
     }
@@ -946,24 +1015,25 @@ async function executeSuggestionAndMaybeHide(suggestion: SearchSuggestion): Prom
 
 function applyTabContext(tab: Tab): void {
   if (tab.kind === "settings") {
-    state.mainView = "settings";
+    if (state.mainView !== "settings") state.mainView = "settings";
     return;
   }
 
-  state.mainView = "workspace";
+  if (state.mainView !== "workspace") state.mainView = "workspace";
 
   if (tab.kind === "quickview" && tab.quickViewId) {
-    state.quickView = tab.quickViewId;
-    state.data.activeCollectionId = "";
+    if (state.quickView !== tab.quickViewId) state.quickView = tab.quickViewId;
+    if (state.data.activeCollectionId !== "") state.data.activeCollectionId = "";
     return;
   }
 
   if (tab.collectionId) {
-    const collection = state.data.collections.find((c) => c.id === tab.collectionId);
+    const collection = findCollectionById(tab.collectionId);
     if (collection) {
-      state.data.activeCollectionId = collection.id;
-      if (collection.sceneId) state.data.activeSceneId = collection.sceneId;
-      state.quickView = collection.sceneId ? "all" : "unbound";
+      const nextQuickView = collection.sceneId ? "all" : "unbound";
+      if (state.data.activeCollectionId !== collection.id) state.data.activeCollectionId = collection.id;
+      if (collection.sceneId && state.data.activeSceneId !== collection.sceneId) state.data.activeSceneId = collection.sceneId;
+      if (state.quickView !== nextQuickView) state.quickView = nextQuickView;
       return;
     }
   }
@@ -976,14 +1046,16 @@ function applyTabContext(tab: Tab): void {
 function openTab(tab: Tab): void {
   const existing = state.tabs.find((t) => t.id === tab.id);
   if (existing) {
-    Object.assign(existing, tab);
-    state.activeTabId = existing.id;
+    if (existing.kind !== tab.kind || existing.title !== tab.title || existing.sceneId !== tab.sceneId || existing.collectionId !== tab.collectionId || existing.quickViewId !== tab.quickViewId) {
+      Object.assign(existing, tab);
+    }
+    if (state.activeTabId !== existing.id) state.activeTabId = existing.id;
     applyTabContext(existing);
     return;
   }
 
   state.tabs.push(tab);
-  state.activeTabId = tab.id;
+  if (state.activeTabId !== tab.id) state.activeTabId = tab.id;
   applyTabContext(tab);
 }
 
@@ -1025,7 +1097,7 @@ function closeAllTabs(): void {
 function switchTab(tabId: string): void {
   const tab = state.tabs.find((t) => t.id === tabId);
   if (!tab) return;
-  state.activeTabId = tabId;
+  if (state.activeTabId !== tabId) state.activeTabId = tabId;
   applyTabContext(tab);
 }
 
@@ -1045,6 +1117,7 @@ export function useOpenDockStore() {
     activeScenes,
     visibleCollections,
     collectionItems,
+    findCollectionById,
     setActiveScene,
     setActiveCollection,
     createScene,
