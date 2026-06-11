@@ -1,12 +1,19 @@
 <script setup lang="ts">
 import { computed, reactive, ref } from "vue";
-import { AlertTriangle, CheckCircle2, Plus, Radar, Star, Trash2, Wrench } from "lucide-vue-next";
+import { AlertTriangle, CheckCircle2, Info, Plus, Radar, Star, Trash2, Wrench } from "lucide-vue-next";
 import { useOpenDockStore } from "../../store";
-import type { ToolType } from "../../types";
+import type { OpenTool, ToolType } from "../../types";
 import { confirmDelete } from "../../dialog";
 
 const store = useOpenDockStore();
 const scanning = ref(false);
+const scanResult = ref<{
+  detected: OpenTool[];
+  added: OpenTool[];
+  updated: OpenTool[];
+  error?: string;
+  scannedAt: string;
+} | null>(null);
 
 const toolTypes: ToolType[] = ["编辑器", "浏览器", "终端", "Office", "CAD", "系统", "应用", "插件"];
 
@@ -54,10 +61,15 @@ async function scanTools() {
   if (scanning.value) return;
   scanning.value = true;
   try {
-    await store.scanOpenTools();
+    const result = await store.scanOpenTools();
+    scanResult.value = { ...result, scannedAt: new Date().toLocaleTimeString("zh-CN", { hour12: false }) };
   } finally {
     scanning.value = false;
   }
+}
+
+function toolNames(tools: OpenTool[]) {
+  return tools.map((tool) => `${tool.name}（${tool.type}）`).join("、");
 }
 
 async function deleteTool(id: string) {
@@ -84,6 +96,24 @@ async function deleteTool(id: string) {
       <div v-for="item in toolTypeSummary" :key="item.type" class="tool-summary-item" :class="{ empty: item.count === 0 }">
         <Wrench />
         <span><strong>{{ item.type }}</strong><small>{{ item.count }} 个工具 / 默认：{{ item.defaultTool }}</small></span>
+      </div>
+    </div>
+
+    <div v-if="scanResult" class="scan-result" :class="{ error: scanResult.error }">
+      <AlertTriangle v-if="scanResult.error" />
+      <Info v-else />
+      <div>
+        <strong v-if="scanResult.error">自动扫描失败</strong>
+        <strong v-else>自动扫描完成：发现 {{ scanResult.detected.length }} 个工具，新增 {{ scanResult.added.length }} 个，更新 {{ scanResult.updated.length }} 个。</strong>
+        <p v-if="scanResult.error">{{ scanResult.error }}</p>
+        <p v-else-if="scanResult.detected.length === 0">未扫描到可自动识别的工具，可以继续手动新增。</p>
+        <p v-else-if="scanResult.added.length || scanResult.updated.length">
+          <span v-if="scanResult.added.length">新增：{{ toolNames(scanResult.added) }}</span>
+          <span v-if="scanResult.added.length && scanResult.updated.length">；</span>
+          <span v-if="scanResult.updated.length">更新：{{ toolNames(scanResult.updated) }}</span>
+        </p>
+        <p v-else>已扫描到的工具都在列表中，没有新增或更新。</p>
+        <small>{{ scanResult.scannedAt }}</small>
       </div>
     </div>
 
@@ -139,6 +169,13 @@ async function deleteTool(id: string) {
 .tool-summary-item strong, .tool-summary-item small { display: block; min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
 .tool-summary-item strong { color: var(--text); font-size: 12px; font-weight: 600; }
 .tool-summary-item small { margin-top: 3px; color: var(--faint); font-size: 11px; }
+.scan-result { display: grid; grid-template-columns: 24px minmax(0, 1fr); gap: 9px; padding: 10px 11px; color: var(--text); background: color-mix(in srgb, var(--accent) 10%, var(--bg)); border: 1px solid color-mix(in srgb, var(--accent) 32%, var(--line)); border-radius: 8px; }
+.scan-result > svg { margin-top: 1px; color: var(--accent); }
+.scan-result.error { color: var(--text); background: rgba(210, 109, 109, 0.1); border-color: rgba(210, 109, 109, 0.34); }
+.scan-result.error > svg { color: var(--red); }
+.scan-result strong { display: block; font-size: 12px; font-weight: 600; }
+.scan-result p { margin-top: 4px; color: var(--muted); font-size: 11px; line-height: 1.5; }
+.scan-result small { display: block; margin-top: 5px; color: var(--faint); font-family: var(--mono); font-size: 10px; }
 .tool-warning { min-height: 32px; display: inline-flex; align-items: center; gap: 8px; padding: 0 10px; color: #d7cf89; background: rgba(215, 207, 137, 0.1); border: 1px solid rgba(215, 207, 137, 0.24); border-radius: 8px; font-size: 11px; }
 .tools-table { overflow: auto; }
 .tools-row { grid-template-columns: minmax(110px, 1fr) minmax(92px, .8fr) minmax(180px, 1.6fr) minmax(170px, 1.4fr) 52px 34px; }

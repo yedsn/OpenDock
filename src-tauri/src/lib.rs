@@ -6,9 +6,12 @@ use std::sync::Mutex;
 use serde::Serialize;
 use rusqlite::Connection;
 use tauri::{AppHandle, Manager};
+use tauri::image::Image;
 use tauri::menu::{Menu, MenuItem};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
 use tauri_plugin_global_shortcut::{GlobalShortcutExt, Shortcut, ShortcutState};
+
+mod app_icon_rgba;
 
 #[cfg(target_os = "windows")]
 use windows_sys::Win32::UI::Shell::ShellExecuteW;
@@ -655,6 +658,16 @@ fn toggle_main_window(app: &AppHandle) {
     }
 }
 
+fn app_icon() -> Image<'static> {
+    Image::new(
+        app_icon_rgba::APP_ICON_RGBA,
+        app_icon_rgba::APP_ICON_WIDTH,
+        app_icon_rgba::APP_ICON_HEIGHT,
+    )
+    .to_owned()
+}
+
+
 fn setup_tray(app: &AppHandle) -> tauri::Result<()> {
     let show_item = MenuItem::with_id(app, TRAY_MENU_SHOW, "显示窗口", true, None::<&str>)?;
     let hide_item = MenuItem::with_id(app, TRAY_MENU_HIDE, "隐藏窗口", true, None::<&str>)?;
@@ -666,9 +679,7 @@ fn setup_tray(app: &AppHandle) -> tauri::Result<()> {
         .menu(&menu)
         .show_menu_on_left_click(false);
 
-    if let Some(icon) = app.default_window_icon().cloned() {
-        builder = builder.icon(icon);
-    }
+    builder = builder.icon(app_icon());
 
     builder
         .on_menu_event(|app, event| match event.id().as_ref() {
@@ -784,6 +795,7 @@ pub fn run() {
 
             // Intercept window close: hide to tray instead of exiting.
             if let Some(window) = app.get_webview_window("main") {
+                let _ = window.set_icon(app_icon());
                 let window_clone = window.clone();
                 window.on_window_event(move |event| {
                     if let tauri::WindowEvent::CloseRequested { api, .. } = event {

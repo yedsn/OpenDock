@@ -143,7 +143,7 @@ onUnmounted(() => {
   <div class="desktop-shell" :class="rootClass" :style="rootStyle">
     <header class="custom-titlebar">
       <div class="window-drag-region" @mousedown="startWindowDrag" @dblclick="toggleMaximizeWindow">
-        <span class="titlebar-mark">OD</span>
+        <img class="titlebar-mark" src="/app-icon.png" alt="" />
         <span class="titlebar-title">OpenDock</span>
         <span class="titlebar-divider"></span>
         <span class="titlebar-context">{{ store.activeWorkspace().name }}</span>
@@ -217,4 +217,3 @@ onUnmounted(() => {
 .tab-context-menu button:hover:not(:disabled) { color: var(--text); background: var(--bg-3); }
 .tab-context-menu button:disabled { color: var(--faint); cursor: not-allowed; opacity: 0.48; }
 </style>
-

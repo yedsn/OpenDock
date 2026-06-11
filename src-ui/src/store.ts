@@ -502,11 +502,16 @@ function setDefaultTool(id: string): void {
   log(`设置默认打开工具: ${tool.name}`);
 }
 
-async function scanOpenTools(): Promise<void> {
+async function scanOpenTools(): Promise<{ detected: DetectedOpenTool[]; added: DetectedOpenTool[]; updated: DetectedOpenTool[]; error?: string }> {
+  const result: { detected: DetectedOpenTool[]; added: DetectedOpenTool[]; updated: DetectedOpenTool[]; error?: string } = {
+    detected: [],
+    added: [],
+    updated: []
+  };
+
   try {
     const detected = await invoke<DetectedOpenTool[]>("scan_open_tools");
-    let added = 0;
-    let updated = 0;
+    result.detected = detected;
 
     for (const tool of detected) {
       const existing = state.data.tools.find((entry) => entry.id === tool.id)
@@ -519,7 +524,7 @@ async function scanOpenTools(): Promise<void> {
         if (!state.data.tools.some((entry) => entry.type === tool.type && entry.default && entry.id !== existing.id)) {
           existing.default = existing.default || tool.default;
         }
-        updated += 1;
+        result.updated.push({ ...tool });
         continue;
       }
 
@@ -527,13 +532,16 @@ async function scanOpenTools(): Promise<void> {
         ...tool,
         default: !state.data.tools.some((entry) => entry.type === tool.type && entry.default) && tool.default
       });
-      added += 1;
+      result.added.push({ ...tool });
     }
 
-    log(`自动扫描打开工具: 新增 ${added} 个，更新 ${updated} 个`);
+    log(`自动扫描打开工具: 新增 ${result.added.length} 个，更新 ${result.updated.length} 个`);
   } catch (error) {
-    log(`自动扫描打开工具失败: ${error instanceof Error ? error.message : String(error)}`);
+    result.error = error instanceof Error ? error.message : String(error);
+    log(`自动扫描打开工具失败: ${result.error}`);
   }
+
+  return result;
 }
 
 // ---- Open actions (call Tauri) ----
