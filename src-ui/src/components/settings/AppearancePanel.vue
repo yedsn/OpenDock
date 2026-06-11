@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, ref } from "vue";
 import { ImageUp, RotateCcw, Upload } from "lucide-vue-next";
+import { invoke } from "@tauri-apps/api/core";
 import { useOpenDockStore } from "../../store";
 
 const store = useOpenDockStore();
@@ -25,9 +26,18 @@ function setDensity(density: string) {
   appearance.density = density;
 }
 
+async function applyIconToSystem() {
+  try {
+    await invoke("set_app_icon_style", { style: appearance.appIconStyle || "dark", customDataUrl: appearance.customAppIconDataUrl || null });
+  } catch (err) {
+    iconError.value = typeof err === "string" ? err : (err as Error).message;
+  }
+}
+
 function setAppIconStyle(style: "dark" | "light" | "custom") {
   appearance.appIconStyle = style;
   iconError.value = "";
+  applyIconToSystem();
 }
 
 function chooseCustomIcon() {
@@ -55,6 +65,7 @@ function handleCustomIconChange(event: Event) {
     appearance.customAppIconDataUrl = reader.result;
     appearance.appIconStyle = "custom";
     iconError.value = "";
+    applyIconToSystem();
   };
   reader.onerror = () => {
     iconError.value = "Failed to read the icon file.";
@@ -67,6 +78,7 @@ function clearCustomIcon() {
   appearance.customAppIconDataUrl = "";
   appearance.appIconStyle = "dark";
   iconError.value = "";
+  applyIconToSystem();
 }
 
 function resetAppearance() {
@@ -80,6 +92,7 @@ function resetAppearance() {
   appearance.appIconStyle = "dark";
   appearance.customAppIconDataUrl = "";
   iconError.value = "";
+  applyIconToSystem();
 }
 </script>
 
@@ -113,7 +126,7 @@ function resetAppearance() {
           <button v-if="appearance.customAppIconDataUrl" class="settings-action-button" type="button" @click="clearCustomIcon"><ImageUp />Clear custom</button>
           <input ref="fileInputRef" class="hidden-file-input" type="file" accept="image/png,image/jpeg,image/webp,image/svg+xml" @change="handleCustomIconChange" />
         </div>
-        <small class="setting-help">This updates the in-app titlebar icon immediately. Installer and system Dock icons still need regenerated Tauri icon assets.</small>
+        <small class="setting-help">Updates the titlebar, taskbar, and tray icons immediately. The installer icon is fixed at build time.</small>
         <small v-if="iconError" class="setting-error">{{ iconError }}</small>
       </div>
 

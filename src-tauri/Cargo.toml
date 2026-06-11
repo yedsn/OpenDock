@@ -23,3 +23,5 @@ rusqlite = { version = "0.31", features = ["bundled"] }
 dirs = "6"
 chrono = { version = "0.4", features = ["serde"] }
 windows-sys = { version = "0.61", features = ["Win32_UI_Shell", "Win32_UI_WindowsAndMessaging"] }
+base64 = "0.22"
+image = { version = "0.25", default-features = false, features = ["png", "jpeg", "webp"] }

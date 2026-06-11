@@ -12,6 +12,9 @@ use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent}
 use tauri_plugin_global_shortcut::{GlobalShortcutExt, Shortcut, ShortcutState};
 
 mod app_icon_rgba;
+mod app_icon_light_rgba;
+
+use base64::Engine as _Base64Engine;
 
 #[cfg(target_os = "windows")]
 use windows_sys::Win32::UI::Shell::ShellExecuteW;
@@ -667,6 +670,56 @@ fn app_icon() -> Image<'static> {
     .to_owned()
 }
 
+fn app_icon_light() -> Image<'static> {
+    Image::new(
+        app_icon_light_rgba::APP_ICON_LIGHT_RGBA,
+        app_icon_light_rgba::APP_ICON_LIGHT_WIDTH,
+        app_icon_light_rgba::APP_ICON_LIGHT_HEIGHT,
+    )
+    .to_owned()
+}
+
+fn image_from_data_url(data_url: &str) -> Result<Image<'static>, String> {
+    let comma = data_url.find(',').ok_or_else(|| "Invalid data URL: missing comma".to_string())?;
+    let (header, payload) = data_url.split_at(comma);
+    let payload = &payload[1..];
+    if header.contains("svg") {
+        return Err("SVG icons are not supported for taskbar/tray; use PNG/JPEG/WEBP".into());
+    }
+    let bytes = base64::engine::general_purpose::STANDARD
+        .decode(payload.as_bytes())
+        .map_err(|e| format!("Base64 decode failed: {e}"))?;
+    let img = image::load_from_memory(&bytes)
+        .map_err(|e| format!("Image decode failed: {e}"))?;
+    let resized = img.resize_exact(32, 32, image::imageops::FilterType::Lanczos3).to_rgba8();
+    let (w, h) = resized.dimensions();
+    let raw: Vec<u8> = resized.into_raw();
+    let leaked: &'static [u8] = Box::leak(raw.into_boxed_slice());
+    Ok(Image::new(leaked, w, h).to_owned())
+}
+
+fn app_icon_for_style(style: &str, custom_data_url: Option<&str>) -> Result<Image<'static>, String> {
+    match style {
+        "light" => Ok(app_icon_light()),
+        "custom" => {
+            let url = custom_data_url.ok_or_else(|| "Custom icon requires a data URL".to_string())?;
+            image_from_data_url(url)
+        }
+        _ => Ok(app_icon()),
+    }
+}
+
+fn apply_app_icon(app: &AppHandle, icon: Image<'static>) -> Result<(), String> {
+    if let Some(window) = app.get_webview_window("main") {
+        window.set_icon(icon.clone()).map_err(|e| format!("set window icon failed: {e}"))?;
+    }
+    if let Some(tray) = app.tray_by_id("opendock-tray") {
+        tray.set_icon(Some(icon)).map_err(|e| format!("set tray icon failed: {e}"))?;
+    }
+    Ok(())
+}
+
+
 
 fn setup_tray(app: &AppHandle) -> tauri::Result<()> {
     let show_item = MenuItem::with_id(app, TRAY_MENU_SHOW, "显示窗口", true, None::<&str>)?;
@@ -752,6 +805,14 @@ fn register_global_hotkey(app: &AppHandle) {
 }
 
 #[tauri::command]
+fn set_app_icon_style(app: AppHandle, style: String, custom_data_url: Option<String>) -> OpenActionResult {
+    match app_icon_for_style(&style, custom_data_url.as_deref()).and_then(|icon| apply_app_icon(&app, icon)) {
+        Ok(()) => success("App icon updated"),
+        Err(err) => failure(err),
+    }
+}
+
+#[tauri::command]
 fn set_global_hotkey(app: AppHandle, key: String) -> OpenActionResult {
     match apply_global_hotkey(&app, &key) {
         Ok(applied) => success(format!("已绑定全局快捷键: {applied}")),
@@ -808,7 +869,7 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             open_path, open_url, open_file, open_application, scan_open_tools, run_command,
-            test_webdav_connection, sync_webdav_now, set_global_hotkey, write_text_file,
+            test_webdav_connection, sync_webdav_now, set_global_hotkey, set_app_icon_style, write_text_file,
             db_init, db_execute, db_execute_params, db_get_value, db_set_value, db_list_table, db_bulk_insert,
             snapshot_create, snapshot_list, snapshot_get, snapshot_delete, snapshot_prune
         ])

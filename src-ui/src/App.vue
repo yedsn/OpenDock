@@ -8,6 +8,7 @@ import AppSidebar from "./components/AppSidebar.vue";
 import WorkbenchView from "./components/WorkbenchView.vue";
 import SettingsView from "./components/SettingsView.vue";
 import CreateEntityModal from "./components/CreateEntityModal.vue";
+import { invoke } from "@tauri-apps/api/core";
 import { themeCssVars } from "./themes";
 
 const store = useOpenDockStore();
