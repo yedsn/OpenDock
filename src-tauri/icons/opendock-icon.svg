@@ -1,0 +1,47 @@
+﻿<svg width="1024" height="1024" viewBox="0 0 1024 1024" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bg" x1="160" y1="96" x2="864" y2="928" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#13233A"/>
+      <stop offset="0.52" stop-color="#1F4F59"/>
+      <stop offset="1" stop-color="#16212F"/>
+    </linearGradient>
+    <linearGradient id="dock" x1="256" y1="326" x2="768" y2="764" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#5FE6C8"/>
+      <stop offset="1" stop-color="#39AEEA"/>
+    </linearGradient>
+    <linearGradient id="slot" x1="337" y1="316" x2="678" y2="590" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#F8FAFC"/>
+      <stop offset="1" stop-color="#C8F7EE"/>
+    </linearGradient>
+    <filter id="softShadow" x="96" y="96" width="832" height="832" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">
+      <feDropShadow dx="0" dy="34" stdDeviation="42" flood-color="#06131D" flood-opacity="0.42"/>
+    </filter>
+    <filter id="innerGlow" x="160" y="160" width="704" height="704" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">
+      <feDropShadow dx="0" dy="0" stdDeviation="18" flood-color="#72F2D8" flood-opacity="0.28"/>
+    </filter>
+  </defs>
+
+  <rect x="96" y="96" width="832" height="832" rx="216" fill="url(#bg)"/>
+  <path d="M244 734c41 80 142 130 268 130s227-50 268-130" stroke="#6AE8D1" stroke-width="34" stroke-linecap="round" opacity="0.16"/>
+
+  <g filter="url(#softShadow)">
+    <path d="M246 424c-4-41 29-76 70-76h392c41 0 74 35 70 76l-30 296c-4 36-34 64-70 64H346c-36 0-66-28-70-64l-30-296Z" fill="url(#dock)"/>
+    <path d="M302 438c-2-19 13-36 33-36h354c20 0 35 17 33 36l-23 230c-2 17-16 30-33 30H358c-17 0-31-13-33-30l-23-230Z" fill="#0B1725" opacity="0.34"/>
+  </g>
+
+  <g filter="url(#innerGlow)">
+    <rect x="333" y="284" width="118" height="198" rx="38" fill="url(#slot)"/>
+    <rect x="453" y="244" width="118" height="238" rx="38" fill="url(#slot)"/>
+    <rect x="573" y="316" width="118" height="166" rx="38" fill="url(#slot)"/>
+  </g>
+
+  <path d="M342 546h340" stroke="#D8FFF7" stroke-width="42" stroke-linecap="round" opacity="0.95"/>
+  <path d="M386 634h252" stroke="#073443" stroke-width="34" stroke-linecap="round" opacity="0.42"/>
+
+  <path d="M566 584 714 436c17-17 46-5 46 19v220c0 24-29 36-46 19l-54-54-62 62c-12 12-31 12-43 0l-29-29c-12-12-12-31 0-43l40-46Z" fill="#F7FBFF"/>
+  <path d="M566 584 714 436c17-17 46-5 46 19v220c0 24-29 36-46 19l-54-54-62 62c-12 12-31 12-43 0l-29-29c-12-12-12-31 0-43l40-46Z" stroke="#09223A" stroke-width="22" stroke-linejoin="round"/>
+  <path d="M654 640 606 688" stroke="#39AEEA" stroke-width="22" stroke-linecap="round"/>
+
+  <path d="M214 298c26-62 75-111 137-138" stroke="#FFFFFF" stroke-width="20" stroke-linecap="round" opacity="0.13"/>
+  <path d="M748 830c34-15 63-38 86-68" stroke="#FFFFFF" stroke-width="18" stroke-linecap="round" opacity="0.13"/>
+</svg>
