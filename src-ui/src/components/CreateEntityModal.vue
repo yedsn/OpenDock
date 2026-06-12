@@ -2,7 +2,7 @@
 import { computed, reactive, watch } from "vue";
 import { X } from "lucide-vue-next";
 import { useOpenDockStore } from "../store";
-import { sceneTypeOptions, collectionTypeOptions, itemTypeOptions } from "../helpers";
+import { sceneTypeOptions, collectionTypeOptions } from "../helpers";
 import type { Collection, CollectionItem, CollectionType, ItemType, Scene, SceneType, Workspace } from "../types";
 
 const store = useOpenDockStore();
@@ -20,12 +20,18 @@ const form = reactive({
   itemValue: "",
   itemWorkingDirectory: "",
   itemToolId: "",
+  itemPluginData: {} as Record<string, string>,
   workspaceName: "",
   workspaceStorage: "本地数据",
   workspaceRemark: ""
 });
 
 const isEdit = computed(() => Boolean(store.state.modal.editingId));
+const itemTypeOptions = computed(() => store.availableItemTypes() as ItemType[]);
+const itemTypeConfig = computed(() => store.pluginItemTypeConfig(form.itemType));
+const itemValueLabel = computed(() => itemTypeConfig.value?.valueLabel || "资源内容");
+const itemValuePlaceholder = computed(() => itemTypeConfig.value?.valuePlaceholder || "路径、URL 或命令");
+const itemPluginFields = computed(() => store.pluginItemFields(form.itemType));
 const modalTitle = computed(() => {
   const kind = store.state.modal.kind;
   const verb = isEdit.value ? "编辑" : "新建";
@@ -60,11 +66,22 @@ watch(
       form.itemValue = item?.value || "";
       form.itemWorkingDirectory = item?.workingDirectory || "";
       form.itemToolId = item?.toolId || activeColl?.defaultToolId || "";
+      form.itemPluginData = Object.fromEntries(itemPluginFields.value.map((field) => [field.key, String(item?.pluginData?.[field.key] || "")]));
     } else if (kind === "workspace") {
       const ws = id ? store.state.data.workspaces.find((w) => w.id === id) : null;
       form.workspaceName = ws?.name || "";
       form.workspaceStorage = ws?.storage || "本地数据";
       form.workspaceRemark = ws?.remark || "";
+    }
+  },
+  { immediate: true }
+);
+
+watch(
+  () => form.itemType,
+  () => {
+    for (const field of itemPluginFields.value) {
+      if (form.itemPluginData[field.key] === undefined) form.itemPluginData[field.key] = "";
     }
   },
   { immediate: true }
@@ -86,8 +103,9 @@ function submitModal() {
     else store.createCollection(form.collectionName.trim(), form.collectionType, form.collectionSceneId || null, form.collectionDescription.trim());
   } else if (kind === "item" && form.itemName.trim() && form.itemValue.trim()) {
     const activeColl = store.activeCollection();
-    if (id) store.updateItem(id, { name: form.itemName.trim(), type: form.itemType, value: form.itemValue.trim(), workingDirectory: form.itemWorkingDirectory.trim(), toolId: form.itemToolId || undefined });
-    else if (activeColl) store.createItem(activeColl.id, form.itemName.trim(), form.itemType, form.itemValue.trim(), form.itemWorkingDirectory.trim(), form.itemToolId || undefined);
+    const pluginData = Object.fromEntries(itemPluginFields.value.map((field) => [field.key, form.itemPluginData[field.key] || ""]));
+    if (id) store.updateItem(id, { name: form.itemName.trim(), type: form.itemType, value: form.itemValue.trim(), workingDirectory: form.itemWorkingDirectory.trim(), toolId: form.itemToolId || undefined, pluginData });
+    else if (activeColl) store.createItem(activeColl.id, form.itemName.trim(), form.itemType, form.itemValue.trim(), form.itemWorkingDirectory.trim(), form.itemToolId || undefined, pluginData);
   } else if (kind === "workspace" && form.workspaceName.trim()) {
     if (id) store.updateWorkspace(id, { name: form.workspaceName.trim(), storage: form.workspaceStorage.trim(), remark: form.workspaceRemark.trim() });
     else store.createWorkspace(form.workspaceName.trim(), form.workspaceStorage.trim(), form.workspaceRemark.trim());
@@ -137,7 +155,12 @@ function submitModal() {
             <option v-for="type in itemTypeOptions" :key="type">{{ type }}</option>
           </select>
         </label>
-        <label class="setting-field full"><span>资源内容</span><input v-model="form.itemValue" required placeholder="路径、URL 或命令" /></label>
+        <label class="setting-field full"><span>{{ itemValueLabel }}</span><input v-model="form.itemValue" required :placeholder="itemValuePlaceholder" /></label>
+        <label v-for="field in itemPluginFields" :key="field.key" class="setting-field" :class="{ full: field.kind === 'textarea' }">
+          <span>{{ field.label }}</span>
+          <textarea v-if="field.kind === 'textarea'" v-model="form.itemPluginData[field.key]" :required="field.required" :placeholder="field.placeholder"></textarea>
+          <input v-else v-model="form.itemPluginData[field.key]" :required="field.required" :placeholder="field.placeholder" />
+        </label>
         <label class="setting-field"><span>打开工具</span>
           <select v-model="form.itemToolId">
             <option value="">使用集合默认</option>

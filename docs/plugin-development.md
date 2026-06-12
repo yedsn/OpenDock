@@ -20,6 +20,10 @@ plugins/
     plugin.json
     plugin.ts
     ui/
+  tool-type-demo/          # 示例工具类型插件 demo
+    plugin.json
+    plugin.ts
+    ui/
 ```
 
 当前内置插件示例：
@@ -28,6 +32,7 @@ plugins/
 - `plugins/.system/theme-forest-mist/`：内置 Forest Mist 主题插件。
 - `plugins/.system/theme-ink-blue/`：内置 Ink Blue 主题插件商店条目。
 - `plugins/external-demo/`：外置插件 demo，用于验证动态发现、安装、停用和删除流程。
+- `plugins/tool-type-demo/`：完整扩展 demo，用于验证插件贡献自定义打开工具类型、资源类型、表单字段和打开流程。
 
 ## 动态加载
 
@@ -45,7 +50,7 @@ plugins/
 打开工具类型由两部分组成：
 
 - 主应用基础类型：`编辑器`、`浏览器`、`终端`、`系统`、`应用`、`插件`。
-- 已安装且已启用插件贡献的类型：类型名由插件自定义，例如可以是 `Office`、`CAD`、`Demo Tool`、`Design` 或任意业务名称。
+- 已安装且已启用插件贡献的类型：类型名由插件自定义，例如可以是 `Office`、`CAD`、`Demo Tool`、`Diagram Tool`、`Design` 或任意业务名称。
 
 插件可以在 `PluginManifest` 或 `PluginStoreEntry` 中声明工具类型及适用范围：
 
@@ -60,6 +65,40 @@ toolTypes: [
 ```
 
 设置页的“打开工具”只展示当前可用工具类型及其工具。插件停用后，它贡献的工具类型会从设置页消失，对应类型的工具配置仍保存在数据中，重新启用插件后会再次显示。主应用不需要提前知道该类型名称，也不需要为新类型改枚举。
+
+## 资源类型、表单和打开流程扩展
+
+插件还可以声明自己的资源类型和表单字段：
+
+```ts
+itemTypes: [
+  {
+    type: "Diagram Spec",
+    label: "图表规格",
+    valueLabel: "图表源文件或规格 ID",
+    valuePlaceholder: "例如 diagram://order-flow",
+    fields: [
+      { key: "renderer", label: "渲染器", required: true },
+      { key: "layout", label: "布局参数" }
+    ]
+  }
+]
+```
+
+插件可以导出 `openHandlers` 接管特定资源类型的打开流程：
+
+```ts
+export const openHandlers = {
+  "Diagram Spec": async ({ item, tool, callOpenCommand }) => {
+    return await callOpenCommand("run_command", {
+      command: `echo Open ${item.value}`,
+      workingDirectory: item.workingDirectory || null
+    });
+  }
+};
+```
+
+`plugins/tool-type-demo/` 演示了完整链路：`Diagram Tool` 工具类型、`Diagram Spec` 资源类型、`renderer/layout` 表单字段，以及插件自己的打开处理器。
 
 ## manifest 约定
 

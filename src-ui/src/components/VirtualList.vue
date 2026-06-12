@@ -104,6 +104,7 @@ defineExpose({
   /* Promote to its own layer so scroll repaints stay cheap. */
   will-change: transform;
   scrollbar-gutter: stable;
+  margin-left: 10px;
 }
 .virtual-list-spacer {
   position: relative;

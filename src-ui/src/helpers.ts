@@ -13,7 +13,7 @@ export const collectionTypeOptions: CollectionType[] = [
   "插件集合"
 ];
 
-export const itemTypeOptions: ItemType[] = [
+export const itemTypeOptions: string[] = [
   "目录",
   "URL",
   "命令",

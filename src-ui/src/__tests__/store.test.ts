@@ -340,6 +340,46 @@ describe("OpenDock store - CRUD operations", () => {
     expect(store.state.data.pluginStore.some((entry) => entry.name === "External Demo")).toBe(true);
   });
 
+  it("refreshes existing plugin store entry capabilities during init", async () => {
+    const { createSeedData } = await import("../seed");
+    const data = createSeedData();
+    const toolTypeDemo = data.pluginStore.find((entry) => entry.name === "Tool Type Demo")!;
+    toolTypeDemo.itemTypes = undefined;
+    toolTypeDemo.toolTypes = undefined;
+    const tableRows: Record<string, unknown[]> = {
+      workspaces: data.workspaces,
+      scenes: data.scenes,
+      collections: data.collections,
+      items: data.items,
+      tools: data.tools,
+      plugins: data.plugins,
+      plugin_store: data.pluginStore,
+      activity: data.activity
+    };
+    invokeMock.mockImplementation(async (...args: unknown[]) => {
+      const command = args[0] as string;
+      const payload = args[1] as { key?: string; table?: string } | undefined;
+      if (command === "db_get_value") {
+        if (payload?.key === "schemaVersion") return String(data.schemaVersion);
+        if (payload?.key === "activeWorkspaceId") return data.activeWorkspaceId;
+        if (payload?.key === "activeSceneId") return data.activeSceneId;
+        if (payload?.key === "activeCollectionId") return data.activeCollectionId;
+        if (payload?.key === "settings") return JSON.stringify(data.settings);
+        return null;
+      }
+      if (command === "db_list_table") return (tableRows[payload?.table || ""] || []).map((row) => JSON.stringify(row));
+      return { ok: true, message: "stub" };
+    });
+    const { useOpenDockStore } = await import("../store");
+    const store = useOpenDockStore();
+
+    await store.init();
+
+    const refreshed = store.state.data.pluginStore.find((entry) => entry.name === "Tool Type Demo")!;
+    expect(refreshed.toolTypes?.length).toBeGreaterThan(0);
+    expect(refreshed.itemTypes?.some((entry) => entry.type === "Diagram Spec")).toBe(true);
+  });
+
   it("discovers and installs the external demo plugin", async () => {
     const { externalPluginStoreEntries, getPluginUi } = await import("../../../plugins/registry");
     const { useOpenDockStore } = await import("../store");
@@ -356,6 +396,31 @@ describe("OpenDock store - CRUD operations", () => {
     expect(plugin.enabled).toBe(true);
     expect(plugin.configurable).toBe(true);
     expect(store.state.settingsCategory).toBe("plugin:external-demo");
+  });
+
+  it("discovers a dedicated tool type demo plugin", async () => {
+    const { externalPluginStoreEntries, getPluginUi } = await import("../../../plugins/registry");
+    const { useOpenDockStore } = await import("../store");
+    const store = useOpenDockStore();
+
+    expect(externalPluginStoreEntries.some((entry) => entry.name === "Tool Type Demo" && entry.toolTypes?.some((toolType) => typeof toolType !== "string" && toolType.type === "Diagram Tool"))).toBe(true);
+    expect(getPluginUi("tool-type-demo")?.settingsPanel).toBeDefined();
+
+    const index = store.state.data.pluginStore.findIndex((entry) => entry.name === "Tool Type Demo");
+    expect(index).toBeGreaterThanOrEqual(0);
+    store.installPlugin(index);
+    const plugin = store.state.data.plugins.find((entry) => entry.id === "tool-type-demo")!;
+
+    expect(plugin.enabled).toBe(true);
+    expect(store.availableToolTypes()).toContain("Diagram Tool");
+    expect(store.allowedToolTypesForCollection("文件集合")).toContain("Diagram Tool");
+    expect(store.allowedToolTypesForItem("文件")).toContain("Diagram Tool");
+    expect(store.availableItemTypes()).toContain("Diagram Spec");
+    expect(store.pluginItemFields("Diagram Spec").map((field) => field.key)).toEqual(["renderer", "layout"]);
+
+    store.togglePlugin(plugin);
+    expect(store.availableToolTypes()).not.toContain("Diagram Tool");
+    expect(store.availableItemTypes()).not.toContain("Diagram Spec");
   });
 });
 
@@ -521,6 +586,30 @@ describe("OpenDock store - open tool configuration", () => {
     expect(store.allowedToolTypesForCollection("网页集合")).toContain("Design");
     expect(store.allowedToolTypesForItem("URL")).toContain("Design");
     expect(store.visibleTools().some((tool) => tool.type === "Design" && tool.name === "Figma Desktop")).toBe(true);
+  });
+
+  it("opens plugin-defined item types through the plugin handler", async () => {
+    const { useOpenDockStore } = await import("../store");
+    const store = useOpenDockStore();
+    const index = store.state.data.pluginStore.findIndex((entry) => entry.name === "Tool Type Demo");
+    store.installPlugin(index);
+    const collection = store.state.data.collections.find((entry) => entry.type === "文件集合") || store.state.data.collections[0];
+    store.createItem(collection.id, "Order Flow", "Diagram Spec", "diagram://order-flow", "", undefined, {
+      renderer: "mermaid",
+      layout: "left-to-right"
+    });
+    const item = store.state.data.items.find((entry) => entry.name === "Order Flow")!;
+    invokeMock.mockClear();
+
+    await store.openItem(item);
+
+    expect(invokeMock).toHaveBeenCalledWith("run_command", {
+      command: expect.stringContaining("mermaid"),
+      workingDirectory: null
+    });
+    expect(invokeMock).toHaveBeenCalledWith("run_command", expect.objectContaining({
+      command: expect.stringContaining("left-to-right")
+    }));
   });
 });
 

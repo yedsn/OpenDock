@@ -20,6 +20,10 @@ plugins/
     plugin.json
     plugin.ts
     ui/
+  tool-type-demo/          # 示例工具类型插件 demo
+    plugin.json
+    plugin.ts
+    ui/
 ```
 
 目录约定：

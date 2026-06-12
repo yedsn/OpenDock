@@ -1,6 +1,6 @@
 export type SceneType = "项目" | "办公" | "工程" | "设计" | "通用" | "自定义";
 export type CollectionType = "目录集合" | "网页集合" | "命令集合" | "Office 集合" | "CAD 集合" | "文件集合" | "应用集合" | "插件集合";
-export type ItemType = "目录" | "URL" | "命令" | "Excel" | "CAD" | "文件" | "应用" | "插件资源";
+export type ItemType = string;
 export type ToolType = string;
 export type OpenStrategy = "single" | "batch" | "all";
 export type QuickViewId = "all" | "favorites" | "recent" | "unbound";
@@ -120,6 +120,22 @@ export interface PluginToolTypeContribution {
 
 export type PluginToolTypeEntry = ToolType | PluginToolTypeContribution;
 
+export interface PluginItemFormField {
+  key: string;
+  label: string;
+  placeholder?: string;
+  required?: boolean;
+  kind?: "text" | "textarea";
+}
+
+export interface PluginItemTypeContribution {
+  type: ItemType;
+  label: string;
+  valueLabel?: string;
+  valuePlaceholder?: string;
+  fields?: PluginItemFormField[];
+}
+
 export interface PluginManifest {
   id: string;
   name: string;
@@ -133,6 +149,7 @@ export interface PluginManifest {
   status?: string;
   theme?: ThemeDefinition;
   toolTypes?: PluginToolTypeEntry[];
+  itemTypes?: PluginItemTypeContribution[];
 }
 
 export interface SearchSuggestion {
@@ -155,6 +172,7 @@ export interface PluginStoreEntry {
   configurable?: boolean;
   theme?: ThemeDefinition;
   toolTypes?: PluginToolTypeEntry[];
+  itemTypes?: PluginItemTypeContribution[];
 }
 
 export interface WebDavSyncConfig {

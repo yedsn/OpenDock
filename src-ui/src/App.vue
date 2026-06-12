@@ -37,7 +37,7 @@ const rootStyle = computed(() => ({
   "--sidebar-font-size": `${store.state.data.settings.appearance.baseFontSize + 0.5}px`,
   "--sidebar-detail-size": `${Math.max(10, store.state.data.settings.appearance.baseFontSize - 1)}px`,
   "--panel-pad": store.state.data.settings.appearance.density === "舒适" ? "18px" : "14px",
-  "--list-pad": store.state.data.settings.appearance.density === "舒适" ? "12px" : "10px",
+  "--list-pad": store.state.data.settings.appearance.density === "舒适" ? "16px" : "14px",
   "--row-min": store.state.data.settings.appearance.density === "舒适" ? "38px" : "34px",
   "--row-gap": store.state.data.settings.appearance.density === "舒适" ? "10px" : "8px",
   "--card-pad": store.state.data.settings.appearance.density === "舒适" ? "12px" : "10px"

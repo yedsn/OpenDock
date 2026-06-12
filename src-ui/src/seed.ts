@@ -25,7 +25,7 @@ export const collectionMeta: Record<CollectionType, { icon: string; color: strin
   "插件集合": { icon: "Blocks", color: "#8a7ff0", tool: "Plugin Runtime" }
 };
 
-export const itemMeta: Record<ItemType, { icon: string; color: string; tool: string }> = {
+export const itemMeta: Record<string, { icon: string; color: string; tool: string }> = {
   目录: { icon: "FolderCode", color: "#6fb29d", tool: "Cursor" },
   URL: { icon: "Globe", color: "#74a4d4", tool: "Chrome" },
   命令: { icon: "Terminal", color: "#dcddde", tool: "PowerShell" },
@@ -147,13 +147,13 @@ export function createSeedData(): AppData {
     items: structuredClone(items),
     tools: structuredClone(tools),
     plugins: structuredClone(plugins),
-    pluginStore: [
+    pluginStore: structuredClone([
       { name: "Remote", category: "开发工具", capability: "SSH、远程桌面、服务器入口", permissions: ["workspace:read", "network:remote"] },
       { name: "API Docs", category: "开发工具", capability: "接口文档、Postman、Apifox 入口", permissions: ["workspace:read", "opener:app"] },
       { name: "AList Import", category: "导入", capability: "从 AList 目录导入文件资源", permissions: ["workspace:write", "network:http"], configurable: true },
       ...externalPluginStoreEntries,
       ...builtInPluginStoreEntries
-    ],
+    ]),
     settings: {
       general: { defaultView: "全部资源", recentLimit: 12, confirmBeforeOpen: true, logOpenFailures: true, openWebInNewWindow: true, closeWindowAfterOpen: false, language: "简体中文", autoSnapshotIntervalMinutes: 60, autoSnapshotKeepCount: 7 },
       search: { sceneEnterBehavior: "open", collectionEnterBehavior: "open", itemEnterBehavior: "open" },

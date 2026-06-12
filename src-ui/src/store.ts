@@ -7,7 +7,8 @@ import { webdavSetCredential, webdavGetCredential } from "./db";
 import { createSeedData } from "./seed";
 import { nowIso, makeId, expandToolArgs, templateToCollectionType } from "./helpers";
 import { builtInThemes } from "./themes";
-import type { AppData, Collection, CollectionItem, CollectionMode, CollectionType, ItemType, MainView, ModalState, OpenTool, PluginManifest, PluginToolTypeContribution, PluginToolTypeEntry, QuickViewId, Scene, SnapshotKind, SnapshotRecord, SceneType, Tab, ThemeDefinition, Workspace } from "./types";
+import { getPluginOpenHandler } from "../../plugins/registry";
+import type { AppData, Collection, CollectionItem, CollectionMode, CollectionType, ItemType, MainView, ModalState, OpenTool, PluginItemFormField, PluginItemTypeContribution, PluginManifest, PluginToolTypeContribution, PluginToolTypeEntry, QuickViewId, Scene, SnapshotKind, SnapshotRecord, SceneType, Tab, ThemeDefinition, Workspace } from "./types";
 import type { SearchSuggestion } from "./types";
 import { matchesSearchText, scoreSearchText, createSearchText } from "./pinyin";
 
@@ -161,14 +162,26 @@ async function init() {
   }
   for (const seedPlugin of seed.plugins) {
     const plugin = state.data.plugins.find((entry) => entry.id === seedPlugin.id);
-    if (plugin && seedPlugin.toolTypes && !plugin.toolTypes) {
+    if (plugin && seedPlugin.toolTypes) {
       plugin.toolTypes = [...seedPlugin.toolTypes];
+    }
+    if (plugin && seedPlugin.itemTypes) {
+      plugin.itemTypes = [...seedPlugin.itemTypes];
     }
   }
   for (const entry of seed.pluginStore) {
     const entryId = entry.name.toLowerCase().replace(/\s+/g, "-");
     const alreadyInstalled = state.data.plugins.some((plugin) => plugin.id === entryId || plugin.name === entry.name);
-    const alreadyInStore = state.data.pluginStore.some((item) => item.name === entry.name);
+    const storeEntry = state.data.pluginStore.find((item) => item.name === entry.name);
+    if (storeEntry) {
+      storeEntry.toolTypes = entry.toolTypes ? [...entry.toolTypes] : storeEntry.toolTypes;
+      storeEntry.itemTypes = entry.itemTypes ? [...entry.itemTypes] : storeEntry.itemTypes;
+      storeEntry.configurable = entry.configurable ?? storeEntry.configurable;
+      storeEntry.permissions = [...entry.permissions];
+      storeEntry.capability = entry.capability;
+      storeEntry.category = entry.category;
+    }
+    const alreadyInStore = Boolean(storeEntry);
     if (!alreadyInstalled && !alreadyInStore) {
       state.data.pluginStore.push(entry);
     }
@@ -352,6 +365,8 @@ const baseToolTypesByItem: Partial<Record<ItemType, string[]>> = {
   "插件资源": ["插件", "系统"]
 };
 
+const baseItemTypes = ["目录", "URL", "命令", "Excel", "CAD", "文件", "应用", "插件资源"];
+
 function normalizeToolTypeContribution(entry: PluginToolTypeEntry): PluginToolTypeContribution {
   return typeof entry === "string" ? { type: entry } : entry;
 }
@@ -361,6 +376,25 @@ function enabledToolTypeContributions(): PluginToolTypeContribution[] {
     .filter((plugin) => plugin.installed && plugin.enabled)
     .flatMap((plugin) => plugin.toolTypes || [])
     .map(normalizeToolTypeContribution);
+}
+
+function enabledItemTypeContributions(): PluginItemTypeContribution[] {
+  return state.data.plugins
+    .filter((plugin) => plugin.installed && plugin.enabled)
+    .flatMap((plugin) => plugin.itemTypes || []);
+}
+
+function availableItemTypes(): string[] {
+  const contributed = enabledItemTypeContributions().map((entry) => entry.type);
+  return Array.from(new Set([...baseItemTypes, ...contributed]));
+}
+
+function pluginItemTypeConfig(type: string): PluginItemTypeContribution | undefined {
+  return enabledItemTypeContributions().find((entry) => entry.type === type);
+}
+
+function pluginItemFields(type: string): PluginItemFormField[] {
+  return pluginItemTypeConfig(type)?.fields || [];
 }
 
 function availableToolTypes(): string[] {
@@ -494,13 +528,13 @@ function createCollection(name: string, type: CollectionType, sceneId: string | 
   log(`创建集合: ${name}`);
 }
 
-function createItem(collectionId: string, name: string, type: ItemType, value: string, workingDirectory = "", toolId?: string): void {
-  const meta = itemMeta[type];
+function createItem(collectionId: string, name: string, type: ItemType, value: string, workingDirectory = "", toolId?: string, pluginData?: Record<string, unknown>): void {
+  const meta = itemMeta[type] || { icon: "Blocks", color: "#8a7ff0", tool: "Plugin Runtime" };
   const resolvedToolId = toolId || defaultToolForItem(type);
   const tool = state.data.tools.find((entry) => entry.id === resolvedToolId);
   const item: CollectionItem = {
     id: makeId("item"), workspaceId: state.data.activeWorkspaceId, collectionId, name, type, value, workingDirectory,
-    toolId: resolvedToolId || undefined, tool: tool?.name || meta.tool, icon: meta.icon, color: meta.color,
+    toolId: resolvedToolId || undefined, tool: tool?.name || meta.tool, icon: meta.icon, color: meta.color, pluginData,
     sort: collectionItems(collectionId).length + 1, createdAt: nowIso(), updatedAt: nowIso()
   };
   state.data.items.push(item);
@@ -664,6 +698,10 @@ function resolveToolForItem(item: CollectionItem): OpenTool | undefined {
 }
 
 async function openItemWithTool(item: CollectionItem, tool: OpenTool | undefined): Promise<OpenActionResult> {
+  const pluginOpenHandler = getPluginOpenHandler(item.type);
+  if (pluginOpenHandler) {
+    return await pluginOpenHandler({ item, tool, callOpenCommand });
+  }
   if (!tool || tool.type === "系统" || tool.path === "shell:open" || !tool.path.trim()) {
     if (item.type === "URL") return callOpenCommand("open_url", { url: item.value, newWindow: state.data.settings.general.openWebInNewWindow });
     if (item.type === "命令") return callOpenCommand("run_command", { command: item.value, workingDirectory: item.workingDirectory || null });
@@ -755,7 +793,8 @@ function installPlugin(index: number): void {
     enabled: entry.configurable || Boolean(entry.theme),
     configurable: entry.configurable || false,
     theme: entry.theme,
-    toolTypes: entry.toolTypes
+    toolTypes: entry.toolTypes,
+    itemTypes: entry.itemTypes
   };
   state.data.plugins.push(plugin);
   state.data.pluginStore.splice(index, 1);
@@ -784,7 +823,8 @@ function deletePlugin(plugin: PluginManifest): void {
       permissions: [...plugin.permissions],
       configurable: plugin.configurable,
       theme: plugin.theme,
-      toolTypes: plugin.toolTypes
+      toolTypes: plugin.toolTypes,
+      itemTypes: plugin.itemTypes
     });
   }
   if (state.settingsCategory === `plugin:${plugin.id}`) {
@@ -1289,6 +1329,9 @@ export function useOpenDockStore() {
     visibleTools,
     allowedToolTypesForCollection,
     allowedToolTypesForItem,
+    availableItemTypes,
+    pluginItemTypeConfig,
+    pluginItemFields,
     activeScenes,
     visibleCollections,
     collectionItems,
