@@ -1,4 +1,4 @@
-<script setup lang="ts">
+﻿<script setup lang="ts">
 import { computed, type Component } from "vue";
 import {
   Archive,
@@ -20,7 +20,7 @@ import WorkspacePanel from "./settings/WorkspacePanel.vue";
 import ToolsPanel from "./settings/ToolsPanel.vue";
 import TemplatesPanel from "./settings/TemplatesPanel.vue";
 import PluginsPanel from "./settings/PluginsPanel.vue";
-import WebdavPanel from "./settings/WebdavPanel.vue";
+import { getPluginUi } from "../../../plugins/registry";
 import PluginGenericPanel from "./settings/PluginGenericPanel.vue";
 import ShortcutsPanel from "./settings/ShortcutsPanel.vue";
 import SearchPanel from "./settings/SearchPanel.vue";
@@ -43,6 +43,14 @@ const iconMap: Record<string, Component> = {
   SlidersHorizontal, Database, Wrench, Blocks, Keyboard, Search, Archive, Paintbrush, Info, RefreshCw
 };
 
+function pluginPanel(plugin: PluginManifest): Component {
+  return getPluginUi(plugin.id)?.settingsPanel || PluginGenericPanel;
+}
+
+function pluginIconName(plugin: PluginManifest): string {
+  return getPluginUi(plugin.id)?.icon === RefreshCw ? "RefreshCw" : "Blocks";
+}
+
 const categories = computed<SettingsCategory[]>(() => {
   const system: SettingsCategory[] = [
     { id: "general", label: "通用设置", icon: "SlidersHorizontal", description: "配置启动入口、最近记录和基础行为。", panel: GeneralPanel },
@@ -56,14 +64,14 @@ const categories = computed<SettingsCategory[]>(() => {
     { id: "appearance", label: "外观", icon: "Paintbrush", description: "调整主题、密度、侧栏宽度和 Console 显示。", panel: AppearancePanel }
   ];
   const pluginItems = store.state.data.plugins
-    .filter((plugin: PluginManifest) => plugin.installed && plugin.configurable)
+    .filter((plugin: PluginManifest) => plugin.installed && plugin.enabled && plugin.configurable)
     .map<SettingsCategory>((plugin: PluginManifest) => ({
       id: `plugin:${plugin.id}`,
       label: plugin.name,
-      icon: plugin.id === "webdav-sync" ? "RefreshCw" : "Blocks",
+      icon: pluginIconName(plugin),
       description: `${plugin.name} 插件配置。`,
       group: "plugin",
-      panel: plugin.id === "webdav-sync" ? WebdavPanel : PluginGenericPanel
+      panel: pluginPanel(plugin)
     }));
   return [
     ...system,
@@ -110,3 +118,4 @@ function settingIcon(name: string): Component {
     </section>
   </section>
 </template>
+

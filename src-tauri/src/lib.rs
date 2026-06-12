@@ -1,4 +1,4 @@
-use std::env;
+﻿use std::env;
 use std::fs;
 use std::path::PathBuf;
 use std::process::Command;
@@ -13,6 +13,7 @@ use tauri_plugin_global_shortcut::{GlobalShortcutExt, Shortcut, ShortcutState};
 
 mod app_icon_rgba;
 mod app_icon_light_rgba;
+#[path = "../../plugins/.system/webdav-sync/service/webdav.rs"]
 mod webdav;
 
 use base64::Engine as _Base64Engine;
@@ -261,6 +262,7 @@ fn init_db(conn: &Connection) -> rusqlite::Result<()> {
         CREATE TABLE IF NOT EXISTS tools (id TEXT PRIMARY KEY, value TEXT NOT NULL);
         CREATE TABLE IF NOT EXISTS plugins (id TEXT PRIMARY KEY, value TEXT NOT NULL);
         CREATE TABLE IF NOT EXISTS plugin_store (id TEXT PRIMARY KEY, value TEXT NOT NULL);
+        CREATE TABLE IF NOT EXISTS plugin_data (plugin_id TEXT NOT NULL, key TEXT NOT NULL, value TEXT NOT NULL, PRIMARY KEY(plugin_id, key));
         CREATE TABLE IF NOT EXISTS activity (id TEXT PRIMARY KEY, value TEXT NOT NULL, created_at TEXT NOT NULL);
         CREATE TABLE IF NOT EXISTS snapshots (id TEXT PRIMARY KEY, kind TEXT NOT NULL, label TEXT NOT NULL, created_at TEXT NOT NULL, payload TEXT NOT NULL);
         CREATE TABLE IF NOT EXISTS app_state (key TEXT PRIMARY KEY, value TEXT NOT NULL);
@@ -482,27 +484,48 @@ fn sync_webdav_now(
     }
 }
 
-/// Store WebDAV password in app_state (obfuscated storage, not true encryption).
-#[tauri::command]
-fn webdav_set_credential(state: tauri::State<AppState>, password: String) -> Result<(), String> {
-    let db = state.db.lock().map_err(|e| e.to_string())?;
-    db.execute(
-        "INSERT OR REPLACE INTO app_state (key, value) VALUES ('secret:webdav-sync/default', ?1)",
-        rusqlite::params![password],
+fn set_plugin_data(conn: &Connection, plugin_id: &str, key: &str, value: &str) -> Result<(), String> {
+    conn.execute(
+        "INSERT OR REPLACE INTO plugin_data (plugin_id, key, value) VALUES (?1, ?2, ?3)",
+        rusqlite::params![plugin_id, key, value],
     ).map_err(|e| e.to_string())?;
     Ok(())
 }
 
-/// Retrieve stored WebDAV password from app_state.
+fn get_plugin_data(conn: &Connection, plugin_id: &str, key: &str) -> Result<Option<String>, String> {
+    let result = conn.query_row(
+        "SELECT value FROM plugin_data WHERE plugin_id = ?1 AND key = ?2",
+        rusqlite::params![plugin_id, key],
+        |row| row.get::<_, String>(0),
+    ).ok();
+    Ok(result)
+}
+
+/// Store WebDAV password in plugin_data (obfuscated storage, not true encryption).
+#[tauri::command]
+fn webdav_set_credential(state: tauri::State<AppState>, password: String) -> Result<(), String> {
+    let db = state.db.lock().map_err(|e| e.to_string())?;
+    set_plugin_data(&db, "webdav-sync", "secret:default", &password)
+}
+
+/// Retrieve stored WebDAV password from plugin_data.
 #[tauri::command]
 fn webdav_get_credential(state: tauri::State<AppState>) -> Result<String, String> {
     let db = state.db.lock().map_err(|e| e.to_string())?;
-    let result = db.query_row(
+    if let Some(value) = get_plugin_data(&db, "webdav-sync", "secret:default")? {
+        return Ok(value);
+    }
+
+    // Migrate the legacy app_state secret into the plugin data namespace on first read.
+    let legacy = db.query_row(
         "SELECT value FROM app_state WHERE key = 'secret:webdav-sync/default'",
         [],
         |row| row.get::<_, String>(0),
     ).ok().unwrap_or_default();
-    Ok(result)
+    if !legacy.is_empty() {
+        set_plugin_data(&db, "webdav-sync", "secret:default", &legacy)?;
+    }
+    Ok(legacy)
 }
 #[tauri::command]
 fn write_text_file(path: String, contents: String) -> Result<u64, String> {
@@ -945,3 +968,4 @@ pub fn run() {
         .run(tauri::generate_context!())
         .expect("error while running OpenDock");
 }
+

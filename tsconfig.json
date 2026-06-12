@@ -15,6 +15,6 @@
     "noUnusedLocals": false,
     "noUnusedParameters": false
   },
-  "include": ["src-ui/**/*.ts", "src-ui/**/*.vue", "src-ui/**/*.d.ts"],
+  "include": ["src-ui/**/*.ts", "src-ui/**/*.vue", "src-ui/**/*.d.ts", "plugins/**/*.ts", "plugins/**/*.vue"],
   "references": []
 }

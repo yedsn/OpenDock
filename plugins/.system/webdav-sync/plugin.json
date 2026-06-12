@@ -1,0 +1,14 @@
+{
+  "id": "webdav-sync",
+  "name": "WebDAV Sync",
+  "version": "0.2.0",
+  "category": "sync",
+  "description": "Sync OpenDock workspace data to a user-owned WebDAV endpoint.",
+  "permissions": ["workspace:read", "workspace:write", "network:webdav", "plugin-data:write"],
+  "entries": {
+    "ui": "ui/WebdavPanel.vue",
+    "service": "service/webdav.rs"
+  },
+  "dataNamespace": "webdav-sync"
+}
+

@@ -1,0 +1,13 @@
+{
+  "id": "theme-ink-blue",
+  "name": "Ink Blue Theme",
+  "version": "1.0.0",
+  "category": "theme",
+  "description": "Built-in dark theme plugin available from the plugin store.",
+  "permissions": ["appearance:theme"],
+  "entries": {
+    "frontend": "plugin.ts"
+  },
+  "dataNamespace": "theme-ink-blue"
+}
+

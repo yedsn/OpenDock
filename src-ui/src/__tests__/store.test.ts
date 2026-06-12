@@ -205,7 +205,7 @@ describe("OpenDock store - CRUD operations", () => {
     const { useOpenDockStore } = await import("../store");
     const { exportAppData } = await import("../storage");
     const store = useOpenDockStore();
-    store.state.data.settings.webdavSync.credentialRef = "secret:webdav-sync/default";
+    store.state.data.settings.webdavSync.credentialRef = "plugin-data:webdav-sync/secret:default";
     const parsed = JSON.parse(exportAppData(store.state.data));
     expect(parsed.settings.webdavSync.credentialRef).toBe("");
   });
@@ -274,13 +274,88 @@ describe("OpenDock store - CRUD operations", () => {
     expect(storeThemeIndex).toBeGreaterThanOrEqual(0);
     store.installPlugin(storeThemeIndex);
     const installedThemePlugin = store.state.data.plugins.find((entry) => entry.theme?.id === "plugin-ink-blue")!;
-    expect(installedThemePlugin.enabled).toBe(false);
-    expect(store.availableThemes().some((theme) => theme.id === "plugin-ink-blue")).toBe(false);
-
-    store.togglePlugin(installedThemePlugin);
+    expect(installedThemePlugin.enabled).toBe(true);
     expect(store.availableThemes().some((theme) => theme.id === "plugin-ink-blue" && theme.pluginId === installedThemePlugin.id)).toBe(true);
     store.state.data.settings.appearance.theme = "plugin-ink-blue";
     expect(store.activeTheme().id).toBe("plugin-ink-blue");
+  });
+
+  it("falls back from plugin settings when a configurable plugin is disabled or deleted", async () => {
+    const { useOpenDockStore } = await import("../store");
+    const store = useOpenDockStore();
+    const plugin = store.state.data.plugins.find((entry) => entry.id === "webdav-sync")!;
+
+    store.state.settingsCategory = "plugin:webdav-sync";
+    store.togglePlugin(plugin);
+    expect(plugin.enabled).toBe(false);
+    expect(store.state.settingsCategory).toBe("plugins");
+
+    store.state.settingsCategory = "plugin:webdav-sync";
+    store.deletePlugin(plugin);
+    expect(store.state.data.plugins.some((entry) => entry.id === "webdav-sync")).toBe(false);
+    expect(store.state.data.pluginStore.some((entry) => entry.name === "WebDAV Sync" && entry.configurable)).toBe(true);
+    expect(store.state.settingsCategory).toBe("plugins");
+  });
+
+  it("loads built-in theme plugins from the dynamic system registry", async () => {
+    const { builtInPluginManifests, builtInPluginStoreEntries } = await import("../../../plugins/registry");
+
+    expect(builtInPluginManifests.some((plugin) => plugin.id === "theme-forest-mist" && plugin.theme?.id === "plugin-forest-mist")).toBe(true);
+    expect(builtInPluginStoreEntries.some((entry) => entry.name === "Ink Blue Theme" && entry.theme?.pluginId === "theme-ink-blue")).toBe(true);
+  });
+
+  it("backfills newly discovered plugin store entries during init", async () => {
+    const { createSeedData } = await import("../seed");
+    const data = createSeedData();
+    data.pluginStore = data.pluginStore.filter((entry) => entry.name !== "External Demo");
+    const tableRows: Record<string, unknown[]> = {
+      workspaces: data.workspaces,
+      scenes: data.scenes,
+      collections: data.collections,
+      items: data.items,
+      tools: data.tools,
+      plugins: data.plugins,
+      plugin_store: data.pluginStore,
+      activity: data.activity
+    };
+    invokeMock.mockImplementation(async (...args: unknown[]) => {
+      const command = args[0] as string;
+      const payload = args[1] as { key?: string; table?: string } | undefined;
+      if (command === "db_get_value") {
+        if (payload?.key === "schemaVersion") return String(data.schemaVersion);
+        if (payload?.key === "activeWorkspaceId") return data.activeWorkspaceId;
+        if (payload?.key === "activeSceneId") return data.activeSceneId;
+        if (payload?.key === "activeCollectionId") return data.activeCollectionId;
+        if (payload?.key === "settings") return JSON.stringify(data.settings);
+        return null;
+      }
+      if (command === "db_list_table") return (tableRows[payload?.table || ""] || []).map((row) => JSON.stringify(row));
+      return { ok: true, message: "stub" };
+    });
+    const { useOpenDockStore } = await import("../store");
+    const store = useOpenDockStore();
+
+    await store.init();
+
+    expect(store.state.data.pluginStore.some((entry) => entry.name === "External Demo")).toBe(true);
+  });
+
+  it("discovers and installs the external demo plugin", async () => {
+    const { externalPluginStoreEntries, getPluginUi } = await import("../../../plugins/registry");
+    const { useOpenDockStore } = await import("../store");
+    const store = useOpenDockStore();
+
+    expect(externalPluginStoreEntries.some((entry) => entry.name === "External Demo" && entry.configurable)).toBe(true);
+    expect(getPluginUi("external-demo")?.settingsPanel).toBeDefined();
+
+    const index = store.state.data.pluginStore.findIndex((entry) => entry.name === "External Demo");
+    expect(index).toBeGreaterThanOrEqual(0);
+    store.installPlugin(index);
+
+    const plugin = store.state.data.plugins.find((entry) => entry.id === "external-demo")!;
+    expect(plugin.enabled).toBe(true);
+    expect(plugin.configurable).toBe(true);
+    expect(store.state.settingsCategory).toBe("plugin:external-demo");
   });
 });
 

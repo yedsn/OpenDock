@@ -1,13 +1,13 @@
-<script setup lang="ts">
+﻿<script setup lang="ts">
 import { computed, onMounted, ref } from "vue";
-import { useOpenDockStore } from "../../store";
+import { useOpenDockStore } from "../../../../src-ui/src/store";
 const store = useOpenDockStore();
 const config = store.state.data.settings.webdavSync;
 const webdavPassword = ref("");
 const syncBusy = ref(false);
 
 onMounted(async () => {
-  const { webdavGetCredential } = await import("../../db");
+  const { webdavGetCredential } = await import("../../../../src-ui/src/db");
   webdavPassword.value = await webdavGetCredential();
 });
 
@@ -102,3 +102,4 @@ function handleConfigChange() {
   white-space: nowrap;
 }
 </style>
+

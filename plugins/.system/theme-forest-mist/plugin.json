@@ -1,0 +1,13 @@
+{
+  "id": "theme-forest-mist",
+  "name": "Forest Mist Theme",
+  "version": "1.0.0",
+  "category": "theme",
+  "description": "Built-in light theme plugin for OpenDock.",
+  "permissions": ["appearance:theme"],
+  "entries": {
+    "frontend": "plugin.ts"
+  },
+  "dataNamespace": "theme-forest-mist"
+}
+

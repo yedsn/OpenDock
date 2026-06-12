@@ -1,0 +1,14 @@
+{
+  "id": "external-demo",
+  "name": "External Demo",
+  "version": "0.1.0",
+  "category": "demo",
+  "description": "Demo external plugin outside plugins/.system.",
+  "permissions": ["workspace:read", "plugin-data:read"],
+  "entries": {
+    "ui": "ui/ExternalDemoPanel.vue",
+    "frontend": "plugin.ts"
+  },
+  "dataNamespace": "external-demo"
+}
+

@@ -1,4 +1,5 @@
-import type { AppData, Collection, CollectionItem, CollectionType, ItemType, OpenTool, PluginManifest, Scene, SceneType, ThemeDefinition, Workspace } from "./types";
+﻿import { builtInPluginManifests, builtInPluginStoreEntries, externalPluginStoreEntries } from "../../plugins/registry";
+import type { AppData, Collection, CollectionItem, CollectionType, ItemType, OpenTool, PluginManifest, Scene, SceneType, Workspace } from "./types";
 
 export const schemaVersion = 1;
 
@@ -124,64 +125,6 @@ const items: CollectionItem[] = [
   item({ id: "snipaste", collectionId: "loose-tools", name: "Snipaste", type: "应用", value: "C:\\Program Files\\Snipaste\\Snipaste.exe" }, 1)
 ];
 
-const themePluginTheme: ThemeDefinition = {
-  id: "plugin-forest-mist",
-  name: "Forest Mist",
-  kind: "light",
-  source: "plugin",
-  pluginId: "theme-forest-mist",
-  swatches: ["#f3f6f1", "#ffffff", "#4d8064"],
-  colors: {
-    bg: "#f3f6f1",
-    bg2: "#ffffff",
-    bg3: "#e6ece5",
-    bg4: "#d9e2d8",
-    text: "#172119",
-    muted: "#2f3b34",
-    faint: "#4d5b52",
-    line: "#d4ddd3",
-    lineStrong: "#bdcabd",
-    accent: "#4d8064",
-    accentSoft: "rgba(77, 128, 100, 0.15)",
-    green: "#4d8064",
-    red: "#b65a54",
-    titlebarBg: "linear-gradient(180deg, #ffffff 0%, #edf3ec 100%)",
-    titlebarLine: "#d4ddd3",
-    cardActiveBg: "#e7f0e8",
-    consoleBg: "#edf2ec",
-    shadow: "rgba(48, 64, 55, 0.18)"
-  }
-};
-
-const pluginStoreTheme: ThemeDefinition = {
-  id: "plugin-ink-blue",
-  name: "Ink Blue",
-  kind: "dark",
-  source: "plugin",
-  pluginId: "theme-ink-blue",
-  swatches: ["#17202c", "#223044", "#6da8d8"],
-  colors: {
-    bg: "#17202c",
-    bg2: "#1d2938",
-    bg3: "#273649",
-    bg4: "#31445b",
-    text: "#edf4fb",
-    muted: "#b8c7d7",
-    faint: "#8193a6",
-    line: "#314154",
-    lineStrong: "#4c6278",
-    accent: "#6da8d8",
-    accentSoft: "rgba(109, 168, 216, 0.18)",
-    green: "#72b9aa",
-    red: "#d27676",
-    titlebarBg: "linear-gradient(180deg, #1c2a3a 0%, #17202c 100%)",
-    titlebarLine: "#2d3c50",
-    cardActiveBg: "#243348",
-    consoleBg: "#121a25",
-    shadow: "rgba(0, 0, 0, 0.42)"
-  }
-};
-
 const plugins: PluginManifest[] = [
   { id: "browser", name: "Browser", version: "1.0.0", category: "资源打开", capability: "多浏览器网页集合打开", permissions: ["workspace:read", "opener:browser"], installed: true, enabled: true, configurable: false },
   { id: "terminal", name: "Terminal", version: "1.0.0", category: "资源打开", capability: "命令集合执行策略", permissions: ["workspace:read", "opener:terminal"], installed: true, enabled: true, configurable: false },
@@ -189,7 +132,7 @@ const plugins: PluginManifest[] = [
   { id: "office", name: "Office", version: "0.1.0", category: "专业文件", capability: "Word / Excel / PPT 文件集合", permissions: ["workspace:read", "opener:office"], installed: true, enabled: true, configurable: false },
   { id: "cad", name: "CAD", version: "0.1.0", category: "专业文件", capability: "DWG / DXF 图纸集合", permissions: ["workspace:read", "opener:cad"], installed: true, enabled: false, configurable: false },
   { id: "database", name: "Database", version: "0.1.0", category: "开发工具", capability: "数据库连接入口", permissions: ["workspace:read", "secret:connection"], installed: true, enabled: true, configurable: false },
-  { id: "theme-forest-mist", name: "Forest Mist Theme", version: "1.0.0", category: "主题", capability: "提供清爽的浅色绿色工作台主题", permissions: ["appearance:theme"], installed: true, enabled: true, configurable: false, theme: themePluginTheme }
+  ...builtInPluginManifests
 ];
 
 export function createSeedData(): AppData {
@@ -208,7 +151,8 @@ export function createSeedData(): AppData {
       { name: "Remote", category: "开发工具", capability: "SSH、远程桌面、服务器入口", permissions: ["workspace:read", "network:remote"] },
       { name: "API Docs", category: "开发工具", capability: "接口文档、Postman、Apifox 入口", permissions: ["workspace:read", "opener:app"] },
       { name: "AList Import", category: "导入", capability: "从 AList 目录导入文件资源", permissions: ["workspace:write", "network:http"], configurable: true },
-      { name: "Ink Blue Theme", category: "主题", capability: "安装后提供深蓝墨色主题", permissions: ["appearance:theme"], configurable: false, theme: pluginStoreTheme }
+      ...externalPluginStoreEntries,
+      ...builtInPluginStoreEntries
     ],
     settings: {
       general: { defaultView: "全部资源", recentLimit: 12, confirmBeforeOpen: true, logOpenFailures: true, openWebInNewWindow: true, closeWindowAfterOpen: false, language: "简体中文", autoSnapshotIntervalMinutes: 60, autoSnapshotKeepCount: 7 },
@@ -234,7 +178,7 @@ export function createSeedData(): AppData {
       webdavSync: {
         serverUrl: "https://dav.example.com/opendock",
         username: "yedsn",
-        credentialRef: "secret:webdav-sync/default",
+        credentialRef: "plugin-data:webdav-sync/secret:default",
         remotePath: "/OpenDock/workspaces",
         autoSync: true,
         syncInterval: "每 30 分钟",
@@ -249,3 +193,8 @@ export function createSeedData(): AppData {
     ]
   };
 }
+
+
+
+
+

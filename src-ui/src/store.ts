@@ -1,4 +1,4 @@
-import { computed, reactive, watch } from "vue";
+﻿import { computed, reactive, watch } from "vue";
 import { invoke } from "@tauri-apps/api/core";
 import { collectionMeta, itemMeta, sceneMeta } from "./seed";
 import { exportAppData, loadAppData, resetAppData, saveActiveState, saveAppData } from "./storage";
@@ -159,8 +159,11 @@ async function init() {
       state.data.plugins.push(plugin);
     }
   }
-  for (const entry of seed.pluginStore.filter((item) => item.theme)) {
-    if (!state.data.pluginStore.some((item) => item.name === entry.name)) {
+  for (const entry of seed.pluginStore) {
+    const entryId = entry.name.toLowerCase().replace(/\s+/g, "-");
+    const alreadyInstalled = state.data.plugins.some((plugin) => plugin.id === entryId || plugin.name === entry.name);
+    const alreadyInStore = state.data.pluginStore.some((item) => item.name === entry.name);
+    if (!alreadyInstalled && !alreadyInStore) {
       state.data.pluginStore.push(entry);
     }
   }
@@ -688,22 +691,53 @@ function installPlugin(index: number): void {
   if (!entry) return;
   const id = entry.name.toLowerCase().replace(/\s+/g, "-");
   const plugin: PluginManifest = {
-    id, name: entry.name, version: "0.1.0", category: entry.category, capability: entry.capability,
-    permissions: entry.permissions, installed: true, enabled: false, configurable: entry.configurable || false,
+    id,
+    name: entry.name,
+    version: "0.1.0",
+    category: entry.category,
+    capability: entry.capability,
+    permissions: entry.permissions,
+    installed: true,
+    enabled: entry.configurable || Boolean(entry.theme),
+    configurable: entry.configurable || false,
     theme: entry.theme
   };
   state.data.plugins.push(plugin);
   state.data.pluginStore.splice(index, 1);
-  if (plugin.configurable) state.settingsCategory = `plugin:${plugin.id}`;
+  if (plugin.configurable && plugin.enabled) state.settingsCategory = `plugin:${plugin.id}`;
   log(`安装插件: ${plugin.name}`);
 }
 
 function togglePlugin(plugin: PluginManifest): void {
   plugin.enabled = !plugin.enabled;
+  if (!plugin.enabled && state.settingsCategory === `plugin:${plugin.id}`) {
+    state.settingsCategory = "plugins";
+  }
   if (plugin.theme && !plugin.enabled && state.data.settings.appearance.theme === plugin.theme.id) {
     state.data.settings.appearance.theme = builtInThemes[0].id;
   }
   log(`${plugin.enabled ? "启用" : "停用"}插件: ${plugin.name}`);
+}
+
+function deletePlugin(plugin: PluginManifest): void {
+  state.data.plugins = state.data.plugins.filter((entry) => entry.id !== plugin.id);
+  if (!state.data.pluginStore.some((entry) => entry.name === plugin.name)) {
+    state.data.pluginStore.push({
+      name: plugin.name,
+      category: plugin.category,
+      capability: plugin.capability,
+      permissions: [...plugin.permissions],
+      configurable: plugin.configurable,
+      theme: plugin.theme
+    });
+  }
+  if (state.settingsCategory === `plugin:${plugin.id}`) {
+    state.settingsCategory = "plugins";
+  }
+  if (plugin.theme && state.data.settings.appearance.theme === plugin.theme.id) {
+    state.data.settings.appearance.theme = builtInThemes[0].id;
+  }
+  log(`删除插件: ${plugin.name}`);
 }
 
 // ---- WebDAV ----
@@ -1184,7 +1218,7 @@ function syncIntervalToMs(interval: string): number {
 
 async function saveWebdavPassword(password: string): Promise<void> {
   await webdavSetCredential(password);
-  state.data.settings.webdavSync.credentialRef = password ? "secret:webdav-sync/default" : "";
+  state.data.settings.webdavSync.credentialRef = password ? "plugin-data:webdav-sync/secret:default" : "";
 }
 
 export function useOpenDockStore() {
@@ -1218,6 +1252,7 @@ export function useOpenDockStore() {
     switchWorkspace,
     installPlugin,
     togglePlugin,
+    deletePlugin,
     testWebdav,
     syncWebdavNow,
     saveWebdavPassword,
@@ -1254,3 +1289,4 @@ export function useOpenDockStore() {
     stopAutoSnapshotTimer
   };
 }
+

@@ -1,10 +1,11 @@
 <script setup lang="ts">
-import { Blocks, Download } from "lucide-vue-next";
+import { Blocks, Download, Trash2 } from "lucide-vue-next";
 import { useOpenDockStore } from "../../store";
+
 const store = useOpenDockStore();
 
 function pluginEnabledCount() {
-  return store.state.data.plugins.filter((p) => p.enabled).length;
+  return store.state.data.plugins.filter((plugin) => plugin.enabled).length;
 }
 </script>
 
@@ -14,7 +15,7 @@ function pluginEnabledCount() {
     <div class="plugin-summary-grid">
       <div class="plugin-summary-item"><span>已安装</span><strong>{{ store.state.data.plugins.length }}</strong></div>
       <div class="plugin-summary-item"><span>已启用</span><strong>{{ pluginEnabledCount() }}</strong></div>
-      <div class="plugin-summary-item"><span>可配置</span><strong>{{ store.state.data.plugins.filter(p => p.configurable).length }}</strong></div>
+      <div class="plugin-summary-item"><span>可配置</span><strong>{{ store.state.data.plugins.filter((plugin) => plugin.configurable).length }}</strong></div>
     </div>
   </section>
 
@@ -38,10 +39,11 @@ function pluginEnabledCount() {
           </div>
         </div>
         <div class="plugin-card-actions">
-          <code>{{ plugin.enabled ? 'enabled' : 'disabled' }}</code>
+          <code>{{ plugin.enabled ? "enabled" : "disabled" }}</code>
           <span class="setting-switch">
             <input :checked="plugin.enabled" type="checkbox" @change="store.togglePlugin(plugin)" /><span></span>
           </span>
+          <button class="settings-action-button" @click="store.deletePlugin(plugin)"><Trash2 />删除</button>
         </div>
       </div>
     </div>
