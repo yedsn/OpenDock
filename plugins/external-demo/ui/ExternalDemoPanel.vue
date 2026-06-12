@@ -14,7 +14,11 @@ const plugin = computed(() => store.state.data.plugins.find((entry) => entry.id 
       <span><Blocks />外置插件</span>
     </div>
     <div class="settings-card-description">
-      该页面来自 `plugins/external-demo`，用于验证外置插件可以被动态发现、安装后出现菜单、停用后菜单消失。
+      该页面来自 `plugins/external-demo`，用于验证外置插件可以被动态发现、安装后出现菜单、停用后菜单消失，并贡献新的打开工具类型。
+    </div>
+    <div class="sync-status-strip">
+      <span>贡献工具类型：Demo Tool</span>
+      <span>当前状态：{{ plugin?.enabled ? "已启用" : "未启用" }}</span>
     </div>
     <div class="plugin-card enabled" v-if="plugin">
       <div class="plugin-card-main">
@@ -30,4 +34,3 @@ const plugin = computed(() => store.state.data.plugins.find((entry) => entry.id 
     </div>
   </section>
 </template>
-

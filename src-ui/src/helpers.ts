@@ -24,18 +24,6 @@ export const itemTypeOptions: ItemType[] = [
   "插件资源"
 ];
 
-// Map collection type to allowed tool types, used to pick the default open tool.
-export const toolTypesByCollection: Record<CollectionType, string[]> = {
-  "目录集合": ["编辑器", "系统"],
-  "网页集合": ["浏览器"],
-  "命令集合": ["终端"],
-  "Office 集合": ["Office", "系统"],
-  "CAD 集合": ["CAD", "系统"],
-  "文件集合": ["系统", "Office", "CAD", "编辑器"],
-  "应用集合": ["系统", "应用"],
-  "插件集合": ["系统", "插件"]
-};
-
 export function nowIso(): string {
   return new Date().toISOString();
 }

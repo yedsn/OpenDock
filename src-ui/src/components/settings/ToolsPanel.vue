@@ -15,7 +15,7 @@ const scanResult = ref<{
   scannedAt: string;
 } | null>(null);
 
-const toolTypes: ToolType[] = ["编辑器", "浏览器", "终端", "Office", "CAD", "系统", "应用", "插件"];
+const toolTypes = computed(() => store.availableToolTypes() as ToolType[]);
 
 const newTool = reactive({
   name: "",
@@ -24,8 +24,8 @@ const newTool = reactive({
   args: "{path}"
 });
 
-const toolTypeSummary = computed(() => toolTypes.map((type) => {
-  const tools = store.state.data.tools.filter((tool) => tool.type === type);
+const toolTypeSummary = computed(() => toolTypes.value.map((type) => {
+  const tools = store.visibleTools().filter((tool) => tool.type === type);
   return {
     type,
     count: tools.length,
@@ -131,7 +131,7 @@ async function deleteTool(id: string) {
         <strong>默认</strong>
         <strong></strong>
       </div>
-      <div v-for="tool in store.state.data.tools" :key="tool.id" class="settings-row tools-row" :class="{ 'missing-path': tool.path.trim() !== 'shell:open' && !tool.path.trim() }">
+      <div v-for="tool in store.visibleTools()" :key="tool.id" class="settings-row tools-row" :class="{ 'missing-path': tool.path.trim() !== 'shell:open' && !tool.path.trim() }">
         <input v-model="tool.name" placeholder="工具名称" />
         <select v-model="tool.type">
           <option v-for="type in toolTypes" :key="type" :value="type">{{ type }}</option>

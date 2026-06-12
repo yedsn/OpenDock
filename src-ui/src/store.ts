@@ -5,9 +5,9 @@ import { exportAppData, loadAppData, resetAppData, saveActiveState, saveAppData 
 import { createSnapshot, listSnapshots, loadSnapshot, deleteSnapshot, pruneSnapshots } from "./storage";
 import { webdavSetCredential, webdavGetCredential } from "./db";
 import { createSeedData } from "./seed";
-import { nowIso, makeId, expandToolArgs, templateToCollectionType, toolTypesByCollection } from "./helpers";
+import { nowIso, makeId, expandToolArgs, templateToCollectionType } from "./helpers";
 import { builtInThemes } from "./themes";
-import type { AppData, Collection, CollectionItem, CollectionMode, CollectionType, ItemType, MainView, ModalState, OpenTool, PluginManifest, QuickViewId, Scene, SnapshotKind, SnapshotRecord, SceneType, Tab, ThemeDefinition, Workspace } from "./types";
+import type { AppData, Collection, CollectionItem, CollectionMode, CollectionType, ItemType, MainView, ModalState, OpenTool, PluginManifest, PluginToolTypeContribution, PluginToolTypeEntry, QuickViewId, Scene, SnapshotKind, SnapshotRecord, SceneType, Tab, ThemeDefinition, Workspace } from "./types";
 import type { SearchSuggestion } from "./types";
 import { matchesSearchText, scoreSearchText, createSearchText } from "./pinyin";
 
@@ -157,6 +157,12 @@ async function init() {
   for (const plugin of seedThemePlugins) {
     if (!state.data.plugins.some((entry) => entry.id === plugin.id)) {
       state.data.plugins.push(plugin);
+    }
+  }
+  for (const seedPlugin of seed.plugins) {
+    const plugin = state.data.plugins.find((entry) => entry.id === seedPlugin.id);
+    if (plugin && seedPlugin.toolTypes && !plugin.toolTypes) {
+      plugin.toolTypes = [...seedPlugin.toolTypes];
     }
   }
   for (const entry of seed.pluginStore) {
@@ -327,6 +333,62 @@ function activeTheme(): ThemeDefinition {
     || builtInThemes[0];
 }
 
+const baseToolTypes = ["编辑器", "浏览器", "终端", "系统", "应用", "插件"];
+const baseToolTypesByCollection: Partial<Record<CollectionType, string[]>> = {
+  "目录集合": ["编辑器", "系统"],
+  "网页集合": ["浏览器"],
+  "命令集合": ["终端"],
+  "文件集合": ["系统", "编辑器"],
+  "应用集合": ["系统", "应用"],
+  "插件集合": ["系统", "插件"]
+};
+
+const baseToolTypesByItem: Partial<Record<ItemType, string[]>> = {
+  "目录": ["编辑器", "系统"],
+  "URL": ["浏览器", "系统"],
+  "命令": ["终端"],
+  "文件": ["系统", "编辑器"],
+  "应用": ["应用", "系统"],
+  "插件资源": ["插件", "系统"]
+};
+
+function normalizeToolTypeContribution(entry: PluginToolTypeEntry): PluginToolTypeContribution {
+  return typeof entry === "string" ? { type: entry } : entry;
+}
+
+function enabledToolTypeContributions(): PluginToolTypeContribution[] {
+  return state.data.plugins
+    .filter((plugin) => plugin.installed && plugin.enabled)
+    .flatMap((plugin) => plugin.toolTypes || [])
+    .map(normalizeToolTypeContribution);
+}
+
+function availableToolTypes(): string[] {
+  const contributed = enabledToolTypeContributions().map((entry) => entry.type);
+  return Array.from(new Set([...baseToolTypes, ...contributed]));
+}
+
+function visibleTools(): OpenTool[] {
+  const available = new Set(availableToolTypes());
+  return state.data.tools.filter((tool) => available.has(tool.type));
+}
+
+function allowedToolTypesForCollection(type: CollectionType): string[] {
+  const base = baseToolTypesByCollection[type] || ["系统"];
+  const contributed = enabledToolTypeContributions()
+    .filter((entry) => entry.collectionTypes?.includes(type))
+    .map((entry) => entry.type);
+  return Array.from(new Set([...contributed, ...base]));
+}
+
+function allowedToolTypesForItem(type: ItemType): string[] {
+  const base = baseToolTypesByItem[type] || ["系统"];
+  const contributed = enabledToolTypeContributions()
+    .filter((entry) => entry.itemTypes?.includes(type))
+    .map((entry) => entry.type);
+  return Array.from(new Set([...contributed, ...base]));
+}
+
 function collectionItems(collectionId: string): CollectionItem[] {
   return itemsByCollectionId.value.get(collectionId) || [];
 }
@@ -334,28 +396,20 @@ function collectionItems(collectionId: string): CollectionItem[] {
 // ---- Id helpers ----
 
 function defaultToolForCollection(type: CollectionType): string {
-  const allowed = toolTypesByCollection[type] || ["系统"];
-  const tool = state.data.tools.find((t) => allowed.includes(t.type) && t.default)
-    || state.data.tools.find((t) => allowed.includes(t.type))
+  const allowed = allowedToolTypesForCollection(type);
+  const tools = visibleTools();
+  const tool = tools.find((t) => allowed.includes(t.type) && t.default)
+    || tools.find((t) => allowed.includes(t.type))
     || state.data.tools.find((t) => t.type === "系统")
     || state.data.tools[0];
   return tool?.id || "";
 }
 
 function defaultToolForItem(type: ItemType): string {
-  const toolTypeByItem: Record<ItemType, string[]> = {
-    "目录": ["编辑器", "系统"],
-    "URL": ["浏览器", "系统"],
-    "命令": ["终端"],
-    "Excel": ["Office", "系统"],
-    "CAD": ["CAD", "系统"],
-    "文件": ["系统", "Office", "CAD", "编辑器"],
-    "应用": ["应用", "系统"],
-    "插件资源": ["插件", "系统"]
-  };
-  const allowed = toolTypeByItem[type] || ["系统"];
-  const tool = state.data.tools.find((t) => allowed.includes(t.type) && t.default)
-    || state.data.tools.find((t) => allowed.includes(t.type))
+  const allowed = allowedToolTypesForItem(type);
+  const tools = visibleTools();
+  const tool = tools.find((t) => allowed.includes(t.type) && t.default)
+    || tools.find((t) => allowed.includes(t.type))
     || state.data.tools.find((t) => t.type === "系统")
     || state.data.tools[0];
   return tool?.id || "";
@@ -700,7 +754,8 @@ function installPlugin(index: number): void {
     installed: true,
     enabled: entry.configurable || Boolean(entry.theme),
     configurable: entry.configurable || false,
-    theme: entry.theme
+    theme: entry.theme,
+    toolTypes: entry.toolTypes
   };
   state.data.plugins.push(plugin);
   state.data.pluginStore.splice(index, 1);
@@ -728,7 +783,8 @@ function deletePlugin(plugin: PluginManifest): void {
       capability: plugin.capability,
       permissions: [...plugin.permissions],
       configurable: plugin.configurable,
-      theme: plugin.theme
+      theme: plugin.theme,
+      toolTypes: plugin.toolTypes
     });
   }
   if (state.settingsCategory === `plugin:${plugin.id}`) {
@@ -1229,6 +1285,10 @@ export function useOpenDockStore() {
     activeCollection,
     activeTheme,
     availableThemes,
+    availableToolTypes,
+    visibleTools,
+    allowedToolTypesForCollection,
+    allowedToolTypesForItem,
     activeScenes,
     visibleCollections,
     collectionItems,

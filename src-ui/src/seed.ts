@@ -129,8 +129,8 @@ const plugins: PluginManifest[] = [
   { id: "browser", name: "Browser", version: "1.0.0", category: "资源打开", capability: "多浏览器网页集合打开", permissions: ["workspace:read", "opener:browser"], installed: true, enabled: true, configurable: false },
   { id: "terminal", name: "Terminal", version: "1.0.0", category: "资源打开", capability: "命令集合执行策略", permissions: ["workspace:read", "opener:terminal"], installed: true, enabled: true, configurable: false },
   { id: "webdav-sync", name: "WebDAV Sync", version: "0.2.0", category: "同步", capability: "通过 WebDAV 同步工作区数据", permissions: ["workspace:read", "workspace:write", "network:webdav"], installed: true, enabled: true, configurable: true, status: "待同步" },
-  { id: "office", name: "Office", version: "0.1.0", category: "专业文件", capability: "Word / Excel / PPT 文件集合", permissions: ["workspace:read", "opener:office"], installed: true, enabled: true, configurable: false },
-  { id: "cad", name: "CAD", version: "0.1.0", category: "专业文件", capability: "DWG / DXF 图纸集合", permissions: ["workspace:read", "opener:cad"], installed: true, enabled: false, configurable: false },
+  { id: "office", name: "Office", version: "0.1.0", category: "专业文件", capability: "Word / Excel / PPT 文件集合", permissions: ["workspace:read", "opener:office"], installed: true, enabled: true, configurable: false, toolTypes: [{ type: "Office", collectionTypes: ["Office 集合", "文件集合"], itemTypes: ["Excel", "文件"] }] },
+  { id: "cad", name: "CAD", version: "0.1.0", category: "专业文件", capability: "DWG / DXF 图纸集合", permissions: ["workspace:read", "opener:cad"], installed: true, enabled: false, configurable: false, toolTypes: [{ type: "CAD", collectionTypes: ["CAD 集合", "文件集合"], itemTypes: ["CAD", "文件"] }] },
   { id: "database", name: "Database", version: "0.1.0", category: "开发工具", capability: "数据库连接入口", permissions: ["workspace:read", "secret:connection"], installed: true, enabled: true, configurable: false },
   ...builtInPluginManifests
 ];

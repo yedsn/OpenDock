@@ -55,7 +55,7 @@ const categories = computed<SettingsCategory[]>(() => {
   const system: SettingsCategory[] = [
     { id: "general", label: "通用设置", icon: "SlidersHorizontal", description: "配置启动入口、最近记录和基础行为。", panel: GeneralPanel },
     { id: "workspace", label: "工作区设置", icon: "Database", description: "查看当前工作区，并进入工作区管理。", panel: WorkspacePanel },
-    { id: "tools", label: "打开工具", icon: "Wrench", description: "配置编辑器、浏览器、终端、Office、CAD 和系统默认应用。", panel: ToolsPanel },
+    { id: "tools", label: "打开工具", icon: "Wrench", description: "配置基础打开工具，以及由插件启用后贡献的专业工具类型。", panel: ToolsPanel },
     { id: "templates", label: "集合模板", icon: "Blocks", description: "配置项目类场景默认创建的集合模板。", panel: TemplatesPanel },
     { id: "plugins", label: "插件管理", icon: "Blocks", description: "管理插件状态和扩展能力。", panel: PluginsPanel },
     { id: "shortcuts", label: "快捷键", icon: "Keyboard", description: "配置高频操作快捷键。", panel: ShortcutsPanel },

@@ -1,7 +1,7 @@
 export type SceneType = "项目" | "办公" | "工程" | "设计" | "通用" | "自定义";
 export type CollectionType = "目录集合" | "网页集合" | "命令集合" | "Office 集合" | "CAD 集合" | "文件集合" | "应用集合" | "插件集合";
 export type ItemType = "目录" | "URL" | "命令" | "Excel" | "CAD" | "文件" | "应用" | "插件资源";
-export type ToolType = "编辑器" | "浏览器" | "终端" | "Office" | "CAD" | "系统" | "应用" | "插件";
+export type ToolType = string;
 export type OpenStrategy = "single" | "batch" | "all";
 export type QuickViewId = "all" | "favorites" | "recent" | "unbound";
 export type MainView = "workspace" | "settings";
@@ -112,6 +112,14 @@ export interface OpenTool {
   default: boolean;
 }
 
+export interface PluginToolTypeContribution {
+  type: ToolType;
+  collectionTypes?: CollectionType[];
+  itemTypes?: ItemType[];
+}
+
+export type PluginToolTypeEntry = ToolType | PluginToolTypeContribution;
+
 export interface PluginManifest {
   id: string;
   name: string;
@@ -124,6 +132,7 @@ export interface PluginManifest {
   configurable: boolean;
   status?: string;
   theme?: ThemeDefinition;
+  toolTypes?: PluginToolTypeEntry[];
 }
 
 export interface SearchSuggestion {
@@ -145,6 +154,7 @@ export interface PluginStoreEntry {
   permissions: string[];
   configurable?: boolean;
   theme?: ThemeDefinition;
+  toolTypes?: PluginToolTypeEntry[];
 }
 
 export interface WebDavSyncConfig {

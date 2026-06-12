@@ -472,6 +472,56 @@ describe("OpenDock store - open tool configuration", () => {
     expect(item.toolId).toBeUndefined();
     expect(store.state.data.tools.some((entry) => entry.type === "浏览器" && entry.default)).toBe(true);
   });
+
+  it("only exposes plugin-contributed tool types when the plugin is enabled", async () => {
+    const { useOpenDockStore } = await import("../store");
+    const store = useOpenDockStore();
+    const cadPlugin = store.state.data.plugins.find((entry) => entry.id === "cad")!;
+
+    expect(cadPlugin.enabled).toBe(false);
+    expect(store.availableToolTypes()).not.toContain("CAD");
+    expect(store.visibleTools().some((tool) => tool.type === "CAD")).toBe(false);
+    expect(store.allowedToolTypesForCollection("CAD 集合")).not.toContain("CAD");
+    expect(store.allowedToolTypesForItem("CAD")).not.toContain("CAD");
+
+    store.togglePlugin(cadPlugin);
+
+    expect(store.availableToolTypes()).toContain("CAD");
+    expect(store.allowedToolTypesForCollection("CAD 集合")).toContain("CAD");
+    expect(store.allowedToolTypesForItem("CAD")).toContain("CAD");
+    expect(store.visibleTools().some((tool) => tool.type === "CAD" && tool.name === "AutoCAD")).toBe(true);
+  });
+
+  it("lets plugins contribute future custom open tool types", async () => {
+    const { useOpenDockStore } = await import("../store");
+    const store = useOpenDockStore();
+    store.state.data.plugins.push({
+      id: "design-plugin",
+      name: "Design Plugin",
+      version: "0.1.0",
+      category: "专业文件",
+      capability: "提供设计类打开工具类型",
+      permissions: ["workspace:read", "opener:design"],
+      installed: true,
+      enabled: false,
+      configurable: false,
+      toolTypes: [{ type: "Design", collectionTypes: ["网页集合"], itemTypes: ["URL"] }]
+    });
+    store.createTool("Figma Desktop", "Design", "C:/Figma/Figma.exe", "{path}");
+
+    expect(store.availableToolTypes()).not.toContain("Design");
+    expect(store.allowedToolTypesForCollection("网页集合")).not.toContain("Design");
+    expect(store.allowedToolTypesForItem("URL")).not.toContain("Design");
+    expect(store.visibleTools().some((tool) => tool.type === "Design")).toBe(false);
+
+    const plugin = store.state.data.plugins.find((entry) => entry.id === "design-plugin")!;
+    store.togglePlugin(plugin);
+
+    expect(store.availableToolTypes()).toContain("Design");
+    expect(store.allowedToolTypesForCollection("网页集合")).toContain("Design");
+    expect(store.allowedToolTypesForItem("URL")).toContain("Design");
+    expect(store.visibleTools().some((tool) => tool.type === "Design" && tool.name === "Figma Desktop")).toBe(true);
+  });
 });
 
 describe("OpenDock store - search suggestions", () => {
