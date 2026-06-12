@@ -32,6 +32,10 @@ const itemTypeConfig = computed(() => store.pluginItemTypeConfig(form.itemType))
 const itemValueLabel = computed(() => itemTypeConfig.value?.valueLabel || "资源内容");
 const itemValuePlaceholder = computed(() => itemTypeConfig.value?.valuePlaceholder || "路径、URL 或命令");
 const itemPluginFields = computed(() => store.pluginItemFields(form.itemType));
+const itemToolOptions = computed(() => {
+  const allowed = new Set(store.allowedToolTypesForItem(form.itemType));
+  return store.visibleTools().filter((tool) => allowed.has(tool.type));
+});
 const modalTitle = computed(() => {
   const kind = store.state.modal.kind;
   const verb = isEdit.value ? "编辑" : "新建";
@@ -41,6 +45,17 @@ const modalTitle = computed(() => {
   if (kind === "item") return verb === "新建" ? "添加资源" : "编辑资源";
   return "";
 });
+
+function resetItemPluginData(source: Record<string, unknown> = {}) {
+  form.itemPluginData = Object.fromEntries(
+    itemPluginFields.value.map((field) => [field.key, String(source[field.key] || "")])
+  );
+}
+
+function ensureItemToolCompatible() {
+  if (!form.itemToolId) return;
+  if (!itemToolOptions.value.some((tool) => tool.id === form.itemToolId)) form.itemToolId = "";
+}
 
 // Pre-fill form when editingId is set, or initialize from current context for new items.
 watch(
@@ -66,7 +81,8 @@ watch(
       form.itemValue = item?.value || "";
       form.itemWorkingDirectory = item?.workingDirectory || "";
       form.itemToolId = item?.toolId || activeColl?.defaultToolId || "";
-      form.itemPluginData = Object.fromEntries(itemPluginFields.value.map((field) => [field.key, String(item?.pluginData?.[field.key] || "")]));
+      resetItemPluginData(item?.pluginData || {});
+      ensureItemToolCompatible();
     } else if (kind === "workspace") {
       const ws = id ? store.state.data.workspaces.find((w) => w.id === id) : null;
       form.workspaceName = ws?.name || "";
@@ -80,9 +96,8 @@ watch(
 watch(
   () => form.itemType,
   () => {
-    for (const field of itemPluginFields.value) {
-      if (form.itemPluginData[field.key] === undefined) form.itemPluginData[field.key] = "";
-    }
+    resetItemPluginData(form.itemPluginData);
+    ensureItemToolCompatible();
   },
   { immediate: true }
 );
@@ -164,7 +179,7 @@ function submitModal() {
         <label class="setting-field"><span>打开工具</span>
           <select v-model="form.itemToolId">
             <option value="">使用集合默认</option>
-            <option v-for="tool in store.state.data.tools" :key="tool.id" :value="tool.id">{{ tool.name }} ({{ tool.type }})</option>
+            <option v-for="tool in itemToolOptions" :key="tool.id" :value="tool.id">{{ tool.name }} ({{ tool.type }})</option>
           </select>
         </label>
         <label class="setting-field"><span>工作目录</span><input v-model="form.itemWorkingDirectory" placeholder="命令资源使用，可选" /></label>

@@ -655,7 +655,17 @@ function valuesForItem(item: CollectionItem): Record<string, string> {
 function argsForTool(item: CollectionItem, tool: OpenTool): string[] {
   const values = valuesForItem(item);
   const argsTemplate = tool.args?.trim() || (item.type === "命令" ? "{command}" : item.type === "URL" ? "{url}" : "{path}");
-  const args = expandToolArgs(argsTemplate, values);
+
+  // When the value is a remote URI (vscode-remote://, cursor-remote://, etc.) and the tool
+  // is an editor, use --folder-uri instead of a positional argument so VS Code / Cursor
+  // opens the remote directory correctly.
+  const remoteUriPrefixes = ["vscode-remote://", "vscode://", "cursor-remote://", "cursor://"];
+  const isRemoteUri = remoteUriPrefixes.some((prefix) => item.value.startsWith(prefix));
+  const effectiveTemplate = (isRemoteUri && tool.type === "编辑器" && argsTemplate === "{path}")
+    ? "--folder-uri {path}"
+    : argsTemplate;
+
+  const args = expandToolArgs(effectiveTemplate, values);
 
   if (item.type === "URL" && state.data.settings.general.openWebInNewWindow && !args.some((arg) => arg === "--new-window" || arg === "-new-window")) {
     return ["--new-window", ...args];
@@ -708,6 +718,17 @@ async function openItemWithTool(item: CollectionItem, tool: OpenTool | undefined
     return callOpenCommand("open_path", { path: item.value });
   }
 
+  // For browser tools opening URLs, pre-start the browser to avoid Edge/Chrome
+  // session restore on cold start, then open the URL.
+  if (tool.type === "浏览器" && (item.type === "URL" || item.value.startsWith("http://") || item.value.startsWith("https://"))) {
+    await callOpenCommand("prestart_browser", { browserPath: tool.path });
+    return callOpenCommand("open_url_in_browser", {
+      browserPath: tool.path,
+      url: item.value,
+      newWindow: state.data.settings.general.openWebInNewWindow
+    });
+  }
+
   const args = argsForTool(item, tool);
   return callOpenCommand("open_application", { path: tool.path, args });
 }
@@ -741,12 +762,15 @@ async function openCollection(collection: Collection): Promise<void> {
 
   for (const { tool, items: urlItems } of urlGroups.values()) {
     if (urlItems.length <= 1) continue;
-    const args = argsForUrlBatch(tool, urlItems.map((item) => item.value));
+    const urls = urlItems.map((item) => item.value);
+    // Pre-start browser to consume session restore on cold start,
+    // then open all URLs in one call so they land as tabs in a single window.
+    await callOpenCommand("prestart_browser", { browserPath: tool.path });
+    const args = argsForUrlBatch(tool, urls);
     const result = await callOpenCommand("open_application", { path: tool.path, args });
     urlItems.forEach((item) => openedInBatch.add(item.id));
     log(`${result.ok ? "打开" : "打开失败"}: ${urlItems.length} 个网页资源 via ${tool.name} - ${result.message}`);
   }
-
   for (const item of items) {
     if (openedInBatch.has(item.id)) continue;
     await openItem(item);
@@ -790,7 +814,7 @@ function installPlugin(index: number): void {
     capability: entry.capability,
     permissions: entry.permissions,
     installed: true,
-    enabled: entry.configurable || Boolean(entry.theme),
+    enabled: entry.configurable || Boolean(entry.theme) || Boolean(entry.toolTypes?.length) || Boolean(entry.itemTypes?.length),
     configurable: entry.configurable || false,
     theme: entry.theme,
     toolTypes: entry.toolTypes,

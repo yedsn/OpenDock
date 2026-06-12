@@ -472,9 +472,10 @@ describe("OpenDock store - open tool configuration", () => {
 
     await store.openItem(item);
 
-    expect(invokeMock).toHaveBeenCalledWith("open_application", {
-      path: "C:/Browser/browser.exe",
-      args: ["--new-window", "https://example.com"]
+    expect(invokeMock).toHaveBeenCalledWith("open_url_in_browser", {
+      browserPath: "C:/Browser/browser.exe",
+      url: "https://example.com",
+      newWindow: true
     });
   });
 
@@ -492,9 +493,10 @@ describe("OpenDock store - open tool configuration", () => {
 
     await store.openItem(item);
 
-    expect(invokeMock).toHaveBeenCalledWith("open_application", {
-      path: "C:/Browser/browser.exe",
-      args: ["https://example.com"]
+    expect(invokeMock).toHaveBeenCalledWith("open_url_in_browser", {
+      browserPath: "C:/Browser/browser.exe",
+      url: "https://example.com",
+      newWindow: false
     });
   });
 
@@ -513,10 +515,15 @@ describe("OpenDock store - open tool configuration", () => {
     store.createItem(collection.id, "Batch URL B", "URL", "https://b.example.com");
 
     await store.openCollection(collection);
-
-    const browserCalls = invokeMock.mock.calls.filter(([command]) => command === "open_application");
-    expect(browserCalls).toHaveLength(1);
-    expect(browserCalls[0]).toEqual(["open_application", {
+    // Pre-start browser then batch-open all URLs via open_application
+    const prestartCalls = invokeMock.mock.calls.filter(([cmd]) => cmd === "prestart_browser");
+    expect(prestartCalls).toHaveLength(1);
+    expect(prestartCalls[0]).toEqual(["prestart_browser", {
+      browserPath: "C:/Browser/browser.exe"
+    }]);
+    const batchCalls = invokeMock.mock.calls.filter(([cmd]) => cmd === "open_application");
+    expect(batchCalls).toHaveLength(1);
+    expect(batchCalls[0]).toEqual(["open_application", {
       path: "C:/Browser/browser.exe",
       args: ["--new-window", "https://a.example.com", "https://b.example.com"]
     }]);
@@ -588,6 +595,26 @@ describe("OpenDock store - open tool configuration", () => {
     expect(store.visibleTools().some((tool) => tool.type === "Design" && tool.name === "Figma Desktop")).toBe(true);
   });
 
+  it("enables installed type-contribution plugins immediately", async () => {
+    const { useOpenDockStore } = await import("../store");
+    const store = useOpenDockStore();
+    store.state.data.pluginStore.push({
+      name: "Spec Importer",
+      category: "示例",
+      capability: "提供自定义资源类型",
+      permissions: ["workspace:read"],
+      configurable: false,
+      itemTypes: [{ type: "Spec File", label: "规格文件", fields: [] }]
+    });
+
+    const index = store.state.data.pluginStore.findIndex((entry) => entry.name === "Spec Importer");
+    store.installPlugin(index);
+
+    const plugin = store.state.data.plugins.find((entry) => entry.name === "Spec Importer")!;
+    expect(plugin.enabled).toBe(true);
+    expect(store.availableItemTypes()).toContain("Spec File");
+  });
+
   it("opens plugin-defined item types through the plugin handler", async () => {
     const { useOpenDockStore } = await import("../store");
     const store = useOpenDockStore();
@@ -610,6 +637,47 @@ describe("OpenDock store - open tool configuration", () => {
     expect(invokeMock).toHaveBeenCalledWith("run_command", expect.objectContaining({
       command: expect.stringContaining("left-to-right")
     }));
+  });
+
+  it("uses --folder-uri for remote directory URIs opened with editor tools", async () => {
+    const { useOpenDockStore } = await import("../store");
+    const store = useOpenDockStore();
+    store.state.data.settings.general.confirmBeforeOpen = false;
+    const collection = store.state.data.collections.find((c) => c.type === "目录集合")!;
+    const editor = store.state.data.tools.find((entry) => entry.type === "编辑器")!;
+    editor.path = "C:/Editor/code.exe";
+    editor.args = "{path}";
+    editor.default = true;
+
+    // Remote URI should produce --folder-uri
+    store.createItem(collection.id, "Remote Dir", "目录", "vscode-remote://ssh-remote+root@server/path/to/project");
+    const remoteItem = store.state.data.items.find((entry) => entry.name === "Remote Dir")!;
+    invokeMock.mockClear();
+    await store.openItem(remoteItem);
+    expect(invokeMock).toHaveBeenCalledWith("open_application", {
+      path: "C:/Editor/code.exe",
+      args: ["--folder-uri", "vscode-remote://ssh-remote+root@server/path/to/project"]
+    });
+
+    // Local path should still use positional argument
+    store.createItem(collection.id, "Local Dir", "目录", "E:\\code\\project");
+    const localItem = store.state.data.items.find((entry) => entry.name === "Local Dir")!;
+    invokeMock.mockClear();
+    await store.openItem(localItem);
+    expect(invokeMock).toHaveBeenCalledWith("open_application", {
+      path: "C:/Editor/code.exe",
+      args: ["E:\\code\\project"]
+    });
+
+    // cursor-remote:// URI should also use --folder-uri
+    store.createItem(collection.id, "Cursor Remote", "目录", "cursor-remote://ssh-remote+user@host/workspace");
+    const cursorItem = store.state.data.items.find((entry) => entry.name === "Cursor Remote")!;
+    invokeMock.mockClear();
+    await store.openItem(cursorItem);
+    expect(invokeMock).toHaveBeenCalledWith("open_application", {
+      path: "C:/Editor/code.exe",
+      args: ["--folder-uri", "cursor-remote://ssh-remote+user@host/workspace"]
+    });
   });
 });
 
@@ -656,6 +724,10 @@ describe("OpenDock store - search suggestions", () => {
     store.state.search = "khmh";
     const collectionSuggestion = store.searchSuggestions.value.find((entry) => entry.kind === "collection" && entry.title === "客户门户网页")!;
     await store.executeSuggestionAndMaybeHide(collectionSuggestion);
+    // Collection open: pre-start browser then batch-open all URLs
+    expect(invokeMock).toHaveBeenCalledWith("prestart_browser", {
+      browserPath: "C:/Browser/browser.exe"
+    });
     expect(invokeMock).toHaveBeenCalledWith("open_application", {
       path: "C:/Browser/browser.exe",
       args: ["--new-window", "https://example.test/a", "https://example.test/b"]
@@ -669,8 +741,8 @@ describe("OpenDock store - search suggestions", () => {
     store.state.data.settings.general.closeWindowAfterOpen = true;
     await store.executeSuggestionAndMaybeHide(urlSuggestion);
     expect(hideWindowMock).toHaveBeenCalledTimes(1);
-    expect(invokeMock).toHaveBeenCalledWith("open_application", expect.objectContaining({
-      args: expect.arrayContaining(["https://example.test/a"])
+    expect(invokeMock).toHaveBeenCalledWith("open_url_in_browser", expect.objectContaining({
+      url: "https://example.test/a"
     }));
   });
 

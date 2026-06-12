@@ -298,6 +298,102 @@ fn open_url(url: String, new_window: Option<bool>) -> OpenActionResult {
 #[tauri::command]
 fn open_file(path: String) -> OpenActionResult { open_path(path) }
 
+/// Pre-start a Chromium browser to consume session restore on cold launch.
+/// If the browser is not running, launches it with about:blank and waits briefly
+/// so that the "continue where you left off" restore completes before the real
+/// URL is opened by a subsequent call. If the browser is already running, this
+/// is a no-op.
+#[tauri::command]
+fn prestart_browser(browser_path: String) -> OpenActionResult {
+    let resolved_path = resolve_launch_path(&browser_path);
+    let exe_name = std::path::PathBuf::from(&resolved_path)
+        .file_name()
+        .map(|n| n.to_string_lossy().to_lowercase())
+        .unwrap_or_default();
+
+    let is_chromium = exe_name.contains("msedge")
+        || exe_name.contains("chrome")
+        || exe_name.contains("chromium")
+        || exe_name.contains("brave")
+        || exe_name.contains("vivaldi")
+        || exe_name.contains("opera");
+
+    if !is_chromium {
+        return success("No pre-start needed for non-Chromium browser");
+    }
+
+    // Check if the browser process is already running.
+    let running = if cfg!(target_os = "windows") {
+        Command::new("tasklist")
+            .args(["/FI", &format!("IMAGENAME eq {exe_name}"), "/NH"])
+            .output()
+            .map(|o| String::from_utf8_lossy(&o.stdout).to_lowercase().contains(&exe_name))
+            .unwrap_or(false)
+    } else if cfg!(target_os = "macos") {
+        Command::new("pgrep")
+            .args(["-x", &exe_name])
+            .output()
+            .map(|o| o.status.success())
+            .unwrap_or(false)
+    } else {
+        Command::new("pgrep")
+            .args(["-f", &exe_name])
+            .output()
+            .map(|o| o.status.success())
+            .unwrap_or(false)
+    };
+
+    if running {
+        return success("Browser already running");
+    }
+
+    // Pre-start browser with about:blank to consume the session restore.
+    let mut pre_cmd = Command::new(&resolved_path);
+    pre_cmd.arg("about:blank");
+    match pre_cmd.spawn() {
+        Ok(_) => {
+            // Give the browser a moment to complete session restore.
+            std::thread::sleep(std::time::Duration::from_millis(300));
+            success("Browser pre-started")
+        }
+        Err(e) => failure(format!("Failed to pre-start browser: {e}")),
+    }
+}
+
+/// Open a URL in a specific browser. The caller should call prestart_browser
+/// first when batch-opening URLs to avoid session restore on cold start.
+#[tauri::command]
+fn open_url_in_browser(browser_path: String, url: String, new_window: bool) -> OpenActionResult {
+    let resolved_path = resolve_launch_path(&browser_path);
+    let mut cmd = Command::new(&resolved_path);
+    if new_window {
+        cmd.arg("--new-window");
+    }
+    cmd.arg(&url);
+
+    match cmd.spawn() {
+        Ok(_) => success(format!("Opened URL in browser: {url}")),
+        Err(e) => {
+            #[cfg(target_os = "windows")]
+            {
+                if e.raw_os_error() == Some(740) {
+                    let shell_args: Vec<String> = if new_window {
+                        vec!["--new-window".into(), url.clone()]
+                    } else {
+                        vec![url.clone()]
+                    };
+                    return match open_application_with_shell(&resolved_path, &shell_args) {
+                        Ok(_) => success(format!("Opened URL in browser with shell: {url}")),
+                        Err(se) => failure(format!("Failed to open URL in browser: {e}; shell fallback failed: {se}")),
+                    };
+                }
+            }
+            failure(format!("Failed to open URL in browser: {e}"))
+        }
+    }
+}
+
+
 #[tauri::command]
 fn open_application(path: String, args: Vec<String>) -> OpenActionResult {
     let resolved_path = resolve_launch_path(&path);
@@ -960,7 +1056,7 @@ pub fn run() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
-            open_path, open_url, open_file, open_application, scan_open_tools, run_command,
+            open_path, open_url, open_file, open_application, open_url_in_browser, prestart_browser, scan_open_tools, run_command,
             test_webdav_connection, sync_webdav_now, webdav_set_credential, webdav_get_credential, set_global_hotkey, set_app_icon_style, write_text_file,
             db_init, db_execute, db_execute_params, db_get_value, db_set_value, db_list_table, db_bulk_insert,
             snapshot_create, snapshot_list, snapshot_get, snapshot_delete, snapshot_prune
