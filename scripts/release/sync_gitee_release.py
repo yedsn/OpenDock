@@ -19,6 +19,14 @@ DEFAULT_GITHUB_REPO = "OpenDock"
 DEFAULT_GITEE_OWNER = "hongxiaojian"
 DEFAULT_GITEE_REPO = "open-dock"
 LATEST_RELEASE_TAG = "latest"
+MACOS_NOTICE = """### macOS 用户注意事项
+
+如果在 macOS 上打开应用时提示异常，请尝试在终端执行以下命令：
+
+```bash
+xattr -cr /Applications/OpenDock.app
+```
+"""
 HTTP_TIMEOUT_SECS = 60
 DOWNLOAD_TIMEOUT_SECS = 600
 UPLOAD_CONNECT_TIMEOUT_SECS = 30
@@ -137,6 +145,10 @@ def strip_version_from_filename(name: str) -> str:
     return name
 
 
+def build_release_body(source_tag_name: str) -> str:
+    return f"Auto-maintained latest release. Source release: {source_tag_name}.\n\n{MACOS_NOTICE}"
+
+
 def ensure_release(*, token: str, owner: str, repo: str, releases: list, tag_name: str, body: str, target_commitish: str):
     existing = next((item for item in releases if item.get("tag_name") == tag_name), None)
     release_url = f"https://gitee.com/api/v5/repos/{owner}/{repo}/releases"
@@ -231,7 +243,7 @@ def main() -> None:
             repo=args.gitee_repo,
             releases=gitee_releases,
             tag_name=LATEST_RELEASE_TAG,
-            body=f"Auto-maintained latest release. Source release: {tag_name}.",
+            body=build_release_body(tag_name),
             target_commitish=args.target_commitish,
         )
         release_id = release.get("id")

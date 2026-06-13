@@ -136,9 +136,9 @@ jobs:
             - Includes macOS Apple Silicon and Intel DMG packages.
             - Includes `latest.json` for the Tauri desktop auto-update flow.
 
-            ### macOS users
+            ### macOS 用户注意事项
 
-            If macOS blocks the app because it is not notarized, run:
+            如果在 macOS 上打开应用时提示异常，请尝试在终端执行以下命令：
 
             ```bash
             xattr -cr /Applications/OpenDock.app
