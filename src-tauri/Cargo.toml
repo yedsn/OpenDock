@@ -1,6 +1,6 @@
 [package]
 name = "opendock"
-version = "0.1.8"
+version = "0.1.9"
 description = "OpenDock desktop resource launcher"
 authors = ["OpenDock"]
 edition = "2021"
@@ -20,6 +20,8 @@ tauri-plugin-updater = "=2.10.1"
 rusqlite = { version = "0.31", features = ["bundled"] }
 dirs = "6"
 chrono = { version = "0.4", features = ["serde"] }
-windows-sys = { version = "0.61", features = ["Win32_UI_Shell", "Win32_UI_WindowsAndMessaging"] }
 base64 = "0.22"
 image = { version = "0.25", default-features = false, features = ["png", "jpeg", "webp"] }
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.61", features = ["Win32_UI_Shell", "Win32_UI_WindowsAndMessaging"] }

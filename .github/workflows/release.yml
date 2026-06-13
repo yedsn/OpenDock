@@ -22,8 +22,24 @@ env:
 
 jobs:
   publish:
-    name: Build Windows bundle
-    runs-on: windows-latest
+    name: Build ${{ matrix.name }} bundle
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: macOS Apple Silicon
+            os: macos-latest
+            rust_target: aarch64-apple-darwin
+            args: --target aarch64-apple-darwin --bundles app,dmg
+          - name: macOS Intel
+            os: macos-latest
+            rust_target: x86_64-apple-darwin
+            args: --target x86_64-apple-darwin --bundles app,dmg
+          - name: Windows x64
+            os: windows-latest
+            rust_target: ""
+            args: --bundles nsis
 
     steps:
       - name: Checkout repository
@@ -85,6 +101,10 @@ jobs:
       - name: Install Rust stable
         uses: dtolnay/rust-toolchain@stable
 
+      - name: Install extra Rust target
+        if: matrix.rust_target != ''
+        run: rustup target add ${{ matrix.rust_target }}
+
       - name: Setup Node.js
         uses: actions/setup-node@v5
         with:
@@ -113,13 +133,22 @@ jobs:
             Automated GitHub Release for OpenDock.
 
             - Includes the Windows NSIS installer.
+            - Includes macOS Apple Silicon and Intel DMG packages.
             - Includes `latest.json` for the Tauri desktop auto-update flow.
+
+            ### macOS users
+
+            If macOS blocks the app because it is not notarized, run:
+
+            ```bash
+            xattr -cr /Applications/OpenDock.app
+            ```
           releaseDraft: false
           prerelease: false
           includeUpdaterJson: true
           updaterJsonPreferNsis: true
           includeDebug: false
-          args: --bundles nsis
+          args: ${{ matrix.args }}
 
   sync-gitee:
     name: Sync release to Gitee
