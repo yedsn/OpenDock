@@ -36,9 +36,12 @@ jobs:
           $package = Get-Content package.json -Raw -Encoding UTF8 | ConvertFrom-Json
           $tauri = Get-Content src-tauri/tauri.conf.json -Raw -Encoding UTF8 | ConvertFrom-Json
           $cargo = Get-Content src-tauri/Cargo.toml -Raw -Encoding UTF8
+          $cargoVersionMatch = [regex]::Match($cargo, '(?m)^version\s*=\s*"([^"]+)"\s*$')
+          if (-not $cargoVersionMatch.Success) { throw "Cargo.toml version field was not found." }
+          $cargoVersion = $cargoVersionMatch.Groups[1].Value
           if ($package.version -ne $version) { throw "package.json version $($package.version) does not match tag $tag." }
           if ($tauri.version -ne $version) { throw "tauri.conf.json version $($tauri.version) does not match tag $tag." }
-          if ($cargo -notmatch '(?m)^version\s*=\s*"' + [regex]::Escape($version) + '"$') { throw "Cargo.toml version does not match tag $tag." }
+          if ($cargoVersion -ne $version) { throw "Cargo.toml version $cargoVersion does not match tag $tag." }
 
       - name: Validate updater configuration
         shell: pwsh
