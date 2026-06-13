@@ -2,14 +2,16 @@
 use std::fs;
 use std::path::PathBuf;
 use std::process::Command;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use rusqlite::Connection;
-use tauri::{AppHandle, Manager};
+use tauri::{AppHandle, Emitter, Manager};
 use tauri::image::Image;
 use tauri::menu::{Menu, MenuItem};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
 use tauri_plugin_global_shortcut::{GlobalShortcutExt, Shortcut, ShortcutState};
+use tauri_plugin_updater::UpdaterExt;
 
 mod app_icon_rgba;
 mod app_icon_light_rgba;
@@ -41,6 +43,66 @@ struct DetectedTool {
 
 fn success(msg: impl Into<String>) -> OpenActionResult { OpenActionResult { ok: true, message: msg.into() } }
 fn failure(msg: impl Into<String>) -> OpenActionResult { OpenActionResult { ok: false, message: msg.into() } }
+
+const APP_UPDATE_EVENT: &str = "app-update-event";
+const DEFAULT_UPDATER_ENDPOINT: &str = "https://github.com/OWNER/REPO/releases/latest/download/latest.json";
+const DEFAULT_UPDATER_PUBKEY: &str = "REPLACE_WITH_TAURI_UPDATER_PUBLIC_KEY";
+static UPDATE_TASK_RUNNING: AtomicBool = AtomicBool::new(false);
+
+struct UpdateTaskGuard;
+
+impl UpdateTaskGuard {
+    fn acquire() -> Result<Self, String> {
+        UPDATE_TASK_RUNNING
+            .compare_exchange(false, true, Ordering::Acquire, Ordering::Relaxed)
+            .map(|_| Self)
+            .map_err(|_| "已有更新任务正在进行，请稍后再试".to_string())
+    }
+}
+
+impl Drop for UpdateTaskGuard {
+    fn drop(&mut self) {
+        UPDATE_TASK_RUNNING.store(false, Ordering::Release);
+    }
+}
+
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct AppUpdateSummary {
+    version: String,
+    current_version: String,
+    notes: Option<String>,
+    pub_date: Option<String>,
+    target: String,
+    download_url: String,
+}
+
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct AppUpdateCheckResult {
+    available: bool,
+    current_version: String,
+    update: Option<AppUpdateSummary>,
+}
+
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct AppUpdateEventPayload {
+    stage: String,
+    downloaded_bytes: Option<u64>,
+    chunk_length: Option<u64>,
+    content_length: Option<u64>,
+    message: Option<String>,
+}
+
+#[derive(Debug, Default, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct UpdaterPluginRuntimeConfig {
+    #[serde(default)]
+    endpoints: Vec<String>,
+    #[serde(default)]
+    pubkey: String,
+}
 
 fn open_with_system(target: &str) -> Result<(), String> {
     let mut command = if cfg!(target_os = "windows") {
@@ -647,6 +709,178 @@ fn write_text_file(path: String, contents: String) -> Result<u64, String> {
     Ok(size)
 }
 
+// ---- Tauri commands: application updater ----
+
+fn updater_runtime_config(app: &AppHandle) -> Result<UpdaterPluginRuntimeConfig, String> {
+    let value = app
+        .config()
+        .plugins
+        .0
+        .get("updater")
+        .cloned()
+        .ok_or_else(|| "未找到 updater 配置".to_string())?;
+    serde_json::from_value(value).map_err(|err| format!("解析 updater 配置失败: {err}"))
+}
+
+fn ensure_updater_is_configured(app: &AppHandle) -> Result<(), String> {
+    let config = updater_runtime_config(app)?;
+    let endpoints_ready = !config.endpoints.is_empty()
+        && config.endpoints.iter().all(|endpoint| {
+            let trimmed = endpoint.trim();
+            !trimmed.is_empty() && trimmed != DEFAULT_UPDATER_ENDPOINT
+        });
+    let pubkey_ready = {
+        let trimmed = config.pubkey.trim();
+        !trimmed.is_empty() && trimmed != DEFAULT_UPDATER_PUBKEY
+    };
+
+    if endpoints_ready && pubkey_ready {
+        Ok(())
+    } else {
+        Err("更新功能尚未完成发布配置，请先在 tauri.conf.json 中填写发布地址和 updater 公钥。".to_string())
+    }
+}
+
+fn emit_app_update_event(app: &AppHandle, payload: AppUpdateEventPayload) {
+    if let Err(err) = app.emit(APP_UPDATE_EVENT, payload) {
+        eprintln!("emit updater event failed: {err}");
+    }
+}
+
+#[tauri::command]
+fn get_app_version() -> String {
+    env!("CARGO_PKG_VERSION").to_string()
+}
+
+#[tauri::command]
+async fn check_app_update(app: AppHandle) -> Result<AppUpdateCheckResult, String> {
+    let _guard = UpdateTaskGuard::acquire()?;
+    ensure_updater_is_configured(&app)?;
+
+    let current_version = app.package_info().version.to_string();
+    let updater = app
+        .updater_builder()
+        .build()
+        .map_err(|err| format!("初始化更新器失败: {err}"))?;
+    let update = updater
+        .check()
+        .await
+        .map_err(|err| format!("检查更新失败: {err}"))?;
+
+    let update = update.map(|update| AppUpdateSummary {
+        version: update.version,
+        current_version: update.current_version,
+        notes: update.body,
+        pub_date: update.date.map(|date| date.to_string()),
+        target: update.target,
+        download_url: update.download_url.to_string(),
+    });
+
+    Ok(AppUpdateCheckResult {
+        available: update.is_some(),
+        current_version,
+        update,
+    })
+}
+
+#[tauri::command]
+async fn download_and_install_update(app: AppHandle) -> Result<(), String> {
+    let _guard = UpdateTaskGuard::acquire()?;
+    ensure_updater_is_configured(&app)?;
+
+    let updater = app
+        .updater_builder()
+        .build()
+        .map_err(|err| format!("初始化更新器失败: {err}"))?;
+    let update = updater
+        .check()
+        .await
+        .map_err(|err| format!("检查更新失败: {err}"))?
+        .ok_or_else(|| "当前已是最新版本，无需更新".to_string())?;
+
+    let mut first_chunk = true;
+    let mut downloaded_bytes = 0_u64;
+    let app_handle = app.clone();
+
+    update
+        .download_and_install(
+            move |chunk_length, content_length| {
+                downloaded_bytes = downloaded_bytes.saturating_add(chunk_length as u64);
+                if first_chunk {
+                    first_chunk = false;
+                    emit_app_update_event(
+                        &app_handle,
+                        AppUpdateEventPayload {
+                            stage: "download_started".to_string(),
+                            downloaded_bytes: Some(0),
+                            chunk_length: None,
+                            content_length,
+                            message: Some("开始下载更新".to_string()),
+                        },
+                    );
+                }
+                emit_app_update_event(
+                    &app_handle,
+                    AppUpdateEventPayload {
+                        stage: "download_progress".to_string(),
+                        downloaded_bytes: Some(downloaded_bytes),
+                        chunk_length: Some(chunk_length as u64),
+                        content_length,
+                        message: None,
+                    },
+                );
+            },
+            {
+                let app_handle = app.clone();
+                move || {
+                    emit_app_update_event(
+                        &app_handle,
+                        AppUpdateEventPayload {
+                            stage: "download_finished".to_string(),
+                            downloaded_bytes: None,
+                            chunk_length: None,
+                            content_length: None,
+                            message: Some("下载完成，正在安装更新".to_string()),
+                        },
+                    );
+                }
+            },
+        )
+        .await
+        .map_err(|err| {
+            emit_app_update_event(
+                &app,
+                AppUpdateEventPayload {
+                    stage: "failed".to_string(),
+                    downloaded_bytes: None,
+                    chunk_length: None,
+                    content_length: None,
+                    message: Some(format!("安装更新失败: {err}")),
+                },
+            );
+            format!("安装更新失败: {err}")
+        })?;
+
+    emit_app_update_event(
+        &app,
+        AppUpdateEventPayload {
+            stage: "installed".to_string(),
+            downloaded_bytes: None,
+            chunk_length: None,
+            content_length: None,
+            message: Some("更新已安装完成".to_string()),
+        },
+    );
+
+    Ok(())
+}
+
+#[tauri::command]
+fn restart_app(app: AppHandle) -> Result<(), String> {
+    app.request_restart();
+    Ok(())
+}
+
 
 // ---- Tauri commands: database ----
 
@@ -1063,6 +1297,7 @@ pub fn run() {
 
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
             // Triggered when a second instance tries to launch: surface the existing window.
             show_main_window(app);
@@ -1101,6 +1336,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             open_path, open_url, open_file, open_application, open_url_in_browser, prestart_browser, scan_open_tools, run_command,
             test_webdav_connection, sync_webdav_now, webdav_set_credential, webdav_get_credential, set_global_hotkey, set_app_icon_style, write_text_file,
+            get_app_version, check_app_update, download_and_install_update, restart_app,
             db_init, db_execute, db_execute_params, db_get_value, db_set_value, db_list_table, db_bulk_insert,
             snapshot_create, snapshot_update_meta, snapshot_list, snapshot_get, snapshot_delete, snapshot_prune
         ])

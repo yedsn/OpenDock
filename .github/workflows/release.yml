@@ -1,0 +1,124 @@
+name: Release
+
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  publish:
+    name: Build Windows bundle
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Validate release tag version
+        shell: pwsh
+        run: |
+          $tag = "${{ github.ref_name }}"
+          if ($tag -notmatch '^v(.+)$') { throw "Release tag must start with v." }
+          $version = $Matches[1]
+          $package = Get-Content package.json -Raw -Encoding UTF8 | ConvertFrom-Json
+          $tauri = Get-Content src-tauri/tauri.conf.json -Raw -Encoding UTF8 | ConvertFrom-Json
+          $cargo = Get-Content src-tauri/Cargo.toml -Raw -Encoding UTF8
+          if ($package.version -ne $version) { throw "package.json version $($package.version) does not match tag $tag." }
+          if ($tauri.version -ne $version) { throw "tauri.conf.json version $($tauri.version) does not match tag $tag." }
+          if ($cargo -notmatch '(?m)^version\s*=\s*"' + [regex]::Escape($version) + '"$') { throw "Cargo.toml version does not match tag $tag." }
+
+      - name: Validate updater configuration
+        shell: pwsh
+        run: |
+          $tauri = Get-Content src-tauri/tauri.conf.json -Raw -Encoding UTF8 | ConvertFrom-Json
+          $updater = $tauri.plugins.updater
+          if (-not $updater.pubkey -or $updater.pubkey -eq 'REPLACE_WITH_TAURI_UPDATER_PUBLIC_KEY') {
+            throw 'src-tauri/tauri.conf.json plugins.updater.pubkey is still a placeholder.'
+          }
+          if (-not $updater.endpoints -or $updater.endpoints.Count -eq 0) {
+            throw 'src-tauri/tauri.conf.json plugins.updater.endpoints is empty.'
+          }
+          foreach ($endpoint in $updater.endpoints) {
+            if ($endpoint -match 'github.com/OWNER/REPO') { throw 'Updater endpoint still contains OWNER/REPO placeholder.' }
+            if ($endpoint -notmatch '^https://') { throw "Updater endpoint must use HTTPS: $endpoint" }
+          }
+
+      - name: Validate updater signing secrets
+        shell: pwsh
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: |
+          if (-not $env:TAURI_SIGNING_PRIVATE_KEY) { throw 'Missing repository secret TAURI_SIGNING_PRIVATE_KEY.' }
+          if (-not $env:TAURI_SIGNING_PRIVATE_KEY_PASSWORD) { throw 'Missing repository secret TAURI_SIGNING_PRIVATE_KEY_PASSWORD.' }
+
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install frontend dependencies
+        run: npm ci
+
+      - name: Cache Rust artifacts
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            src-tauri -> src-tauri/target
+
+      - name: Build bundles and publish release assets
+        uses: tauri-apps/tauri-action@v0.6.2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        with:
+          tagName: ${{ github.ref_name }}
+          releaseName: OpenDock ${{ github.ref_name }}
+          releaseBody: |
+            Automated GitHub Release for OpenDock.
+
+            - Includes the Windows NSIS installer.
+            - Includes `latest.json` for the Tauri desktop auto-update flow.
+          releaseDraft: false
+          prerelease: false
+          includeUpdaterJson: true
+          updaterJsonPreferNsis: true
+          includeDebug: false
+          args: --bundles nsis
+
+  sync-gitee:
+    name: Sync release to Gitee
+    runs-on: ubuntu-latest
+    needs: publish
+    env:
+      GITEE_ACCESS_TOKEN: ${{ secrets.GITEE_ACCESS_TOKEN }}
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+
+      - name: Skip when Gitee token is not configured
+        if: ${{ env.GITEE_ACCESS_TOKEN == '' }}
+        run: echo "GITEE_ACCESS_TOKEN is not configured, skipping Gitee release sync."
+
+      - name: Sync GitHub release assets to Gitee
+        if: ${{ env.GITEE_ACCESS_TOKEN != '' }}
+        run: python3 scripts/release/sync_gitee_release.py --tag "${{ github.ref_name }}"

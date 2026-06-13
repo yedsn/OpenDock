@@ -309,7 +309,20 @@
     positioning: "Positioning",
     positioningDesc: "A resource collection and launcher tool for developers and professional software users.",
     collectionCount: "{count} collections",
-    pluginCount: "{count} plugins"
+    pluginCount: "{count} plugins",
+    appUpdate: "App update",
+    appUpdateDesc: "Check the release source for a new version. After installation, restart to enter the new version.",
+    checkUpdate: "Check update",
+    checkingUpdate: "Checking",
+    updateAvailable: "An update is available.",
+    noUpdateAvailable: "You are running the latest version.",
+    updateToVersion: "Update to {version}",
+    updatePreparing: "Preparing update download...",
+    downloadAndInstall: "Download and install",
+    installingUpdate: "Installing",
+    updateInstalled: "Update installed. Restart to apply it.",
+    restartNow: "Restart now",
+    unknownSize: "Unknown size"
   },
   modal: {
     edit: "Edit",

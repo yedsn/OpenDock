@@ -324,7 +324,20 @@
     positioning: "定位",
     positioningDesc: "面向开发者和专业软件用户的资源集合与启动工具。",
     collectionCount: "集合 {count} 个",
-    pluginCount: "插件 {count} 个"
+    pluginCount: "插件 {count} 个",
+    appUpdate: "应用更新",
+    appUpdateDesc: "通过发布源检查新版本，下载完成后可立即重启进入新版本。",
+    checkUpdate: "检查更新",
+    checkingUpdate: "检查中",
+    updateAvailable: "发现可用更新。",
+    noUpdateAvailable: "当前已是最新版本。",
+    updateToVersion: "可更新到 {version}",
+    updatePreparing: "准备下载更新...",
+    downloadAndInstall: "下载并安装",
+    installingUpdate: "安装中",
+    updateInstalled: "更新已安装，重启后生效。",
+    restartNow: "立即重启",
+    unknownSize: "未知大小"
   },
   // CreateEntityModal
   modal: {
