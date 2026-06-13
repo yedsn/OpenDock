@@ -1,4 +1,4 @@
-﻿# OpenDock 插件开发说明
+# OpenDock 插件开发说明
 
 ## 目录边界
 

@@ -1,6 +1,6 @@
 [package]
 name = "opendock"
-version = "0.1.9"
+version = "0.1.10"
 description = "OpenDock desktop resource launcher"
 authors = ["OpenDock"]
 edition = "2021"

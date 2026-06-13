@@ -1,6 +1,6 @@
 {
     "name": "opendock",
-    "version": "0.1.9",
+    "version": "0.1.10",
     "private": true,
     "type": "module",
     "scripts": {
@@ -10,7 +10,10 @@
         "tauri": "tauri",
         "tauri:dev": "tauri dev",
         "tauri:build": "tauri build",
-        "test": "vitest run"
+        "test": "vitest run",
+        "docs:dev": "vitepress dev docs",
+        "docs:build": "vitepress build docs",
+        "docs:preview": "vitepress preview docs"
     },
     "dependencies": {
         "@tauri-apps/api": "^2.8.0",
@@ -25,6 +28,7 @@
         "@vitejs/plugin-vue": "^5.2.1",
         "typescript": "^5.7.2",
         "vite": "^6.0.3",
+        "vitepress": "^1.6.4",
         "vitest": "^4.1.8",
         "vue-tsc": "^2.1.10"
     }
