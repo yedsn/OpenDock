@@ -515,17 +515,18 @@ describe("OpenDock store - open tool configuration", () => {
     store.createItem(collection.id, "Batch URL B", "URL", "https://b.example.com");
 
     await store.openCollection(collection);
-    // Pre-start browser then batch-open all URLs via open_application
+    // Pre-start browser then batch-open all URLs via open_urls_in_browser
     const prestartCalls = invokeMock.mock.calls.filter(([cmd]) => cmd === "prestart_browser");
     expect(prestartCalls).toHaveLength(1);
     expect(prestartCalls[0]).toEqual(["prestart_browser", {
       browserPath: "C:/Browser/browser.exe"
     }]);
-    const batchCalls = invokeMock.mock.calls.filter(([cmd]) => cmd === "open_application");
+    const batchCalls = invokeMock.mock.calls.filter(([cmd]) => cmd === "open_urls_in_browser");
     expect(batchCalls).toHaveLength(1);
-    expect(batchCalls[0]).toEqual(["open_application", {
-      path: "C:/Browser/browser.exe",
-      args: ["--new-window", "https://a.example.com", "https://b.example.com"]
+    expect(batchCalls[0]).toEqual(["open_urls_in_browser", {
+      browserPath: "C:/Browser/browser.exe",
+      urls: ["https://a.example.com", "https://b.example.com"],
+      newWindow: true
     }]);
   });
 
@@ -729,8 +730,9 @@ describe("OpenDock store - search suggestions", () => {
       browserPath: "C:/Browser/browser.exe"
     });
     expect(invokeMock).toHaveBeenCalledWith("open_application", {
-      path: "C:/Browser/browser.exe",
-      args: ["--new-window", "https://example.test/a", "https://example.test/b"]
+      browserPath: "C:/Browser/browser.exe",
+      urls: ["https://example.test/a", "https://example.test/b"],
+      newWindow: true
     });
 
     store.state.search = "cslj";

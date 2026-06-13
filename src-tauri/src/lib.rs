@@ -121,8 +121,13 @@ fn open_url_with_system(url: &str, new_window: bool) -> Result<(), String> {
         cmd.args(["/C", "start", "", url]);
         cmd
     } else if cfg!(target_os = "macos") {
+        if new_window {
+            if let Some(app_name) = macos_default_browser_name() {
+                return macos_open_url_new_window(&app_name, url).map(|_| ());
+            }
+        }
         let mut cmd = Command::new("open");
-        if new_window { cmd.args(["-n", url]); } else { cmd.arg(url); }
+        cmd.arg(url);
         cmd
     } else {
         let mut cmd = Command::new("xdg-open");
@@ -269,12 +274,194 @@ fn is_macos_app_bundle(path: &str) -> bool {
     cfg!(target_os = "macos") && path.to_lowercase().ends_with(".app")
 }
 
+fn macos_browser_app_name_from_bundle_id(bundle_id: &str) -> Option<String> {
+    let output = Command::new("mdfind")
+        .arg(format!("kMDItemCFBundleIdentifier == '{}'", bundle_id))
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::null())
+        .output()
+        .ok()?;
+    let output = String::from_utf8_lossy(&output.stdout);
+    let path = output.lines().next()?.trim();
+    if path.is_empty() { return None; }
+    std::path::PathBuf::from(path)
+        .file_stem()
+        .map(|n| n.to_string_lossy().to_string())
+}
+
+fn macos_default_browser_name() -> Option<String> {
+    let output = Command::new("plutil")
+        .args([
+            "-convert",
+            "json",
+            "-o",
+            "-",
+            &format!("{}/Library/Preferences/com.apple.LaunchServices/com.apple.launchservices.secure.plist", env::var("HOME").ok()?),
+        ])
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::null())
+        .output()
+        .ok()?;
+    let json = String::from_utf8_lossy(&output.stdout);
+    let handler = json
+        .split("{")
+        .find(|entry| entry.contains("\"LSHandlerURLScheme\"") && entry.contains("\"https\""))?;
+    let role_start = handler.find("\"LSHandlerRoleAll\"")?;
+    let tail = &handler[role_start + "\"LSHandlerRoleAll\"".len()..];
+    let tail = tail[tail.find(':')? + 1..].trim_start().strip_prefix('"')?;
+    let bundle_id = tail.split('"').next()?.trim();
+    if bundle_id.is_empty() || bundle_id == "-" { return None; }
+    macos_browser_app_name_from_bundle_id(bundle_id)
+}
+
+fn macos_browser_app_name_from_path(path: &str) -> String {
+    std::path::PathBuf::from(path)
+        .file_stem()
+        .map(|n| n.to_string_lossy().to_string())
+        .unwrap_or_else(|| "Safari".to_string())
+}
+
+fn macos_app_executable_path(path: &str) -> Option<String> {
+    let app_name = macos_browser_app_name_from_path(path);
+    let executable = std::path::PathBuf::from(path)
+        .join("Contents")
+        .join("MacOS")
+        .join(app_name);
+    if executable.exists() { Some(executable.to_string_lossy().to_string()) } else { None }
+}
+
+fn macos_is_safari(app_name: &str) -> bool {
+    app_name.eq_ignore_ascii_case("Safari") || app_name.eq_ignore_ascii_case("WebKit")
+}
+
+fn macos_escape_applescript(value: &str) -> String {
+    value.replace('\\', "\\\\").replace('"', "\\\"")
+}
+
+fn macos_open_urls_new_window(app_name: &str, urls: &[String]) -> Result<usize, String> {
+    if urls.is_empty() { return Ok(0); }
+    // On macOS, Chromium browsers (Chrome, Edge, Brave, etc.) are single-instance:
+    // `open -na` and `open -a ... --args --new-window` both open a new tab in the
+    // existing window rather than a new window. The only reliable way to open a URL
+    // in a genuinely new browser window is via AppleScript's `make new window`.
+    let escaped_urls: Vec<String> = urls.iter().map(|url| macos_escape_applescript(url)).collect();
+    let script = if macos_is_safari(app_name) {
+        let mut lines = vec![
+            format!("tell application \"{}\"", macos_escape_applescript(app_name)),
+            "activate".to_string(),
+            "make new document".to_string(),
+            format!("set URL of document 1 to \"{}\"", escaped_urls[0]),
+        ];
+        for url in escaped_urls.iter().skip(1) {
+            lines.push(format!("make new tab at end of tabs of window 1 with properties {{URL:\"{}\"}}", url));
+        }
+        lines.push("end tell".to_string());
+        lines.join("\n")
+    } else {
+        let mut lines = vec![
+            format!("tell application \"{}\"", macos_escape_applescript(app_name)),
+            "activate".to_string(),
+            "make new window".to_string(),
+            format!("set URL of active tab of front window to \"{}\"", escaped_urls[0]),
+        ];
+        for url in escaped_urls.iter().skip(1) {
+            lines.push(format!("tell front window to make new tab with properties {{URL:\"{}\"}}", url));
+        }
+        lines.push("end tell".to_string());
+        lines.join("\n")
+    };
+    Command::new("osascript")
+        .args(["-e", &script])
+        .output()
+        .map_err(|e| format!("osascript failed: {e}"))
+        .and_then(|output| {
+            if output.status.success() {
+                Ok(urls.len())
+            } else {
+                let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+                Err(if stderr.is_empty() { "osascript failed".to_string() } else { stderr })
+            }
+        })
+}
+
+fn macos_open_urls_new_window_with_binary(app_path: &str, urls: &[String]) -> Result<usize, String> {
+    if urls.is_empty() { return Ok(0); }
+    let executable = macos_app_executable_path(app_path).ok_or_else(|| format!("Cannot find app executable for {app_path}"))?;
+    let mut cmd = Command::new(executable);
+    cmd.arg("--new-window");
+    cmd.args(urls);
+    cmd.spawn()
+        .map(|_| urls.len())
+        .map_err(|e| format!("browser executable failed: {e}"))
+}
+
+fn macos_open_url_new_window(app_name: &str, url: &str) -> Result<usize, String> {
+    macos_open_urls_new_window(app_name, &[url.to_string()])
+}
+
+fn macos_app_arg_takes_value(arg: &str) -> bool {
+    matches!(
+        arg,
+        "--folder-uri"
+            | "--file-uri"
+            | "--goto"
+            | "--open-url"
+            | "--profile-directory"
+            | "--user-data-dir"
+            | "--app"
+    )
+}
+
+fn split_macos_open_args(args: &[String]) -> (Vec<String>, Vec<String>) {
+    let mut targets = Vec::new();
+    let mut app_args = Vec::new();
+    let mut next_is_app_arg_value = false;
+
+    for arg in args {
+        if next_is_app_arg_value {
+            app_args.push(arg.clone());
+            next_is_app_arg_value = false;
+            continue;
+        }
+
+        if arg.starts_with('-') {
+            app_args.push(arg.clone());
+            next_is_app_arg_value = macos_app_arg_takes_value(arg);
+        } else {
+            targets.push(arg.clone());
+        }
+    }
+
+    (targets, app_args)
+}
+
+fn is_macos_browser_app_name(app_name: &str) -> bool {
+    let name = app_name.to_lowercase();
+    name.contains("chrome")
+        || name.contains("edge")
+        || name.contains("chromium")
+        || name.contains("brave")
+        || name.contains("vivaldi")
+        || name.contains("opera")
+        || name == "safari"
+}
+
 fn open_macos_app_bundle(path: &str, args: &[String]) -> Result<(), String> {
+    let app_name = macos_browser_app_name_from_path(path);
+    let (targets, app_args) = split_macos_open_args(args);
+    let wants_new_window = app_args.iter().any(|arg| arg == "--new-window" || arg == "-new-window");
+    if wants_new_window && is_macos_browser_app_name(&app_name) && targets.iter().any(|target| target.starts_with("http://") || target.starts_with("https://")) {
+        let urls: Vec<String> = targets.into_iter().filter(|target| target.starts_with("http://") || target.starts_with("https://")).collect();
+        return macos_open_urls_new_window(&app_name, &urls).map(|_| ());
+    }
+
     let mut cmd = Command::new("open");
     cmd.args(["-a", path]);
-    if !args.is_empty() {
+
+    cmd.args(targets);
+    if !app_args.is_empty() {
         cmd.arg("--args");
-        cmd.args(args);
+        cmd.args(app_args);
     }
     cmd.spawn().map(|_| ()).map_err(|e| e.to_string())
 }
@@ -469,10 +656,20 @@ fn prestart_browser(browser_path: String) -> OpenActionResult {
 fn open_url_in_browser(browser_path: String, url: String, new_window: bool) -> OpenActionResult {
     let resolved_path = resolve_launch_path(&browser_path);
     if is_macos_app_bundle(&resolved_path) {
-        let mut args = Vec::new();
-        if new_window { args.push("--new-window".into()); }
-        args.push(url.clone());
-        return match open_macos_app_bundle(&resolved_path, &args) {
+        if new_window {
+            let app_name = macos_browser_app_name_from_path(&resolved_path);
+            return match macos_open_urls_new_window_with_binary(&resolved_path, &[url.clone()]) {
+                Ok(_) => success(format!("Opened URL in new macOS browser window via executable: {app_name} - {url}")),
+                Err(binary_error) => match macos_open_url_new_window(&app_name, &url) {
+                    Ok(_) => success(format!("Opened URL in new macOS browser window via AppleScript fallback: {app_name} - {url}")),
+                    Err(script_error) => failure(format!("Failed to open URL in new macOS browser window: executable={binary_error}; applescript={script_error}")),
+                },
+            };
+        }
+        let mut cmd = Command::new("open");
+        cmd.args(["-a", &resolved_path]);
+        cmd.arg(&url);
+        return match cmd.spawn() {
             Ok(_) => success(format!("Opened URL in browser: {url}")),
             Err(e) => failure(format!("Failed to open URL in browser: {e}")),
         };
@@ -506,6 +703,45 @@ fn open_url_in_browser(browser_path: String, url: String, new_window: bool) -> O
     }
 }
 
+#[tauri::command]
+fn open_urls_in_browser(browser_path: String, urls: Vec<String>, new_window: bool) -> OpenActionResult {
+    if urls.is_empty() {
+        return success("No URLs to open");
+    }
+
+    let resolved_path = resolve_launch_path(&browser_path);
+    if is_macos_app_bundle(&resolved_path) {
+        let app_name = macos_browser_app_name_from_path(&resolved_path);
+        if new_window && is_macos_browser_app_name(&app_name) {
+            return match macos_open_urls_new_window_with_binary(&resolved_path, &urls) {
+                Ok(count) => success(format!("Opened {count} URLs in new macOS browser window via executable: {app_name}")),
+                Err(binary_error) => match macos_open_urls_new_window(&app_name, &urls) {
+                    Ok(count) => success(format!("Opened {count} URLs in new macOS browser window via AppleScript fallback: {app_name}")),
+                    Err(script_error) => failure(format!("Failed to open URLs in new macOS browser window: executable={binary_error}; applescript={script_error}")),
+                },
+            };
+        }
+
+        let mut cmd = Command::new("open");
+        cmd.args(["-a", &resolved_path]);
+        cmd.args(&urls);
+        return match cmd.spawn() {
+            Ok(_) => success(format!("Opened {} URLs in browser: {app_name}", urls.len())),
+            Err(e) => failure(format!("Failed to open URLs in browser: {e}")),
+        };
+    }
+
+    let mut cmd = Command::new(&resolved_path);
+    if new_window {
+        cmd.arg("--new-window");
+    }
+    cmd.args(&urls);
+    match cmd.spawn() {
+        Ok(_) => success(format!("Opened {} URLs in browser: {resolved_path}", urls.len())),
+        Err(e) => failure(format!("Failed to open URLs in browser: {e}")),
+    }
+}
+
 
 #[tauri::command]
 fn open_application(path: String, args: Vec<String>) -> OpenActionResult {
@@ -518,6 +754,19 @@ fn open_application(path: String, args: Vec<String>) -> OpenActionResult {
     }
 
     if is_macos_app_bundle(&resolved_path) {
+        let app_name = macos_browser_app_name_from_path(&resolved_path);
+        let (targets, app_args) = split_macos_open_args(&args);
+        let wants_new_window = app_args.iter().any(|arg| arg == "--new-window" || arg == "-new-window");
+        let urls: Vec<String> = targets.into_iter().filter(|target| target.starts_with("http://") || target.starts_with("https://")).collect();
+        if wants_new_window && is_macos_browser_app_name(&app_name) && !urls.is_empty() {
+            return match macos_open_urls_new_window_with_binary(&resolved_path, &urls) {
+                Ok(count) => success(format!("Opened {count} URLs in new macOS browser window via executable: {app_name}")),
+                Err(binary_error) => match macos_open_urls_new_window(&app_name, &urls) {
+                    Ok(count) => success(format!("Opened {count} URLs in new macOS browser window via AppleScript fallback: {app_name}")),
+                    Err(script_error) => failure(format!("Failed to open URLs in new macOS browser window: executable={binary_error}; applescript={script_error}")),
+                },
+            };
+        }
         return match open_macos_app_bundle(&resolved_path, &args) {
             Ok(_) => success(format!("Started application: {resolved_path}")),
             Err(e) => failure(format!("Failed to start application: {e}")),
@@ -1409,7 +1658,7 @@ pub fn run() {
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
-            open_path, open_url, open_file, open_application, open_url_in_browser, prestart_browser, scan_open_tools, run_command,
+            open_path, open_url, open_file, open_application, open_url_in_browser, open_urls_in_browser, prestart_browser, scan_open_tools, run_command,
             test_webdav_connection, sync_webdav_now, webdav_set_credential, webdav_get_credential, set_global_hotkey, set_app_icon_style, write_text_file,
             get_app_version, check_app_update, download_and_install_update, restart_app,
             db_init, db_execute, db_execute_params, db_get_value, db_set_value, db_list_table, db_bulk_insert,
@@ -1418,4 +1667,3 @@ pub fn run() {
         .run(tauri::generate_context!())
         .expect("error while running OpenDock");
 }
-
