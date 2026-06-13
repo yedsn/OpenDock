@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, ref, watch } from "vue";
-import { Camera, Download, Eraser, RefreshCw, RotateCcw, ShieldAlert, Trash2, Upload } from "lucide-vue-next";
+import { Camera, Download, Eraser, LoaderCircle, RefreshCw, RotateCcw, ShieldAlert, Trash2, Upload } from "lucide-vue-next";
 import { invoke } from "@tauri-apps/api/core";
 import { save } from "@tauri-apps/plugin-dialog";
 import { useOpenDockStore } from "../../store";
@@ -22,6 +22,15 @@ interface Feedback {
 
 const importFeedback = ref<Feedback | null>(null);
 const exportFeedback = ref<Feedback | null>(null);
+const snapshotFeedback = ref<Feedback | null>(null);
+const resetFeedback = ref<Feedback | null>(null);
+
+// Progress/busy state per operation section
+const exportBusy = ref(false);
+const importBusy = ref(false);
+const snapshotBusy = ref(false);
+const webdavBusy = ref(false);
+const resetBusy = ref(false);
 
 const data = computed(() => store.state.data);
 const webdav = computed(() => data.value.settings.webdavSync);
@@ -63,24 +72,32 @@ function formatBytes(bytes: number): string {
 }
 
 async function downloadExport() {
-  store.exportData();
-  const content = store.state.selectedExport;
-  const fileName = suggestedFileName();
+  exportBusy.value = true;
+  exportFeedback.value = { kind: "info", text: "正在导出数据..." };
+  try {
+    store.exportData();
+    const content = store.state.selectedExport;
+    const fileName = suggestedFileName();
 
-  if (isTauri) {
-    try {
-      const filePath = await save({
-        defaultPath: fileName,
-        filters: [{ name: "JSON", extensions: ["json"] }],
-      });
-      if (!filePath) return;
-      const size = await invoke<number>("write_text_file", { path: filePath, contents: content });
-      exportFeedback.value = { kind: "success", text: `已保存到 ${filePath} (${formatBytes(size)})` };
-    } catch {
+    if (isTauri) {
+      try {
+        const filePath = await save({
+          defaultPath: fileName,
+          filters: [{ name: "JSON", extensions: ["json"] }],
+        });
+        if (!filePath) { exportFeedback.value = null; return; }
+        const size = await invoke<number>("write_text_file", { path: filePath, contents: content });
+        exportFeedback.value = { kind: "success", text: `已保存到 ${filePath} (${formatBytes(size)})` };
+      } catch {
+        browserDownload(fileName, content);
+      }
+    } else {
       browserDownload(fileName, content);
     }
-  } else {
-    browserDownload(fileName, content);
+  } catch (error) {
+    exportFeedback.value = { kind: "error", text: `导出失败：${describeError(error)}` };
+  } finally {
+    exportBusy.value = false;
   }
 }
 
@@ -100,9 +117,11 @@ async function onImport(event: Event) {
   const input = event.target as HTMLInputElement;
   const file = input.files?.[0];
   if (!file) return;
+  importBusy.value = true;
   importFeedback.value = { kind: "info", text: `正在读取 ${file.name} ...` };
   const reader = new FileReader();
   reader.onload = async () => {
+    importFeedback.value = { kind: "info", text: `正在解析 ${file.name} ...` };
     try {
       if (!(await confirmDelete(`导入将覆盖当前所有数据，系统会先自动拍摄一个快照以便回滚。确定要导入 ${file.name} 吗？`))) {
         importFeedback.value = { kind: "info", text: "已取消导入。" };
@@ -121,10 +140,12 @@ async function onImport(event: Event) {
       store.log(`导入失败: ${message}`);
       importFeedback.value = { kind: "error", text: `导入失败：${message}` };
     } finally {
+      importBusy.value = false;
       input.value = "";
     }
   };
   reader.onerror = () => {
+    importBusy.value = false;
     importFeedback.value = { kind: "error", text: `读取文件失败：${describeError(reader.error)}` };
     input.value = "";
   };
@@ -143,11 +164,19 @@ async function confirmClearRecent() {
 }
 
 async function confirmReset() {
-  if (!(await confirmDelete("重置后将恢复到内置示例数据，当前的工作区、集合、资源都会被清除。建议先导出备份。是否继续？"))) return;
-  if (!(await confirmDelete("再次确认：此操作不可撤销。"))) return;
-  await store.resetData();
-  exportFeedback.value = null;
-  importFeedback.value = { kind: "success", text: "已重置为内置示例数据。" };
+  resetBusy.value = true;
+  resetFeedback.value = null;
+  if (!(await confirmDelete("重置后将恢复到内置示例数据，当前的工作区、集合、资源都会被清除。建议先导出备份。是否继续？"))) { resetBusy.value = false; return; }
+  if (!(await confirmDelete("再次确认：此操作不可撤销。"))) { resetBusy.value = false; return; }
+  resetFeedback.value = { kind: "info", text: "正在重置数据..." };
+  try {
+    await store.resetData();
+    resetFeedback.value = { kind: "success", text: "已重置为内置示例数据。" };
+  } catch (error) {
+    resetFeedback.value = { kind: "error", text: `重置失败：${describeError(error)}` };
+  } finally {
+    resetBusy.value = false;
+  }
 }
 
 function jumpToWebdav() {
@@ -156,6 +185,24 @@ function jumpToWebdav() {
     return;
   }
   store.state.settingsCategory = `plugin:${webdavPlugin.value.id}`;
+}
+
+async function onTestWebdav() {
+  webdavBusy.value = true;
+  try {
+    await store.testWebdav();
+  } finally {
+    webdavBusy.value = false;
+  }
+}
+
+async function onSyncWebdavNow() {
+  webdavBusy.value = true;
+  try {
+    await store.syncWebdavNow();
+  } finally {
+    webdavBusy.value = false;
+  }
 }
 
 function describeError(error: unknown): string {
@@ -177,8 +224,6 @@ function formatStamp(date: Date): string {
   );
 }
 
-const snapshotBusy = ref(false);
-const snapshotFeedback = ref<Feedback | null>(null);
 
 async function takeManualSnapshot() {
   snapshotBusy.value = true;
@@ -265,8 +310,12 @@ function formatSnapshotTime(iso: string): string {
     <div class="settings-card-title">导出备份</div>
     <div class="settings-card-description">导出 JSON 用于本地归档或迁移。WebDAV 凭据明文不会写入，仅保留引用占位。</div>
     <div class="data-actions">
-      <button class="settings-action-button" type="button" @click="downloadExport"><Download />下载 JSON</button>
+      <button class="settings-action-button" type="button" :disabled="exportBusy" @click="downloadExport">
+        <template v-if="exportBusy"><LoaderCircle class="spin-icon" />导出中...</template>
+        <template v-else><Download />下载 JSON</template>
+      </button>
     </div>
+    <div v-if="exportBusy" class="progress-bar"><div class="progress-bar-indeterminate"></div></div>
     <p v-if="exportFeedback" class="data-feedback" :class="exportFeedback.kind">{{ exportFeedback.text }}</p>
   </section>
 
@@ -276,11 +325,13 @@ function formatSnapshotTime(iso: string): string {
       仅接受相同 Schema（v{{ schemaVersion }}）的导出文件。导入将覆盖当前工作区与全部资源，请先备份。
     </div>
     <div class="data-actions">
-      <label class="settings-action-button file-trigger">
-        <Upload />选择 JSON 文件
-        <input type="file" accept="application/json,.json" @change="onImport" />
+      <label class="settings-action-button file-trigger" :class="{ 'is-busy': importBusy }">
+        <template v-if="importBusy"><LoaderCircle class="spin-icon" />导入中...</template>
+        <template v-else><Upload />选择 JSON 文件</template>
+        <input type="file" accept="application/json,.json" :disabled="importBusy" @change="onImport" />
       </label>
     </div>
+    <div v-if="importBusy" class="progress-bar"><div class="progress-bar-indeterminate"></div></div>
     <p v-if="importFeedback" class="data-feedback" :class="importFeedback.kind">{{ importFeedback.text }}</p>
   </section>
 
@@ -299,16 +350,26 @@ function formatSnapshotTime(iso: string): string {
       <span>范围：{{ webdav.syncScope || "—" }}</span>
     </div>
     <div class="data-actions" v-if="webdavInstalled">
-      <button class="settings-action-button" type="button" @click="store.testWebdav()">测试连接</button>
-      <button class="settings-action-button" type="button" @click="store.syncWebdavNow()">立即同步</button>
+      <button class="settings-action-button" type="button" :disabled="webdavBusy" @click="onTestWebdav">
+        <template v-if="webdavBusy"><LoaderCircle class="spin-icon" />测试中...</template>
+        <template v-else>测试连接</template>
+      </button>
+      <button class="settings-action-button" type="button" :disabled="webdavBusy" @click="onSyncWebdavNow">
+        <template v-if="webdavBusy"><LoaderCircle class="spin-icon" />同步中...</template>
+        <template v-else>立即同步</template>
+      </button>
     </div>
+    <div v-if="webdavBusy" class="progress-bar"><div class="progress-bar-indeterminate"></div></div>
   </section>
 
   <section class="settings-card">
     <div class="settings-card-title">
       <span>数据快照</span>
       <div class="snapshot-title-actions">
-        <button class="settings-action-button" type="button" :disabled="snapshotBusy" @click="takeManualSnapshot"><Camera />立即拍摄快照</button>
+        <button class="settings-action-button" type="button" :disabled="snapshotBusy" @click="takeManualSnapshot">
+          <template v-if="snapshotBusy"><LoaderCircle class="spin-icon" />拍摄中...</template>
+          <template v-else><Camera />立即拍摄快照</template>
+        </button>
         <button class="settings-action-button" type="button" :disabled="snapshotBusy" @click="refreshSnapshotList"><RefreshCw />刷新</button>
       </div>
     </div>
@@ -331,6 +392,7 @@ function formatSnapshotTime(iso: string): string {
         </div>
       </label>
     </div>
+    <div v-if="snapshotBusy" class="progress-bar"><div class="progress-bar-indeterminate"></div></div>
     <p v-if="snapshotFeedback" class="data-feedback" :class="snapshotFeedback.kind">{{ snapshotFeedback.text }}</p>
     <div v-if="!store.state.snapshots.length" class="snapshot-empty">尚无快照。点击「立即拍摄快照」开始备份。</div>
     <ul v-else class="snapshot-list">
@@ -357,10 +419,13 @@ function formatSnapshotTime(iso: string): string {
       <button class="settings-action-button" type="button" @click="confirmClearRecent">
         <Eraser />清空最近
       </button>
-      <button class="settings-action-button data-danger" type="button" @click="confirmReset">
-        <RotateCcw />重置数据
+      <button class="settings-action-button data-danger" type="button" :disabled="resetBusy" @click="confirmReset">
+        <template v-if="resetBusy"><LoaderCircle class="spin-icon" />重置中...</template>
+        <template v-else><RotateCcw />重置数据</template>
       </button>
     </div>
+    <div v-if="resetBusy" class="progress-bar"><div class="progress-bar-indeterminate"></div></div>
+    <p v-if="resetFeedback" class="data-feedback" :class="resetFeedback.kind">{{ resetFeedback.text }}</p>
   </section>
 </template>
 
@@ -518,4 +583,47 @@ function formatSnapshotTime(iso: string): string {
 .snapshot-interval-input { display: flex; align-items: center; gap: 10px; }
 .snapshot-interval-input input { flex: 0 0 96px; height: 28px; padding: 0 8px; color: var(--text); background: var(--bg); border: 1px solid var(--line); border-radius: var(--radius); font-size: 12px; }
 .snapshot-interval-input small { color: var(--muted); font-size: 11px; }
+
+/* Progress bar - indeterminate animated stripe */
+.progress-bar {
+  position: relative;
+  width: 100%;
+  height: 3px;
+  overflow: hidden;
+  border-radius: 2px;
+  background: var(--bg-3);
+}
+.progress-bar-indeterminate {
+  position: absolute;
+  inset: 0;
+  width: 300%;
+  background: repeating-linear-gradient(
+    -45deg,
+    transparent,
+    transparent 6px,
+    color-mix(in srgb, var(--accent) 50%, transparent) 6px,
+    color-mix(in srgb, var(--accent) 50%, transparent) 12px
+  );
+  animation: progress-stripe 0.8s linear infinite;
+  border-radius: 2px;
+}
+@keyframes progress-stripe {
+  from { transform: translateX(-66.666%); }
+  to   { transform: translateX(0%); }
+}
+
+/* Spinning icon */
+.spin-icon {
+  animation: spin 0.8s linear infinite;
+}
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
+}
+
+/* Busy file trigger */
+.file-trigger.is-busy {
+  pointer-events: none;
+  opacity: 0.7;
+}
 </style>

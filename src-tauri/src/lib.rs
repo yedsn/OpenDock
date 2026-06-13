@@ -701,16 +701,29 @@ fn db_bulk_insert(state: tauri::State<AppState>, table: String, rows: Vec<String
     let db = state.db.lock().map_err(|e| e.to_string())?;
     let safe_tables = ["workspaces", "scenes", "collections", "items", "tools", "plugins", "plugin_store", "activity"];
     if !safe_tables.contains(&table.as_str()) { return Err(format!("Invalid table: {table}")); }
-    let sql = format!("INSERT OR REPLACE INTO {table} (id, value) VALUES (?1, ?2)");
     let mut count = 0u64;
-    // Rows are JSON strings containing the full entity. Parse to get the id field.
     for row_json in &rows {
         let obj: serde_json::Value = serde_json::from_str(row_json).map_err(|e| e.to_string())?;
         let id = obj
             .get("id").and_then(|v| v.as_str())
             .or_else(|| obj.get("name").and_then(|v| v.as_str()))
             .ok_or("Missing id/name field")?;
-        db.execute(&sql, rusqlite::params![id, row_json]).map_err(|e| e.to_string())?;
+        if table == "activity" {
+            // activity table has a NOT NULL created_at column that must be populated.
+            let created_at = obj
+                .get("createdAt").and_then(|v| v.as_str())
+                .or_else(|| obj.get("created_at").and_then(|v| v.as_str()))
+                .unwrap_or("");
+            db.execute(
+                "INSERT OR REPLACE INTO activity (id, value, created_at) VALUES (?1, ?2, ?3)",
+                rusqlite::params![id, row_json, created_at],
+            ).map_err(|e| e.to_string())?;
+        } else {
+            db.execute(
+                &format!("INSERT OR REPLACE INTO {table} (id, value) VALUES (?1, ?2)"),
+                rusqlite::params![id, row_json],
+            ).map_err(|e| e.to_string())?;
+        }
         count += 1;
     }
     Ok(count)
