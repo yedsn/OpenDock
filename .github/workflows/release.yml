@@ -138,4 +138,4 @@ jobs:
 
       - name: Sync GitHub release assets to Gitee
         if: ${{ env.GITEE_ACCESS_TOKEN != '' }}
-        run: python3 scripts/release/sync_gitee_release.py --tag "${{ github.ref_name }}"
+        run: python3 scripts/release/sync_gitee_release.py --tag "${{ github.ref_name }}" --target-commitish master

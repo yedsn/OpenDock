@@ -180,7 +180,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--github-repo", default=DEFAULT_GITHUB_REPO)
     parser.add_argument("--gitee-owner", default=DEFAULT_GITEE_OWNER)
     parser.add_argument("--gitee-repo", default=DEFAULT_GITEE_REPO)
-    parser.add_argument("--target-commitish", default="main")
+    parser.add_argument("--target-commitish", default="master")
     parser.add_argument("--proxy", help="Proxy server for downloading from GitHub, for example 127.0.0.1:7890.")
     return parser
 
