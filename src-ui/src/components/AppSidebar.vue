@@ -42,7 +42,7 @@ const quickViewCounts = computed(() => {
 type QuickView = typeof quickViews.value[number];
 
 function openQuickViewTab(view: QuickView) {
-  store.openTab({ id: `quickview-${view.id}`, kind: "quickview", title: view.label, quickViewId: view.id });
+  store.openTab({ id: `quickview-${view.id}`, kind: "quickview", title: view.id, quickViewId: view.id });
 }
 
 function editScene(id: string) {
@@ -180,7 +180,7 @@ onUnmounted(() => {
     <div class="tree-section">
       <div class="tree-title">{{ $t("sidebar.quickViews") }}</div>
       <div class="tree-list">
-        <button v-for="view in quickViews" :key="view.id" v-memo="[view.id, quickViewCounts[view.id], store.state.activeTabId === `quickview-${view.id}`]" class="tree-row" :class="{ active: store.state.activeTabId === `quickview-${view.id}` }" @click="openQuickViewTab(view)">
+        <button v-for="view in quickViews" :key="view.id" class="tree-row" :class="{ active: store.state.activeTabId === `quickview-${view.id}` }" @click="openQuickViewTab(view)">
           <component :is="view.icon" />
           <span><span>{{ view.label }}</span><small>{{ view.hint }}</small></span>
           <span class="tree-count">{{ quickViewCounts[view.id] }}</span>
@@ -195,7 +195,6 @@ onUnmounted(() => {
       </div>
       <div class="tree-list">
         <button v-for="scene in store.activeScenes.value" :key="scene.id"
-          v-memo="[scene.id, scene.name, scene.description, scene.type, store.state.activeTabId === 'scene-' + scene.id]"
           class="scene-button"
           :class="{ active: store.state.activeTabId === 'scene-' + scene.id }"
           @click="store.openTab({ id: 'scene-' + scene.id, kind: 'scene', title: scene.name, sceneId: scene.id })">
@@ -214,12 +213,12 @@ onUnmounted(() => {
         <button class="footer-workspace-button" @click="store.state.workspaceMenuOpen = !store.state.workspaceMenuOpen">
           <Database /><span class="vault-title">{{ store.activeWorkspace().name }}</span><ChevronsUpDown />
         </button>
-        <button class="footer-settings-button" :class="{ active: store.state.mainView === 'settings' }" @click="store.openTab({ id: 'settings', kind: 'settings', title: 'Settings' })"><Settings /></button>
+        <button class="footer-settings-button" :class="{ active: store.state.mainView === 'settings' }" @click="store.openTab({ id: 'settings', kind: 'settings', title: t('settings.title') })"><Settings /></button>
       </div>
     </div>
 
     <div v-if="store.state.workspaceMenuOpen" class="workspace-dropdown">
-      <div class="workspace-menu-title">Workspaces</div>
+      <div class="workspace-menu-title">{{ $t("sidebar.workspaces") }}</div>
       <button v-for="workspace in store.state.data.workspaces" :key="workspace.id"
         class="workspace-menu-item"
         :class="{ active: workspace.id === store.state.data.activeWorkspaceId }"
@@ -244,4 +243,5 @@ onUnmounted(() => {
 .workspace-item-actions { display: none; gap: 4px; }
 .workspace-menu-item:hover .workspace-item-actions { display: inline-flex; align-items: center; }
 </style>
+
 

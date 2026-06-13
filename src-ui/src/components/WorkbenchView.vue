@@ -19,7 +19,7 @@ import { confirmDelete } from "../dialog";
 import VirtualList from "./VirtualList.vue";
 
 const store = useOpenDockStore();
-const { t } = useI18n();
+const { t, typeLabel } = useI18n();
 
 const activeCollection = computed(() => store.activeCollection());
 const activeCollectionId = computed(() => store.state.data.activeCollectionId);
@@ -102,16 +102,16 @@ const collectionItemHeight = computed(() => 36 + cardPad.value * 2);
 const itemPad = computed(() => (isComfortable.value ? 12 : 9));
 const itemRowHeight = computed(() => 36 + itemPad.value * 2);
 
-const quickViewLabels: Record<string, string> = {
+const quickViewLabels = computed<Record<string, string>>(() => ({
   all: t("sidebar.allResources"),
   favorites: t("sidebar.favoriteCollections"),
   recent: t("sidebar.recentlyOpened"),
   unbound: t("sidebar.unboundCollections")
-};
+}));
 
 const activeTab = computed(() => store.state.tabs.find((tab) => tab.id === store.state.activeTabId));
 const isQuickViewTab = computed(() => activeTab.value?.kind === "quickview");
-const paneTitle = computed(() => isQuickViewTab.value ? quickViewLabels[store.state.quickView] : store.activeScene().name);
+const paneTitle = computed(() => isQuickViewTab.value ? quickViewLabels.value[store.state.quickView] : store.activeScene().name);
 const paneDescription = computed(() => {
   const count = collectionRows.value.length;
   if (isQuickViewTab.value) return `${t("workbench.allScenes")} \u00b7 ${count} ${t("settings.collections")}`;
@@ -201,7 +201,7 @@ function selectCollection(collection: { id: string; name: string; sceneId: strin
         <template #row="{ item }">
           <div
             class="collection-card"
-            v-memo="[item.id, item.favorite, activeCollectionId === item.id, collectionItemHeight]"
+            v-memo="[item.id, item.favorite, item.subtitle, activeCollectionId === item.id, collectionItemHeight]"
             :class="{ active: activeCollectionId === item.id }"
             role="button"
             tabindex="0"
@@ -233,7 +233,7 @@ function selectCollection(collection: { id: string; name: string; sceneId: strin
     <section class="resource-pane">
       <div class="resource-header">
         <div>
-          <div class="type-label">{{ activeCollection?.type || 'Collection' }}</div>
+          <div class="type-label">{{ activeCollection ? $typeLabel(activeCollection.type) : 'Collection' }}</div>
           <h2>{{ activeCollection?.name || t("workbench.unselectedCollection") }}</h2>
           <p>{{ activeCollection?.description || t("workbench.selectCollectionHint") }}</p>
         </div>

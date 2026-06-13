@@ -67,9 +67,24 @@ const tabMenu = reactive({
 const menuTab = computed(() => store.state.tabs.find((tab) => tab.id === tabMenu.tabId));
 const maximizeTitle = computed(() => isMaximized.value ? t("app.restore") : t("app.maximize"));
 
-function tabTitle(tab: { kind: string; title: string }) {
+function quickViewTitle(id: string): string {
+  const labels: Record<string, string> = {
+    all: t("sidebar.allResources"),
+    favorites: t("sidebar.favoriteCollections"),
+    recent: t("sidebar.recentlyOpened"),
+    unbound: t("sidebar.unboundCollections")
+  };
+  return labels[id] || id;
+}
+
+function tabTitle(tab: { kind: string; title: string; quickViewId?: string }) {
+  const title = tab.kind === "quickview" && tab.quickViewId
+    ? quickViewTitle(tab.quickViewId)
+    : tab.kind === "settings"
+      ? t("settings.title")
+      : tab.title;
   const max = 18;
-  return tab.title.length > max ? tab.title.slice(0, max) + '...' : tab.title;
+  return title.length > max ? title.slice(0, max) + "..." : title;
 }
 
 function closeTab(id: string, event: MouseEvent) {

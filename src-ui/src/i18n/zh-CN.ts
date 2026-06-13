@@ -9,8 +9,8 @@
     closeCurrent: "关闭当前",
     closeOthers: "关闭其他",
     closeAll: "关闭全部",
-    collections: "collections",
-    plugins: "plugins"
+    collections: "\u96c6\u5408",
+    plugins: "\u63d2\u4ef6"
   },
   // Sidebar
   sidebar: {
@@ -30,7 +30,7 @@
     editScene: "编辑场景",
     deleteScene: "删除场景",
     confirmDeleteScene: "确认删除场景「{name}」？此场景下的集合将变为无场景集合。",
-    workspaces: "Workspaces",
+    workspaces: "\u5de5\u4f5c\u533a",
     newWorkspace: "新建工作区",
     createResourceWorkspace: "创建资源工区",
     atLeastOneWorkspace: "至少保留一个工作区",
@@ -75,7 +75,7 @@
   },
   // Settings
   settings: {
-    title: "Settings",
+    title: "\u8bbe\u7f6e",
     general: "通用设置",
     generalDesc: "配置启动入口、最近记录和基础行为。",
     workspace: "工作区设置",
