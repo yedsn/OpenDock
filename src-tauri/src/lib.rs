@@ -265,6 +265,35 @@ fn resolve_launch_path(path: &str) -> String {
     resolve_wildcard_path(path).unwrap_or_else(|| expand_env_path(path))
 }
 
+fn is_macos_app_bundle(path: &str) -> bool {
+    cfg!(target_os = "macos") && path.to_lowercase().ends_with(".app")
+}
+
+fn open_macos_app_bundle(path: &str, args: &[String]) -> Result<(), String> {
+    let mut cmd = Command::new("open");
+    cmd.args(["-a", path]);
+    if !args.is_empty() {
+        cmd.arg("--args");
+        cmd.args(args);
+    }
+    cmd.spawn().map(|_| ()).map_err(|e| e.to_string())
+}
+
+fn run_macos_terminal_command(path: &str, args: &[String]) -> Option<Result<(), String>> {
+    if !cfg!(target_os = "macos") || !path.ends_with("Terminal.app") || args.is_empty() {
+        return None;
+    }
+
+    let command = args.join(" ");
+    let script = format!("tell application \"Terminal\" to do script {:?}", command);
+    let result = Command::new("osascript")
+        .args(["-e", &script, "-e", "tell application \"Terminal\" to activate"])
+        .spawn()
+        .map(|_| ())
+        .map_err(|e| e.to_string());
+    Some(result)
+}
+
 #[cfg(target_os = "windows")]
 fn to_wide_null(value: &str) -> Vec<u16> {
     value.encode_utf16().chain(std::iter::once(0)).collect()
@@ -379,10 +408,11 @@ fn open_file(path: String) -> OpenActionResult { open_path(path) }
 #[tauri::command]
 fn prestart_browser(browser_path: String) -> OpenActionResult {
     let resolved_path = resolve_launch_path(&browser_path);
-    let exe_name = std::path::PathBuf::from(&resolved_path)
-        .file_name()
-        .map(|n| n.to_string_lossy().to_lowercase())
+    let app_name = std::path::PathBuf::from(&resolved_path)
+        .file_stem()
+        .map(|n| n.to_string_lossy().to_string())
         .unwrap_or_default();
+    let exe_name = app_name.to_lowercase();
 
     let is_chromium = exe_name.contains("msedge")
         || exe_name.contains("chrome")
@@ -406,7 +436,7 @@ fn prestart_browser(browser_path: String) -> OpenActionResult {
             .unwrap_or(false)
     } else if cfg!(target_os = "macos") {
         Command::new("pgrep")
-            .args(["-x", &exe_name])
+            .args(["-x", &app_name])
             .output()
             .map(|o| o.status.success())
             .unwrap_or(false)
@@ -423,16 +453,14 @@ fn prestart_browser(browser_path: String) -> OpenActionResult {
     }
 
     // Pre-start browser with about:blank to consume the session restore.
-    let mut pre_cmd = Command::new(&resolved_path);
-    pre_cmd.arg("about:blank");
-    match pre_cmd.spawn() {
-        Ok(_) => {
-
-            // No sleep needed - caller opens URL immediately.
-            success("Browser pre-started")
-        }
-        Err(e) => failure(format!("Failed to pre-start browser: {e}")),
-    }
+    let result = if is_macos_app_bundle(&resolved_path) {
+        open_macos_app_bundle(&resolved_path, &["about:blank".into()])
+    } else {
+        let mut pre_cmd = Command::new(&resolved_path);
+        pre_cmd.arg("about:blank");
+        pre_cmd.spawn().map(|_| ()).map_err(|e| e.to_string())
+    };
+    match result { Ok(_) => success("Browser pre-started"), Err(e) => failure(format!("Failed to pre-start browser: {e}")) }
 }
 
 /// Open a URL in a specific browser. The caller should call prestart_browser
@@ -440,6 +468,16 @@ fn prestart_browser(browser_path: String) -> OpenActionResult {
 #[tauri::command]
 fn open_url_in_browser(browser_path: String, url: String, new_window: bool) -> OpenActionResult {
     let resolved_path = resolve_launch_path(&browser_path);
+    if is_macos_app_bundle(&resolved_path) {
+        let mut args = Vec::new();
+        if new_window { args.push("--new-window".into()); }
+        args.push(url.clone());
+        return match open_macos_app_bundle(&resolved_path, &args) {
+            Ok(_) => success(format!("Opened URL in browser: {url}")),
+            Err(e) => failure(format!("Failed to open URL in browser: {e}")),
+        };
+    }
+
     let mut cmd = Command::new(&resolved_path);
     if new_window {
         cmd.arg("--new-window");
@@ -472,6 +510,20 @@ fn open_url_in_browser(browser_path: String, url: String, new_window: bool) -> O
 #[tauri::command]
 fn open_application(path: String, args: Vec<String>) -> OpenActionResult {
     let resolved_path = resolve_launch_path(&path);
+    if let Some(result) = run_macos_terminal_command(&resolved_path, &args) {
+        return match result {
+            Ok(_) => success(format!("Started terminal command: {}", args.join(" "))),
+            Err(e) => failure(format!("Failed to start terminal command: {e}")),
+        };
+    }
+
+    if is_macos_app_bundle(&resolved_path) {
+        return match open_macos_app_bundle(&resolved_path, &args) {
+            Ok(_) => success(format!("Started application: {resolved_path}")),
+            Err(e) => failure(format!("Failed to start application: {e}")),
+        };
+    }
+
     let mut cmd = Command::new(&resolved_path); cmd.args(&args);
     match cmd.spawn() {
         Ok(_) => success(format!("Started application: {resolved_path}")),
@@ -499,6 +551,8 @@ fn scan_open_tools() -> Vec<DetectedTool> {
             "Cursor",
             "编辑器",
             vec![
+                "/Applications/Cursor.app",
+                "~/Applications/Cursor.app",
                 "%LOCALAPPDATA%\\Programs\\Cursor\\Cursor.exe",
                 "%ProgramFiles%\\Cursor\\Cursor.exe",
             ],
@@ -510,6 +564,8 @@ fn scan_open_tools() -> Vec<DetectedTool> {
             "VS Code",
             "编辑器",
             vec![
+                "/Applications/Visual Studio Code.app",
+                "~/Applications/Visual Studio Code.app",
                 "%LOCALAPPDATA%\\Programs\\Microsoft VS Code\\Code.exe",
                 "%ProgramFiles%\\Microsoft VS Code\\Code.exe",
                 "%ProgramFiles(x86)%\\Microsoft VS Code\\Code.exe",
@@ -522,6 +578,8 @@ fn scan_open_tools() -> Vec<DetectedTool> {
             "Chrome",
             "浏览器",
             vec![
+                "/Applications/Google Chrome.app",
+                "~/Applications/Google Chrome.app",
                 "%ProgramFiles%\\Google\\Chrome\\Application\\chrome.exe",
                 "%ProgramFiles(x86)%\\Google\\Chrome\\Application\\chrome.exe",
                 "%LOCALAPPDATA%\\Google\\Chrome\\Application\\chrome.exe",
@@ -534,6 +592,8 @@ fn scan_open_tools() -> Vec<DetectedTool> {
             "Edge",
             "浏览器",
             vec![
+                "/Applications/Microsoft Edge.app",
+                "~/Applications/Microsoft Edge.app",
                 "%ProgramFiles%\\Microsoft\\Edge\\Application\\msedge.exe",
                 "%ProgramFiles(x86)%\\Microsoft\\Edge\\Application\\msedge.exe",
                 "%LOCALAPPDATA%\\Microsoft\\Edge\\Application\\msedge.exe",
@@ -553,10 +613,23 @@ fn scan_open_tools() -> Vec<DetectedTool> {
             true,
         ),
         (
+            "terminal",
+            "Terminal",
+            "终端",
+            vec![
+                "/System/Applications/Utilities/Terminal.app",
+                "/Applications/Utilities/Terminal.app",
+            ],
+            "{command}",
+            true,
+        ),
+        (
             "excel",
             "Excel",
             "Office",
             vec![
+                "/Applications/Microsoft Excel.app",
+                "~/Applications/Microsoft Excel.app",
                 "%ProgramFiles%\\Microsoft Office\\root\\Office*\\EXCEL.EXE",
                 "%ProgramFiles(x86)%\\Microsoft Office\\root\\Office*\\EXCEL.EXE",
                 "%ProgramFiles%\\Microsoft Office\\Office*\\EXCEL.EXE",

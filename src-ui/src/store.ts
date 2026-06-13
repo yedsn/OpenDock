@@ -618,16 +618,26 @@ async function scanOpenTools(): Promise<{ detected: DetectedOpenTool[]; added: D
         existing.type = tool.type;
         existing.path = tool.path;
         existing.args = tool.args;
-        if (!state.data.tools.some((entry) => entry.type === tool.type && entry.default && entry.id !== existing.id)) {
+        if (tool.default) {
+          state.data.tools.forEach((entry) => {
+            if (entry.type === tool.type) entry.default = entry.id === existing.id;
+          });
+        } else if (!state.data.tools.some((entry) => entry.type === tool.type && entry.default && entry.id !== existing.id)) {
           existing.default = existing.default || tool.default;
         }
         result.updated.push({ ...tool });
         continue;
       }
 
+      if (tool.default) {
+        state.data.tools.forEach((entry) => {
+          if (entry.type === tool.type) entry.default = false;
+        });
+      }
+
       state.data.tools.push({
         ...tool,
-        default: !state.data.tools.some((entry) => entry.type === tool.type && entry.default) && tool.default
+        default: tool.default || !state.data.tools.some((entry) => entry.type === tool.type && entry.default)
       });
       result.added.push({ ...tool });
     }

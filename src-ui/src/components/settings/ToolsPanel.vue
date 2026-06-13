@@ -18,6 +18,9 @@ const scanResult = ref<{
 } | null>(null);
 
 const toolTypes = computed(() => store.availableToolTypes() as ToolType[]);
+const isMac = typeof navigator !== "undefined" && /Mac/i.test(navigator.platform);
+const terminalArgsPlaceholder = computed(() => isMac ? "{command}" : "-NoExit -Command {command}");
+const executablePathPlaceholder = computed(() => isMac ? "/Applications/App.app" : "C:\\Program Files\\App\\app.exe");
 
 const newTool = reactive({
   name: "",
@@ -39,7 +42,7 @@ const toolsMissingPath = computed(() => store.state.data.tools.filter((tool) => 
 
 function argsPlaceholder(type: ToolType) {
   if (type === "浏览器") return "{url}";
-  if (type === "终端") return "-NoExit -Command {command}";
+  if (type === "终端") return terminalArgsPlaceholder.value;
   return "{path}";
 }
 
@@ -54,7 +57,7 @@ function addTool() {
 
 function updateNewToolType(type: ToolType) {
   newTool.type = type;
-  if (!newTool.args.trim() || ["{path}", "{url}", "-NoExit -Command {command}"].includes(newTool.args.trim())) {
+  if (!newTool.args.trim() || ["{path}", "{url}", "-NoExit -Command {command}", "{command}"].includes(newTool.args.trim())) {
     newTool.args = argsPlaceholder(type);
   }
 }
@@ -138,7 +141,7 @@ async function deleteTool(id: string) {
         <select v-model="tool.type">
           <option v-for="type in toolTypes" :key="type" :value="type">{{ type }}</option>
         </select>
-        <input v-model="tool.path" :placeholder="('settings.executablePath') + ': C:\\Program Files\\App\\app.exe'" />
+        <input v-model="tool.path" :placeholder="$t('settings.executablePath') + ': ' + executablePathPlaceholder" />
         <input v-model="tool.args" :placeholder="argsPlaceholder(tool.type)" />
         <button class="default-tool-button" type="button" :class="{ active: tool.default }" :title="tool.default ? ('settings.currentTypeDefault') : ('settings.setAsTypeDefault')" @click="store.setDefaultTool(tool.id)">
           <CheckCircle2 v-if="tool.default" />

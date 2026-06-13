@@ -161,7 +161,7 @@
     scanning: "扫描中",
     autoScan: "自动扫描",
     addTool: "新增工具",
-    toolPathHelp: "工具路径支持 %LOCALAPPDATA%、%ProgramFiles% 和 * 通配符；参数支持 {path}、{url}、{command}、{name}、{cwd}。",
+    toolPathHelp: "工具路径支持 Windows 环境变量、macOS .app 路径（如 /Applications/App.app）和 * 通配符；参数支持 {path}、{url}、{command}、{name}、{cwd}。",
     toolsCount: "{count} 个工具",
     defaultLabel: "默认：{name}",
     notSet: "未设置",
@@ -183,7 +183,7 @@
     deleteTool: "删除工具",
     confirmDeleteTool: "确认删除打开工具「{name}」？关联资源将改回默认工具。",
     newToolName: "新工具名称",
-    pathOrShellOpen: "可执行路径或 shell:open",
+    pathOrShellOpen: "可执行路径、macOS .app 路径或 shell:open",
     // Templates panel
     projectTemplates: "项目默认集合模板",
     restoreDefault: "恢复默认",
