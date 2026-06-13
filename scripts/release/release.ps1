@@ -37,12 +37,17 @@ function Assert-Command([string]$Name) {
 
 Assert-Command git
 
+$package = Read-Json (Join-Path $RootDir "package.json")
+$current = [string]$package.version
+$suggestedVersion = ""
+if ($current -match '^(\d+)\.(\d+)\.(\d+)$') {
+  $suggestedVersion = "$($Matches[1]).$($Matches[2]).$([int]$Matches[3] + 1)"
+}
+
 if (-not $Version) {
-  $package = Read-Json (Join-Path $RootDir "package.json")
-  $current = [string]$package.version
-  if ($current -match '^(\d+)\.(\d+)\.(\d+)$') {
-    $Version = "$($Matches[1]).$($Matches[2]).$([int]$Matches[3] + 1)"
-    Write-Host "[release] No version supplied. Using next patch version: $Version"
+  if ($suggestedVersion) {
+    $inputVersion = Read-Host "请输入发布版本号 [默认: $suggestedVersion]"
+    $Version = if ($inputVersion.Trim()) { $inputVersion.Trim() } else { $suggestedVersion }
   } else {
     Fail "Missing version argument. Current package version is not semantic: $current"
   }
@@ -53,8 +58,8 @@ if ($Version -notmatch '^\d+\.\d+\.\d+([.-][0-9A-Za-z.-]+)?$') {
 }
 
 if (-not $Branch) {
-  $Branch = (git -C $RootDir branch --show-current).Trim()
-  if (-not $Branch) { $Branch = "main" }
+  $inputBranch = Read-Host "请输入发布分支 [默认: master]"
+  $Branch = if ($inputBranch.Trim()) { $inputBranch.Trim() } else { "master" }
 }
 
 $remotes = @(git -C $RootDir remote)
