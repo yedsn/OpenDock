@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, ref, watch } from "vue";
-import { Camera, Download, Eraser, LoaderCircle, RefreshCw, RotateCcw, ShieldAlert, Trash2, Upload } from "lucide-vue-next";
+import { Camera, Download, Eraser, LoaderCircle, Pencil, RefreshCw, RotateCcw, Save as SaveIcon, ShieldAlert, Trash2, Upload, X } from "lucide-vue-next";
 import { invoke } from "@tauri-apps/api/core";
 import { save } from "@tauri-apps/plugin-dialog";
 import { useOpenDockStore } from "../../store";
@@ -8,6 +8,7 @@ import { useI18n } from "../../i18n";
 import { importAppData } from "../../storage";
 import { schemaVersion } from "../../seed";
 import { confirmDelete } from "../../dialog";
+import type { SnapshotRecord } from "../../types";
 
 const isTauri = typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
 
@@ -33,6 +34,9 @@ const importBusy = ref(false);
 const snapshotBusy = ref(false);
 const webdavBusy = ref(false);
 const resetBusy = ref(false);
+const manualSnapshotForm = ref({ label: store.createSnapshotLabel("manual"), note: "" });
+const snapshotEditingId = ref<string | null>(null);
+const snapshotEditForm = ref({ label: "", note: "" });
 
 const data = computed(() => store.state.data);
 const webdav = computed(() => data.value.settings.webdavSync);
@@ -228,13 +232,19 @@ function formatStamp(date: Date): string {
 
 
 async function takeManualSnapshot() {
+  const label = manualSnapshotForm.value.label.trim();
+  if (!label) {
+    snapshotFeedback.value = { kind: "error", text: t("settings.snapshotNameRequired") };
+    return;
+  }
   snapshotBusy.value = true;
   snapshotFeedback.value = { kind: "info", text: t("settings.capturing") };
   try {
-    await store.takeSnapshot("", "manual");
-    snapshotFeedback.value = { kind: "success", text: t("settings.snapshotKindAuto") };
+    await store.takeSnapshot(label, "manual", manualSnapshotForm.value.note);
+    manualSnapshotForm.value = { label: store.createSnapshotLabel("manual"), note: "" };
+    snapshotFeedback.value = { kind: "success", text: t("settings.snapshotCreated") };
   } catch (e) {
-    snapshotFeedback.value = { kind: "error", text: t("settings.restoreFailed", { error: describeError(e) }) };
+    snapshotFeedback.value = { kind: "error", text: t("settings.snapshotCreateFailed", { error: describeError(e) }) };
   } finally {
     snapshotBusy.value = false;
   }
@@ -244,16 +254,16 @@ async function refreshSnapshotList() {
   snapshotBusy.value = true;
   try {
     await store.refreshSnapshots();
-    snapshotFeedback.value = { kind: "success", text: `: ` };
+    snapshotFeedback.value = { kind: "success", text: t("settings.snapshotListRefreshed") };
   } catch (e) {
-    snapshotFeedback.value = { kind: "error", text: t("settings.deleteSnapshotFailed", { error: describeError(e) }) };
+    snapshotFeedback.value = { kind: "error", text: t("settings.snapshotRefreshFailed", { error: describeError(e) }) };
   } finally {
     snapshotBusy.value = false;
   }
 }
 
 async function onRestoreSnapshot(id: string, label: string) {
-  if (!(await confirmDelete(`t("settings.confirmRestore", { label })`))) return;
+  if (!(await confirmDelete(t("settings.confirmRestore", { label })))) return;
   snapshotBusy.value = true;
   snapshotFeedback.value = { kind: "info", text: t("settings.restoring") };
   try {
@@ -267,13 +277,42 @@ async function onRestoreSnapshot(id: string, label: string) {
 }
 
 async function onDeleteSnapshot(id: string, label: string) {
-  if (!(await confirmDelete(`t("settings.confirmDeleteSnapshot", { label })`))) return;
+  if (!(await confirmDelete(t("settings.confirmDeleteSnapshot", { label })))) return;
   snapshotBusy.value = true;
   try {
     await store.removeSnapshot(id);
     snapshotFeedback.value = { kind: "success", text: t("settings.snapshotDeleted") };
   } catch (e) {
     snapshotFeedback.value = { kind: "error", text: t("settings.deleteSnapshotFailed", { error: describeError(e) }) };
+  } finally {
+    snapshotBusy.value = false;
+  }
+}
+
+function beginEditSnapshot(snap: SnapshotRecord) {
+  snapshotEditingId.value = snap.id;
+  snapshotEditForm.value = { label: snap.label, note: snap.note || "" };
+  snapshotFeedback.value = null;
+}
+
+function cancelEditSnapshot() {
+  snapshotEditingId.value = null;
+  snapshotEditForm.value = { label: "", note: "" };
+}
+
+async function saveSnapshotMeta(id: string) {
+  const label = snapshotEditForm.value.label.trim();
+  if (!label) {
+    snapshotFeedback.value = { kind: "error", text: t("settings.snapshotNameRequired") };
+    return;
+  }
+  snapshotBusy.value = true;
+  try {
+    await store.updateSnapshot(id, label, snapshotEditForm.value.note);
+    cancelEditSnapshot();
+    snapshotFeedback.value = { kind: "success", text: t("settings.snapshotUpdated") };
+  } catch (e) {
+    snapshotFeedback.value = { kind: "error", text: t("settings.snapshotUpdateFailed", { error: describeError(e) }) };
   } finally {
     snapshotBusy.value = false;
   }
@@ -378,6 +417,16 @@ function formatSnapshotTime(iso: string): string {
     <div class="settings-card-description">
       {{ $t("settings.snapshotDesc") }}
     </div>
+    <div class="snapshot-create-form">
+      <label class="setting-field">
+        <span>{{ $t("settings.snapshotName") }}</span>
+        <input v-model="manualSnapshotForm.label" type="text" :placeholder="$t('settings.snapshotNamePlaceholder')" />
+      </label>
+      <label class="setting-field full">
+        <span>{{ $t("settings.snapshotNote") }}</span>
+        <textarea v-model="manualSnapshotForm.note" :placeholder="$t('settings.snapshotNotePlaceholder')"></textarea>
+      </label>
+    </div>
     <div class="snapshot-config">
       <label class="setting-field">
         <span>{{ $t("settings.autoSnapshotInterval") }}</span>
@@ -400,13 +449,26 @@ function formatSnapshotTime(iso: string): string {
     <ul v-else class="snapshot-list">
       <li v-for="snap in store.state.snapshots" :key="snap.id" class="snapshot-row">
         <span class="snapshot-kind" :class="snap.kind">{{ snapshotKindLabel(snap.kind) }}</span>
-        <span class="snapshot-main">
+        <span v-if="snapshotEditingId === snap.id" class="snapshot-main snapshot-edit-form">
+          <input v-model="snapshotEditForm.label" type="text" :placeholder="$t('settings.snapshotNamePlaceholder')" />
+          <textarea v-model="snapshotEditForm.note" :placeholder="$t('settings.snapshotNotePlaceholder')"></textarea>
+          <small>{{ formatSnapshotTime(snap.createdAt) }} · {{ formatBytes(snap.size) }}</small>
+        </span>
+        <span v-else class="snapshot-main">
           <strong>{{ snap.label }}</strong>
+          <em v-if="snap.note">{{ snap.note }}</em>
           <small>{{ formatSnapshotTime(snap.createdAt) }} · {{ formatBytes(snap.size) }}</small>
         </span>
         <span class="snapshot-actions">
-          <button class="settings-action-button" type="button" :disabled="snapshotBusy" @click="onRestoreSnapshot(snap.id, snap.label)"><RotateCcw />{{ $t("settings.restore") }}</button>
-          <button class="settings-action-button" type="button" :disabled="snapshotBusy" @click="onDeleteSnapshot(snap.id, snap.label)"><Trash2 /></button>
+          <template v-if="snapshotEditingId === snap.id">
+            <button class="settings-action-button" type="button" :disabled="snapshotBusy" @click="saveSnapshotMeta(snap.id)"><SaveIcon />{{ $t("settings.save") }}</button>
+            <button class="settings-action-button" type="button" :disabled="snapshotBusy" @click="cancelEditSnapshot"><X />{{ $t("settings.cancel") }}</button>
+          </template>
+          <template v-else>
+            <button class="settings-action-button" type="button" :disabled="snapshotBusy" @click="beginEditSnapshot(snap)"><Pencil />{{ $t("settings.edit") }}</button>
+            <button class="settings-action-button" type="button" :disabled="snapshotBusy" @click="onRestoreSnapshot(snap.id, snap.label)"><RotateCcw />{{ $t("settings.restore") }}</button>
+            <button class="settings-action-button" type="button" :disabled="snapshotBusy" @click="onDeleteSnapshot(snap.id, snap.label)"><Trash2 /></button>
+          </template>
         </span>
       </li>
     </ul>
@@ -535,6 +597,19 @@ function formatSnapshotTime(iso: string): string {
   display: flex;
   gap: 8px;
 }
+.snapshot-create-form {
+  display: grid;
+  grid-template-columns: minmax(220px, 320px) minmax(0, 1fr);
+  gap: 10px 12px;
+  padding: 10px;
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+}
+.snapshot-create-form textarea,
+.snapshot-edit-form textarea {
+  min-height: 54px;
+}
 .snapshot-empty {
   color: var(--muted);
   font-size: 12px;
@@ -564,7 +639,25 @@ function formatSnapshotTime(iso: string): string {
   min-width: 0;
 }
 .snapshot-main strong { display: block; }
+.snapshot-main em { display: block; margin-top: 2px; color: var(--muted); font-size: 12px; font-style: normal; white-space: pre-wrap; }
 .snapshot-main small { color: var(--muted); font-size: 11px; }
+.snapshot-edit-form {
+  display: grid;
+  gap: 6px;
+}
+.snapshot-edit-form input,
+.snapshot-edit-form textarea {
+  width: 100%;
+  min-width: 0;
+  color: var(--text);
+  background: var(--bg-2);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  outline: 0;
+  font-size: 12px;
+}
+.snapshot-edit-form input { height: 30px; padding: 0 8px; }
+.snapshot-edit-form textarea { padding: 8px; resize: vertical; }
 .snapshot-kind {
   font-size: 10px;
   font-weight: 600;
@@ -578,6 +671,8 @@ function formatSnapshotTime(iso: string): string {
 .snapshot-kind.pre-import { background: color-mix(in srgb, #fbbf24 16%, var(--bg-3)); color: #fbbf24; }
 .snapshot-actions {
   display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
   gap: 4px;
 }
 .snapshot-config { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px 16px; }
@@ -627,5 +722,20 @@ function formatSnapshotTime(iso: string): string {
 .file-trigger.is-busy {
   pointer-events: none;
   opacity: 0.7;
+}
+
+@media (max-width: 760px) {
+  .snapshot-create-form,
+  .snapshot-config {
+    grid-template-columns: 1fr;
+  }
+  .snapshot-row {
+    align-items: flex-start;
+    flex-wrap: wrap;
+  }
+  .snapshot-actions {
+    width: 100%;
+    justify-content: flex-start;
+  }
 }
 </style>

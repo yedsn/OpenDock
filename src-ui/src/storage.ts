@@ -6,6 +6,7 @@ import {
   dbListTable,
   dbBulkInsert,
   snapshotCreate as dbSnapshotCreate,
+  snapshotUpdateMeta as dbSnapshotUpdateMeta,
   snapshotList as dbSnapshotList,
   snapshotGet as dbSnapshotGet,
   snapshotDelete as dbSnapshotDelete,
@@ -185,12 +186,16 @@ async function seedDb(data: AppData): Promise<void> {
 // ---- Snapshots ----
 
 /** Take a snapshot of the current data and persist it. Returns the new record. */
-export async function createSnapshot(data: AppData, kind: SnapshotKind, label: string): Promise<SnapshotRecord> {
+export async function createSnapshot(data: AppData, kind: SnapshotKind, label: string, note: string = ""): Promise<SnapshotRecord> {
   const id = `snap-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`;
   const payload = exportAppData(data);
   const createdAt = new Date().toISOString();
-  await dbSnapshotCreate(id, kind, label, createdAt, payload);
-  return { id, kind, label, createdAt, size: payload.length };
+  await dbSnapshotCreate(id, kind, label, note, createdAt, payload);
+  return { id, kind, label, note, createdAt, size: payload.length };
+}
+
+export async function updateSnapshotMeta(id: string, label: string, note: string): Promise<void> {
+  await dbSnapshotUpdateMeta(id, label, note);
 }
 
 export async function listSnapshots(): Promise<SnapshotRecord[]> {

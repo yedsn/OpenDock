@@ -11,6 +11,7 @@ vi.mock("../db", () => ({
   dbListTable: vi.fn(async () => []),
   dbBulkInsert: vi.fn(async () => 0),
   snapshotCreate: vi.fn(async () => {}),
+  snapshotUpdateMeta: vi.fn(async () => {}),
   snapshotList: vi.fn(async () => []),
   snapshotGet: vi.fn(async () => undefined),
   snapshotDelete: vi.fn(async () => {}),

@@ -61,10 +61,17 @@ function snapshotUnavailable(e: unknown): Error {
   );
 }
 
-export async function snapshotCreate(id: string, kind: SnapshotKind, label: string, createdAt: string, payload: string): Promise<void> {
+export async function snapshotCreate(id: string, kind: SnapshotKind, label: string, note: string, createdAt: string, payload: string): Promise<void> {
   await ensureDb();
   try {
-    await invoke("snapshot_create", { id, kind, label, createdAt, payload });
+    await invoke("snapshot_create", { id, kind, label, note, createdAt, payload });
+  } catch (e) { throw snapshotUnavailable(e); }
+}
+
+export async function snapshotUpdateMeta(id: string, label: string, note: string): Promise<void> {
+  await ensureDb();
+  try {
+    await invoke("snapshot_update_meta", { id, label, note });
   } catch (e) { throw snapshotUnavailable(e); }
 }
 

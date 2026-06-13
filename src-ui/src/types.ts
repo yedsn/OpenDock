@@ -260,6 +260,7 @@ export interface SnapshotRecord {
   id: string;
   kind: SnapshotKind;
   label: string;
+  note: string;
   createdAt: string;
   /** Byte length of the stored payload. */
   size: number;

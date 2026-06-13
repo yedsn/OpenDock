@@ -2,7 +2,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { collectionMeta, itemMeta, sceneMeta } from "./seed";
 import { exportAppData, loadAppData, resetAppData, saveActiveState, saveAppData } from "./storage";
-import { createSnapshot, listSnapshots, loadSnapshot, deleteSnapshot, pruneSnapshots } from "./storage";
+import { createSnapshot, listSnapshots, loadSnapshot, deleteSnapshot, pruneSnapshots, updateSnapshotMeta } from "./storage";
 import { webdavSetCredential, webdavGetCredential } from "./db";
 import { createSeedData } from "./seed";
 import { nowIso, makeId, expandToolArgs, templateToCollectionType } from "./helpers";
@@ -911,10 +911,16 @@ async function syncWebdavNow(): Promise<void> {
 
 let autoSnapshotTimer: ReturnType<typeof setInterval> | null = null;
 
-async function takeSnapshot(label: string = "", kind: SnapshotKind = "manual"): Promise<SnapshotRecord> {
-  const record = await createSnapshot(state.data, kind, label || formatSnapshotLabel(kind));
+async function takeSnapshot(label: string = "", kind: SnapshotKind = "manual", note: string = ""): Promise<SnapshotRecord> {
+  const record = await createSnapshot(state.data, kind, label || formatSnapshotLabel(kind), note);
   state.snapshots = await listSnapshots();
   return record;
+}
+
+async function updateSnapshot(id: string, label: string, note: string): Promise<void> {
+  const safeLabel = label.trim() || formatSnapshotLabel("manual");
+  await updateSnapshotMeta(id, safeLabel, note.trim());
+  state.snapshots = await listSnapshots();
 }
 
 async function restoreSnapshot(id: string): Promise<AppData> {
@@ -945,6 +951,10 @@ function formatSnapshotLabel(kind: SnapshotKind): string {
   const pad = (n: number) => String(n).padStart(2, "0");
   const ts = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())} ${pad(now.getHours())}:${pad(now.getMinutes())}`;
   return kind === "auto" ? `自动快照 ${ts}` : kind === "pre-import" ? `导入前快照 ${ts}` : `手动快照 ${ts}`;
+}
+
+function createSnapshotLabel(kind: SnapshotKind = "manual"): string {
+  return formatSnapshotLabel(kind);
 }
 
 function startAutoSnapshotTimer(): void {
@@ -1410,6 +1420,8 @@ export function useOpenDockStore() {
     executeSuggestion,
     executeSuggestionAndMaybeHide,
     takeSnapshot,
+    updateSnapshot,
+    createSnapshotLabel,
     restoreSnapshot,
     removeSnapshot,
     refreshSnapshots,
