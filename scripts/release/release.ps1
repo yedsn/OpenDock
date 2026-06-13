@@ -36,6 +36,21 @@ function Assert-Command([string]$Name) {
 }
 
 Assert-Command git
+Assert-Command npm.cmd
+
+function Invoke-NpmNoDebug([string[]]$Arguments) {
+  $oldNodeOptions = $env:NODE_OPTIONS
+  $oldInspectorOptions = $env:VSCODE_INSPECTOR_OPTIONS
+  try {
+    Remove-Item Env:NODE_OPTIONS -ErrorAction SilentlyContinue
+    Remove-Item Env:VSCODE_INSPECTOR_OPTIONS -ErrorAction SilentlyContinue
+    & npm.cmd @Arguments
+    if ($LASTEXITCODE -ne 0) { Fail "npm failed with exit code $LASTEXITCODE." }
+  } finally {
+    if ($null -ne $oldNodeOptions) { $env:NODE_OPTIONS = $oldNodeOptions }
+    if ($null -ne $oldInspectorOptions) { $env:VSCODE_INSPECTOR_OPTIONS = $oldInspectorOptions }
+  }
+}
 
 $package = Read-Json (Join-Path $RootDir "package.json")
 $current = [string]$package.version
@@ -66,7 +81,10 @@ $remotes = @(git -C $RootDir remote)
 if ($remotes.Count -eq 0) { Fail "No git remotes configured." }
 
 $dirty = (git -C $RootDir status --porcelain)
-if ($dirty) { Fail "Working tree is not clean. Commit or stash changes before running the release script." }
+if ($dirty) {
+  Write-Host "[release] Working tree has changes. They will be included in the release commit:"
+  git -C $RootDir status --short
+}
 
 $localTag = git -C $RootDir tag --list "v$Version"
 if ($localTag) { Fail "Git tag v$Version already exists locally." }
@@ -92,10 +110,12 @@ Write-Json $tauriPath $tauri
 
 Set-CargoVersion (Join-Path $RootDir "src-tauri\Cargo.toml") $Version
 
-npm --prefix $RootDir install --package-lock-only *> $null
-if ($LASTEXITCODE -ne 0) { Fail "Failed to update package-lock.json." }
+Invoke-NpmNoDebug @("--prefix", $RootDir, "install", "--package-lock-only")
 
-git -C $RootDir add package.json package-lock.json src-tauri/Cargo.toml src-tauri/tauri.conf.json
+git -C $RootDir add -A
+if (-not (git -C $RootDir diff --cached --name-only)) {
+  Fail "No staged changes found for release commit. Check whether version files were already updated."
+}
 git -C $RootDir commit -m "release: v$Version"
 git -C $RootDir tag -a "v$Version" -m "Release v$Version"
 
