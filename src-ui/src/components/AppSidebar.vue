@@ -1,4 +1,4 @@
-<script setup lang="ts">
+﻿<script setup lang="ts">
 import { computed, nextTick, onMounted, onUnmounted, ref } from "vue";
 import {
   ChevronsUpDown,
@@ -15,17 +15,19 @@ import {
   Trash2
 } from "lucide-vue-next";
 import { useOpenDockStore } from "../store";
+import { useI18n } from "../i18n";
 import SearchOverlay from "./SearchOverlay.vue";
 import { confirmDelete } from "../dialog";
 
 const store = useOpenDockStore();
+const { t } = useI18n();
 
-const quickViews = [
-  { id: "all" as const, label: "全部资源", hint: "全部场景", icon: Inbox },
-  { id: "favorites" as const, label: "收藏集合", hint: "常用入口", icon: Star },
-  { id: "recent" as const, label: "最近打开", hint: "最近使用", icon: Clock3 },
-  { id: "unbound" as const, label: "无场景集合", hint: "独立收藏", icon: Circle }
-] as const;
+const quickViews = computed(() => [
+  { id: "all" as const, label: t("sidebar.allResources"), hint: t("sidebar.allScenes"), icon: Inbox },
+  { id: "favorites" as const, label: t("sidebar.favoriteCollections"), hint: t("sidebar.commonEntries"), icon: Star },
+  { id: "recent" as const, label: t("sidebar.recentlyOpened"), hint: t("sidebar.recentlyUsed"), icon: Clock3 },
+  { id: "unbound" as const, label: t("sidebar.unboundCollections"), hint: t("sidebar.independentCollection"), icon: Circle }
+]);
 
 const quickViewCounts = computed(() => {
   const collections = store.state.data.collections.filter((item) => item.workspaceId === store.state.data.activeWorkspaceId);
@@ -37,7 +39,9 @@ const quickViewCounts = computed(() => {
   };
 });
 
-function openQuickViewTab(view: typeof quickViews[number]) {
+type QuickView = typeof quickViews.value[number];
+
+function openQuickViewTab(view: QuickView) {
   store.openTab({ id: `quickview-${view.id}`, kind: "quickview", title: view.label, quickViewId: view.id });
 }
 
@@ -49,7 +53,7 @@ function editScene(id: string) {
 async function deleteSceneConfirm(id: string) {
   const scene = store.state.data.scenes.find((s) => s.id === id);
   if (!scene) return;
-  if (await confirmDelete(`确认删除场景「${scene.name}」？此场景下的集合将变为无场景集合。`)) {
+  if (await confirmDelete(t("sidebar.confirmDeleteScene", { name: scene.name }))) {
     store.deleteScene(id);
   }
 }
@@ -61,12 +65,12 @@ function editWorkspace(id: string) {
 
 async function deleteWorkspaceConfirm(id: string) {
   if (store.state.data.workspaces.length <= 1) {
-    window.alert("至少保留一个工作区");
+    window.alert(t("sidebar.atLeastOneWorkspace"));
     return;
   }
   const ws = store.state.data.workspaces.find((w) => w.id === id);
   if (!ws) return;
-  if (await confirmDelete(`确认删除工作区「${ws.name}」？所有关联的场景、集合和资源将被删除。`)) {
+  if (await confirmDelete(t("sidebar.confirmDeleteWorkspace", { name: ws.name }))) {
     store.deleteWorkspace(id);
   }
 }
@@ -157,14 +161,14 @@ onUnmounted(() => {
 </script>
 
 <template>
-  <aside class="vault-pane" aria-label="资源库">
+  <aside class="vault-pane" aria-label="Resource Vault">
     <div class="command-box" :class="{ 'has-overlay': searchFocused && store.state.search }">
       <Search />
       <input
         ref="searchInputRef"
         v-model="store.state.search"
         type="search"
-        placeholder="命令、场景、集合、资源"
+        :placeholder="$t('sidebar.searchPlaceholder')"
         @focus="handleSearchFocus"
         @blur="handleSearchBlur"
         @keydown="handleSearchKeydown"
@@ -174,7 +178,7 @@ onUnmounted(() => {
     </div>
 
     <div class="tree-section">
-      <div class="tree-title">快速视图</div>
+      <div class="tree-title">{{ $t("sidebar.quickViews") }}</div>
       <div class="tree-list">
         <button v-for="view in quickViews" :key="view.id" v-memo="[view.id, quickViewCounts[view.id], store.state.activeTabId === `quickview-${view.id}`]" class="tree-row" :class="{ active: store.state.activeTabId === `quickview-${view.id}` }" @click="openQuickViewTab(view)">
           <component :is="view.icon" />
@@ -186,8 +190,8 @@ onUnmounted(() => {
 
     <div class="tree-section grow">
       <div class="tree-title">
-        <span>场景列表</span>
-        <button class="mini-title-button" title="新建场景" @click="openModal('scene')"><Plus /></button>
+        <span>{{ $t("sidebar.sceneList") }}</span>
+        <button class="mini-title-button" :title="$t('sidebar.newScene')" @click="openModal('scene')"><Plus /></button>
       </div>
       <div class="tree-list">
         <button v-for="scene in store.activeScenes.value" :key="scene.id"
@@ -196,7 +200,7 @@ onUnmounted(() => {
           :class="{ active: store.state.activeTabId === 'scene-' + scene.id }"
           @click="store.openTab({ id: 'scene-' + scene.id, kind: 'scene', title: scene.name, sceneId: scene.id })">
           <Code2 />
-          <span><span class="scene-name">{{ scene.name }}</span><small class="scene-detail">{{ scene.type }} · {{ scene.description }}</small></span>
+          <span><span class="scene-name">{{ scene.name }}</span><small class="scene-detail">{{ scene.type }} 路 {{ scene.description }}</small></span>
           <span class="scene-actions">
             <Pencil class="row-edit-icon" @click.stop="editScene(scene.id)" />
             <Trash2 class="row-edit-icon danger" @click.stop="deleteSceneConfirm(scene.id)" />
@@ -226,7 +230,7 @@ onUnmounted(() => {
           <Trash2 class="row-edit-icon danger" @click="deleteWorkspaceConfirm(workspace.id)" />
         </span>
       </button>
-      <button class="workspace-menu-item" @click="openModal('workspace')"><Plus /><span><strong>新建工作区</strong><small>创建资源工作台</small></span></button>
+      <button class="workspace-menu-item" @click="openModal('workspace')"><Plus /><span><strong>{{ $t("sidebar.newWorkspace") }}</strong><small>{{ $t("sidebar.createResourceWorkspace") }}</small></span></button>
     </div>
   </aside>
 </template>
@@ -240,3 +244,4 @@ onUnmounted(() => {
 .workspace-item-actions { display: none; gap: 4px; }
 .workspace-menu-item:hover .workspace-item-actions { display: inline-flex; align-items: center; }
 </style>
+

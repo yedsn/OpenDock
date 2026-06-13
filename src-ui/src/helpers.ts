@@ -1,4 +1,5 @@
 import type { Collection, CollectionType, ItemType, SceneType } from "./types";
+import { useI18n } from "./i18n";
 
 export const sceneTypeOptions: SceneType[] = ["项目", "办公", "工程", "设计", "通用", "自定义"];
 

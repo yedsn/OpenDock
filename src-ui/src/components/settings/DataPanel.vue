@@ -4,6 +4,7 @@ import { Camera, Download, Eraser, LoaderCircle, RefreshCw, RotateCcw, ShieldAle
 import { invoke } from "@tauri-apps/api/core";
 import { save } from "@tauri-apps/plugin-dialog";
 import { useOpenDockStore } from "../../store";
+import { useI18n } from "../../i18n";
 import { importAppData } from "../../storage";
 import { schemaVersion } from "../../seed";
 import { confirmDelete } from "../../dialog";
@@ -11,6 +12,7 @@ import { confirmDelete } from "../../dialog";
 const isTauri = typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
 
 const store = useOpenDockStore();
+const { t } = useI18n();
 const general = store.state.data.settings.general;
 watch(() => general.autoSnapshotIntervalMinutes, () => store.startAutoSnapshotTimer());
 
@@ -48,14 +50,14 @@ const stats = computed<StatTile[]>(() => {
   const recentCount = d.collections.filter((c) => c.recent).length;
   const favoriteCount = d.collections.filter((c) => c.favorite).length;
   return [
-    { label: "工作区", value: d.workspaces.length },
-    { label: "场景", value: d.scenes.length },
-    { label: "集合", value: d.collections.length, hint: `收藏 ${favoriteCount} · 最近 ${recentCount}` },
-    { label: "资源", value: d.items.length },
-    { label: "工具", value: d.tools.length },
-    { label: "插件", value: d.plugins.filter((p) => p.installed).length, hint: `共 ${d.plugins.length}` },
-    { label: "活动日志", value: d.activity.length },
-    { label: "Schema", value: `v${d.schemaVersion}`, hint: d.schemaVersion === schemaVersion ? "当前版本" : `当前 v${schemaVersion}` }
+    { label: t("settings.workspaces"), value: d.workspaces.length },
+    { label: t("settings.scenes"), value: d.scenes.length },
+    { label: t("settings.collections"), value: d.collections.length, hint: ` ${favoriteCount} ·  ${recentCount}` },
+    { label: t("settings.resources"), value: d.items.length },
+    { label: t("settings.tools"), value: d.tools.length },
+    { label: t("settings.plugins"), value: d.plugins.filter((p) => p.installed).length, hint: ` ${d.plugins.length}` },
+    { label: t("settings.activityLog"), value: d.activity.length },
+    { label: "Schema", value: `v${d.schemaVersion}`, hint: d.schemaVersion === schemaVersion ? t("settings.currentVersion") : `${schemaVersion}` }
   ];
 });
 
@@ -73,7 +75,7 @@ function formatBytes(bytes: number): string {
 
 async function downloadExport() {
   exportBusy.value = true;
-  exportFeedback.value = { kind: "info", text: "正在导出数据..." };
+  exportFeedback.value = { kind: "info", text: t("settings.exporting") };
   try {
     store.exportData();
     const content = store.state.selectedExport;
@@ -87,7 +89,7 @@ async function downloadExport() {
         });
         if (!filePath) { exportFeedback.value = null; return; }
         const size = await invoke<number>("write_text_file", { path: filePath, contents: content });
-        exportFeedback.value = { kind: "success", text: `已保存到 ${filePath} (${formatBytes(size)})` };
+      exportFeedback.value = { kind: "success", text: t("settings.savedTo", { path: filePath, size: formatBytes(size) }) };
       } catch {
         browserDownload(fileName, content);
       }
@@ -95,7 +97,7 @@ async function downloadExport() {
       browserDownload(fileName, content);
     }
   } catch (error) {
-    exportFeedback.value = { kind: "error", text: `导出失败：${describeError(error)}` };
+      exportFeedback.value = { kind: "error", text: t("settings.exportFailed", { error: describeError(error) }) };
   } finally {
     exportBusy.value = false;
   }
@@ -109,7 +111,7 @@ function browserDownload(fileName: string, content: string) {
   a.download = fileName;
   a.click();
   URL.revokeObjectURL(url);
-  exportFeedback.value = { kind: "success", text: `已保存到 ${fileName} (${formatBytes(blob.size)})` };
+      exportFeedback.value = { kind: "success", text: t("settings.savedTo", { path: fileName, size: formatBytes(blob.size) }) };
 }
 
 
@@ -118,27 +120,27 @@ async function onImport(event: Event) {
   const file = input.files?.[0];
   if (!file) return;
   importBusy.value = true;
-  importFeedback.value = { kind: "info", text: `正在读取 ${file.name} ...` };
+      importFeedback.value = { kind: "info", text: t("settings.readingFile", { name: file.name }) };
   const reader = new FileReader();
   reader.onload = async () => {
-    importFeedback.value = { kind: "info", text: `正在解析 ${file.name} ...` };
+      importFeedback.value = { kind: "info", text: t("settings.parsingFile", { name: file.name }) };
     try {
-      if (!(await confirmDelete(`导入将覆盖当前所有数据，系统会先自动拍摄一个快照以便回滚。确定要导入 ${file.name} 吗？`))) {
-        importFeedback.value = { kind: "info", text: "已取消导入。" };
+      if (!(await confirmDelete(t("settings.importConfirm", { name: file.name })))) {
+        importFeedback.value = { kind: "info", text: t("settings.importCancelled") };
         return;
       }
       const text = String(reader.result || "");
       const parsed = await importAppData(text);
       await store.replaceData(parsed);
-      store.log(`已从 ${file.name} 导入数据`);
+      store.log(t("log.importedData", { name: file.name }));
       importFeedback.value = {
         kind: "success",
-        text: `已导入 ${file.name}：${parsed.collections.length} 个集合、${parsed.items.length} 个资源。系统已自动拍摄导入前快照。`
+        text: t("settings.imported", { name: file.name, collections: parsed.collections.length, items: parsed.items.length })
       };
     } catch (error) {
       const message = describeError(error);
-      store.log(`导入失败: ${message}`);
-      importFeedback.value = { kind: "error", text: `导入失败：${message}` };
+      store.log(`import failed: `);
+      importFeedback.value = { kind: "error", text: t("settings.importFailed", { error: message }) };
     } finally {
       importBusy.value = false;
       input.value = "";
@@ -146,7 +148,7 @@ async function onImport(event: Event) {
   };
   reader.onerror = () => {
     importBusy.value = false;
-    importFeedback.value = { kind: "error", text: `读取文件失败：${describeError(reader.error)}` };
+      importFeedback.value = { kind: "error", text: t("settings.readFileFailed", { error: describeError(reader.error) }) };
     input.value = "";
   };
   reader.readAsText(file);
@@ -156,24 +158,24 @@ async function confirmClearRecent() {
   const count = data.value.collections.filter((c) => c.recent).length;
   if (count === 0) {
     importFeedback.value = null;
-    store.log("没有最近打开记录可清空");
+    store.log(t("log.noRecentToClear"));
     return;
   }
-  if (!(await confirmDelete(`将清空 ${count} 条最近打开记录，并移除相关活动日志，确认继续？`))) return;
+    if (!(await confirmDelete(t("settings.clearRecentConfirm", { count })))) return;
   store.clearRecent();
 }
 
 async function confirmReset() {
   resetBusy.value = true;
   resetFeedback.value = null;
-  if (!(await confirmDelete("重置后将恢复到内置示例数据，当前的工作区、集合、资源都会被清除。建议先导出备份。是否继续？"))) { resetBusy.value = false; return; }
-  if (!(await confirmDelete("再次确认：此操作不可撤销。"))) { resetBusy.value = false; return; }
-  resetFeedback.value = { kind: "info", text: "正在重置数据..." };
+  if (!(await confirmDelete(t("settings.resetConfirm")))) { resetBusy.value = false; return; }
+  if (!(await confirmDelete(t("settings.resetConfirmAgain")))) { resetBusy.value = false; return; }
+  resetFeedback.value = { kind: "info", text: t("settings.resetting") };
   try {
     await store.resetData();
-    resetFeedback.value = { kind: "success", text: "已重置为内置示例数据。" };
+    resetFeedback.value = { kind: "success", text: t("settings.resetDone") };
   } catch (error) {
-    resetFeedback.value = { kind: "error", text: `重置失败：${describeError(error)}` };
+    resetFeedback.value = { kind: "error", text: t("settings.resetFailed", { error: describeError(error) }) };
   } finally {
     resetBusy.value = false;
   }
@@ -206,7 +208,7 @@ async function onSyncWebdavNow() {
 }
 
 function describeError(error: unknown): string {
-  if (!error) return "未知错误";
+  if (!error) return t("settings.unknownError");
   if (error instanceof Error) return error.message;
   return String(error);
 }
@@ -227,12 +229,12 @@ function formatStamp(date: Date): string {
 
 async function takeManualSnapshot() {
   snapshotBusy.value = true;
-  snapshotFeedback.value = { kind: "info", text: "正在拍摄快照..." };
+  snapshotFeedback.value = { kind: "info", text: t("settings.capturing") };
   try {
     await store.takeSnapshot("", "manual");
-    snapshotFeedback.value = { kind: "success", text: "快照拍摄成功。" };
+    snapshotFeedback.value = { kind: "success", text: t("settings.snapshotKindAuto") };
   } catch (e) {
-    snapshotFeedback.value = { kind: "error", text: `快照失败：${describeError(e)}` };
+    snapshotFeedback.value = { kind: "error", text: t("settings.restoreFailed", { error: describeError(e) }) };
   } finally {
     snapshotBusy.value = false;
   }
@@ -242,45 +244,45 @@ async function refreshSnapshotList() {
   snapshotBusy.value = true;
   try {
     await store.refreshSnapshots();
-    snapshotFeedback.value = { kind: "success", text: `已刷新，共 ${store.state.snapshots.length} 个快照。` };
+    snapshotFeedback.value = { kind: "success", text: `: ` };
   } catch (e) {
-    snapshotFeedback.value = { kind: "error", text: `刷新失败：${describeError(e)}` };
+    snapshotFeedback.value = { kind: "error", text: t("settings.deleteSnapshotFailed", { error: describeError(e) }) };
   } finally {
     snapshotBusy.value = false;
   }
 }
 
 async function onRestoreSnapshot(id: string, label: string) {
-  if (!(await confirmDelete(`确定要恢复到快照「${label}」吗？当前数据将被替换。`))) return;
+  if (!(await confirmDelete(`t("settings.confirmRestore", { label })`))) return;
   snapshotBusy.value = true;
-  snapshotFeedback.value = { kind: "info", text: "正在恢复..." };
+  snapshotFeedback.value = { kind: "info", text: t("settings.restoring") };
   try {
     await store.restoreSnapshot(id);
-    snapshotFeedback.value = { kind: "success", text: "快照已恢复。" };
+    snapshotFeedback.value = { kind: "success", text: t("settings.snapshotRestored") };
   } catch (e) {
-    snapshotFeedback.value = { kind: "error", text: `恢复失败：${describeError(e)}` };
+    snapshotFeedback.value = { kind: "error", text: t("settings.restoreFailed", { error: describeError(e) }) };
   } finally {
     snapshotBusy.value = false;
   }
 }
 
 async function onDeleteSnapshot(id: string, label: string) {
-  if (!(await confirmDelete(`确定要删除快照「${label}」吗？此操作不可恢复。`))) return;
+  if (!(await confirmDelete(`t("settings.confirmDeleteSnapshot", { label })`))) return;
   snapshotBusy.value = true;
   try {
     await store.removeSnapshot(id);
-    snapshotFeedback.value = { kind: "success", text: "快照已删除。" };
+    snapshotFeedback.value = { kind: "success", text: t("settings.snapshotDeleted") };
   } catch (e) {
-    snapshotFeedback.value = { kind: "error", text: `删除失败：${describeError(e)}` };
+    snapshotFeedback.value = { kind: "error", text: t("settings.deleteSnapshotFailed", { error: describeError(e) }) };
   } finally {
     snapshotBusy.value = false;
   }
 }
 
 function snapshotKindLabel(kind: string): string {
-  if (kind === "auto") return "自动";
-  if (kind === "pre-import") return "导入前";
-  return "手动";
+  if (kind === "auto") return t("settings.snapshotKindAuto");
+  if (kind === "pre-import") return t("settings.snapshotKindPreImport");
+  return t("settings.snapshotKindManual");
 }
 
 function formatSnapshotTime(iso: string): string {
@@ -293,10 +295,10 @@ function formatSnapshotTime(iso: string): string {
 <template>
   <section class="settings-card">
     <div class="settings-card-title">
-      <span>数据概览</span>
-      <span class="data-meta">最近活动 {{ lastActivityAt }}</span>
+      <span>{{ $t("settings.dataOverview") }}</span>
+      <span class="data-meta">{{ $t("settings.recentActivity") }} {{ lastActivityAt }}</span>
     </div>
-    <div class="settings-card-description">查看当前数据规模与 Schema 版本，备份前先确认数量是否符合预期。</div>
+    <div class="settings-card-description">{{ $t("settings.dataOverviewDesc") }}</div>
     <div class="data-stats">
       <div v-for="tile in stats" :key="tile.label" class="data-stat-tile">
         <div class="data-stat-value">{{ tile.value }}</div>
@@ -307,12 +309,12 @@ function formatSnapshotTime(iso: string): string {
   </section>
 
   <section class="settings-card">
-    <div class="settings-card-title">导出备份</div>
-    <div class="settings-card-description">导出 JSON 用于本地归档或迁移。WebDAV 凭据明文不会写入，仅保留引用占位。</div>
+    <div class="settings-card-title">{{ $t("settings.exportBackup") }}</div>
+    <div class="settings-card-description">{{ $t("settings.exportDesc") }}</div>
     <div class="data-actions">
       <button class="settings-action-button" type="button" :disabled="exportBusy" @click="downloadExport">
-        <template v-if="exportBusy"><LoaderCircle class="spin-icon" />导出中...</template>
-        <template v-else><Download />下载 JSON</template>
+        <template v-if="exportBusy"><LoaderCircle class="spin-icon" />{{ $t("settings.exporting") }}</template>
+        <template v-else><Download />{{ $t("settings.downloadJson") }}</template>
       </button>
     </div>
     <div v-if="exportBusy" class="progress-bar"><div class="progress-bar-indeterminate"></div></div>
@@ -320,14 +322,14 @@ function formatSnapshotTime(iso: string): string {
   </section>
 
   <section class="settings-card">
-    <div class="settings-card-title">导入数据</div>
+    <div class="settings-card-title">{{ $t("settings.importData") }}</div>
     <div class="settings-card-description">
-      仅接受相同 Schema（v{{ schemaVersion }}）的导出文件。导入将覆盖当前工作区与全部资源，请先备份。
+      {{ $t("settings.importDesc", { version: schemaVersion }) }}
     </div>
     <div class="data-actions">
       <label class="settings-action-button file-trigger" :class="{ 'is-busy': importBusy }">
-        <template v-if="importBusy"><LoaderCircle class="spin-icon" />导入中...</template>
-        <template v-else><Upload />选择 JSON 文件</template>
+        <template v-if="importBusy"><LoaderCircle class="spin-icon" />{{ $t("settings.exporting") }}</template>
+        <template v-else><Upload />{{ $t("settings.selectingFile") }}</template>
         <input type="file" accept="application/json,.json" :disabled="importBusy" @change="onImport" />
       </label>
     </div>
@@ -337,26 +339,26 @@ function formatSnapshotTime(iso: string): string {
 
   <section class="settings-card">
     <div class="settings-card-title">
-      <span>云同步</span>
+      <span>{{ $t("settings.cloudSync") }}</span>
       <button class="settings-action-button" type="button" @click="jumpToWebdav">
-        <RefreshCw />打开 WebDAV 设置
+        <RefreshCw />{{ $t("settings.openWebdavSettings") }}
       </button>
     </div>
-    <div class="settings-card-description">通过 WebDAV 插件维护远端备份。在插件设置中配置地址、凭据与冲突策略。</div>
+    <div class="settings-card-description">{{ $t("settings.cloudSyncDesc") }}</div>
     <div class="sync-status-strip">
-      <span>{{ webdavInstalled ? "WebDAV 插件已启用" : "WebDAV 插件未启用" }}</span>
-      <span>状态：{{ webdav.status || "未配置" }}</span>
-      <span>最近同步：{{ webdav.lastSyncAt || "—" }}</span>
-      <span>范围：{{ webdav.syncScope || "—" }}</span>
+      <span>{{ webdavInstalled ? t("settings.webdavPluginEnabled") : t("settings.webdavPluginDisabled") }}</span>
+      <span>{{ $t("settings.status") }}{{ webdav.status || t("settings.notConfigured") }}</span>
+      <span>{{ $t("settings.lastSync") }}{{ webdav.lastSyncAt || "—" }}</span>
+      <span>{{ $t("settings.scope") }}{{ webdav.syncScope || "—" }}</span>
     </div>
     <div class="data-actions" v-if="webdavInstalled">
       <button class="settings-action-button" type="button" :disabled="webdavBusy" @click="onTestWebdav">
-        <template v-if="webdavBusy"><LoaderCircle class="spin-icon" />测试中...</template>
-        <template v-else>测试连接</template>
+        <template v-if="webdavBusy"><LoaderCircle class="spin-icon" />{{ $t("settings.testing") }}</template>
+        <template v-else>{{ $t("settings.testConnection") }}</template>
       </button>
       <button class="settings-action-button" type="button" :disabled="webdavBusy" @click="onSyncWebdavNow">
-        <template v-if="webdavBusy"><LoaderCircle class="spin-icon" />同步中...</template>
-        <template v-else>立即同步</template>
+        <template v-if="webdavBusy"><LoaderCircle class="spin-icon" />{{ $t("settings.syncing") }}</template>
+        <template v-else>{{ $t("settings.syncNow") }}</template>
       </button>
     </div>
     <div v-if="webdavBusy" class="progress-bar"><div class="progress-bar-indeterminate"></div></div>
@@ -364,37 +366,37 @@ function formatSnapshotTime(iso: string): string {
 
   <section class="settings-card">
     <div class="settings-card-title">
-      <span>数据快照</span>
+      <span>{{ $t("settings.dataSnapshots") }}</span>
       <div class="snapshot-title-actions">
         <button class="settings-action-button" type="button" :disabled="snapshotBusy" @click="takeManualSnapshot">
-          <template v-if="snapshotBusy"><LoaderCircle class="spin-icon" />拍摄中...</template>
-          <template v-else><Camera />立即拍摄快照</template>
+          <template v-if="snapshotBusy"><LoaderCircle class="spin-icon" />{{ $t("settings.capturing") }}</template>
+          <template v-else><Camera />{{ $t("settings.takeSnapshotNow") }}</template>
         </button>
-        <button class="settings-action-button" type="button" :disabled="snapshotBusy" @click="refreshSnapshotList"><RefreshCw />刷新</button>
+        <button class="settings-action-button" type="button" :disabled="snapshotBusy" @click="refreshSnapshotList"><RefreshCw />{{ $t("settings.refresh") }}</button>
       </div>
     </div>
     <div class="settings-card-description">
-      快照存在本地数据库，可在导入或重置出错时一键还原。自动快照配置见下方。
+      {{ $t("settings.snapshotDesc") }}
     </div>
     <div class="snapshot-config">
       <label class="setting-field">
-        <span>自动快照间隔（分钟）</span>
+        <span>{{ $t("settings.autoSnapshotInterval") }}</span>
         <div class="snapshot-interval-input">
           <input v-model.number="general.autoSnapshotIntervalMinutes" type="number" min="0" max="1440" />
-          <small>设为 0 关闭自动快照</small>
+          <small>{{ $t("settings.setZeroToDisable") }}</small>
         </div>
       </label>
       <label class="setting-field">
-        <span>最多保留自动快照（个）</span>
+        <span>{{ $t("settings.maxAutoSnapshots") }}</span>
         <div class="snapshot-interval-input">
           <input v-model.number="general.autoSnapshotKeepCount" type="number" min="1" max="100" />
-          <small>超出部分下次快照时自动清理</small>
+          <small>{{ $t("settings.excessCleanedNext") }}</small>
         </div>
       </label>
     </div>
     <div v-if="snapshotBusy" class="progress-bar"><div class="progress-bar-indeterminate"></div></div>
     <p v-if="snapshotFeedback" class="data-feedback" :class="snapshotFeedback.kind">{{ snapshotFeedback.text }}</p>
-    <div v-if="!store.state.snapshots.length" class="snapshot-empty">尚无快照。点击「立即拍摄快照」开始备份。</div>
+    <div v-if="!store.state.snapshots.length" class="snapshot-empty">{{ $t("settings.noSnapshots") }}</div>
     <ul v-else class="snapshot-list">
       <li v-for="snap in store.state.snapshots" :key="snap.id" class="snapshot-row">
         <span class="snapshot-kind" :class="snap.kind">{{ snapshotKindLabel(snap.kind) }}</span>
@@ -403,7 +405,7 @@ function formatSnapshotTime(iso: string): string {
           <small>{{ formatSnapshotTime(snap.createdAt) }} · {{ formatBytes(snap.size) }}</small>
         </span>
         <span class="snapshot-actions">
-          <button class="settings-action-button" type="button" :disabled="snapshotBusy" @click="onRestoreSnapshot(snap.id, snap.label)"><RotateCcw />恢复</button>
+          <button class="settings-action-button" type="button" :disabled="snapshotBusy" @click="onRestoreSnapshot(snap.id, snap.label)"><RotateCcw />{{ $t("settings.restore") }}</button>
           <button class="settings-action-button" type="button" :disabled="snapshotBusy" @click="onDeleteSnapshot(snap.id, snap.label)"><Trash2 /></button>
         </span>
       </li>
@@ -412,16 +414,16 @@ function formatSnapshotTime(iso: string): string {
 
   <section class="settings-card danger-card">
     <div class="settings-card-title">
-      <span class="danger-title"><ShieldAlert />维护操作</span>
+      <span class="danger-title"><ShieldAlert />{{ $t("settings.maintenance") }}</span>
     </div>
-    <div class="settings-card-description">这些操作会修改或清空本地数据，执行前请确保已经导出最新备份。</div>
+    <div class="settings-card-description">{{ $t("settings.maintenanceDesc") }}</div>
     <div class="data-actions danger-actions">
       <button class="settings-action-button" type="button" @click="confirmClearRecent">
-        <Eraser />清空最近
+        <Eraser />{{ $t("settings.clearRecentBtn") }}
       </button>
       <button class="settings-action-button data-danger" type="button" :disabled="resetBusy" @click="confirmReset">
-        <template v-if="resetBusy"><LoaderCircle class="spin-icon" />重置中...</template>
-        <template v-else><RotateCcw />重置数据</template>
+        <template v-if="resetBusy"><LoaderCircle class="spin-icon" />{{ $t("settings.resetting") }}</template>
+        <template v-else><RotateCcw />{{ $t("settings.resetData") }}</template>
       </button>
     </div>
     <div v-if="resetBusy" class="progress-bar"><div class="progress-bar-indeterminate"></div></div>

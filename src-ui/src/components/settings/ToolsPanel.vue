@@ -2,10 +2,12 @@
 import { computed, reactive, ref } from "vue";
 import { AlertTriangle, CheckCircle2, Info, Plus, Radar, Star, Trash2, Wrench } from "lucide-vue-next";
 import { useOpenDockStore } from "../../store";
+import { useI18n } from "../../i18n";
 import type { OpenTool, ToolType } from "../../types";
 import { confirmDelete } from "../../dialog";
 
 const store = useOpenDockStore();
+const { t } = useI18n();
 const scanning = ref(false);
 const scanResult = ref<{
   detected: OpenTool[];
@@ -29,7 +31,7 @@ const toolTypeSummary = computed(() => toolTypes.value.map((type) => {
   return {
     type,
     count: tools.length,
-    defaultTool: tools.find((tool) => tool.default)?.name || "未设置"
+    defaultTool: tools.find((tool) => tool.default)?.name || t("settings.notSet")
   };
 }));
 
@@ -84,18 +86,18 @@ async function deleteTool(id: string) {
 <template>
   <section class="settings-card tools-settings-card">
     <div class="settings-card-title">
-      <span>打开工具</span>
+      <span>{{ $t("settings.openTools") }}</span>
       <div class="tools-title-actions">
-        <button class="settings-action-button" type="button" :disabled="scanning" @click="scanTools"><Radar />{{ scanning ? "扫描中" : "自动扫描" }}</button>
-        <button class="settings-action-button" type="button" @click="addTool"><Plus />新增工具</button>
+        <button class="settings-action-button" type="button" :disabled="scanning" @click="scanTools"><Radar />{{ scanning ? $t("settings.scanning") : $t("settings.autoScan") }}</button>
+        <button class="settings-action-button" type="button" @click="addTool"><Plus />{{ $t("settings.addTool") }}</button>
       </div>
     </div>
-    <div class="settings-card-description">工具路径支持 %LOCALAPPDATA%、%ProgramFiles% 和 * 通配符；参数支持 {path}、{url}、{command}、{name}、{cwd}。</div>
+    <div class="settings-card-description">{{ $t("settings.toolPathHelp") }}</div>
 
     <div class="tool-summary-grid">
       <div v-for="item in toolTypeSummary" :key="item.type" class="tool-summary-item" :class="{ empty: item.count === 0 }">
         <Wrench />
-        <span><strong>{{ item.type }}</strong><small>{{ item.count }} 个工具 / 默认：{{ item.defaultTool }}</small></span>
+        <span><strong>{{ item.type }}</strong><small>{{ $t("settings.toolsCount", { count: item.count }) }} / {{ $t("settings.default") }}: {{ item.defaultTool }}</small></span>
       </div>
     </div>
 
@@ -103,56 +105,56 @@ async function deleteTool(id: string) {
       <AlertTriangle v-if="scanResult.error" />
       <Info v-else />
       <div>
-        <strong v-if="scanResult.error">自动扫描失败</strong>
-        <strong v-else>自动扫描完成：发现 {{ scanResult.detected.length }} 个工具，新增 {{ scanResult.added.length }} 个，更新 {{ scanResult.updated.length }} 个。</strong>
+        <strong v-if="scanResult.error">{{ $t("settings.scanFailed") }}</strong>
+        <strong v-else>{{ $t("settings.scanComplete", { detected: scanResult.detected.length, added: scanResult.added.length, updated: scanResult.updated.length }) }}</strong>
         <p v-if="scanResult.error">{{ scanResult.error }}</p>
-        <p v-else-if="scanResult.detected.length === 0">未扫描到可自动识别的工具，可以继续手动新增。</p>
+        <p v-else-if="scanResult.detected.length === 0">{{ $t("settings.noToolDetected") }}</p>
         <p v-else-if="scanResult.added.length || scanResult.updated.length">
-          <span v-if="scanResult.added.length">新增：{{ toolNames(scanResult.added) }}</span>
+          <span v-if="scanResult.added.length">{{ $t("settings.added", { names: toolNames(scanResult.added) }) }}</span>
           <span v-if="scanResult.added.length && scanResult.updated.length">；</span>
-          <span v-if="scanResult.updated.length">更新：{{ toolNames(scanResult.updated) }}</span>
+          <span v-if="scanResult.updated.length">{{ $t("settings.updated", { names: toolNames(scanResult.updated) }) }}</span>
         </p>
-        <p v-else>已扫描到的工具都在列表中，没有新增或更新。</p>
+        <p v-else>{{ $t("settings.allToolsPresent") }}</p>
         <small>{{ scanResult.scannedAt }}</small>
       </div>
     </div>
 
-    <div v-if="toolsMissingPath > 0" class="tool-warning"><AlertTriangle />有 {{ toolsMissingPath }} 个工具缺少可执行路径，除非由插件或系统命令接管，否则打开时可能失败。</div>
+    <div v-if="toolsMissingPath > 0" class="tool-warning"><AlertTriangle />{{ $t("settings.toolWarning", { count: toolsMissingPath }) }}</div>
   </section>
 
   <section class="settings-card tools-settings-card">
-    <div class="settings-card-title">工具配置</div>
+    <div class="settings-card-title">{{ $t("settings.toolConfig") }}</div>
     <div class="settings-table tools-table">
       <div class="settings-row tools-row tools-row-head">
-        <strong>名称</strong>
-        <strong>类型</strong>
-        <strong>可执行路径</strong>
-        <strong>参数模板</strong>
-        <strong>默认</strong>
+        <strong>{{ $t("settings.toolName") }}</strong>
+        <strong>{{ $t("settings.type") }}</strong>
+        <strong>{{ $t("settings.executablePath") }}</strong>
+        <strong>{{ $t("settings.argsTemplate") }}</strong>
+        <strong>{{ $t("settings.default") }}</strong>
         <strong></strong>
       </div>
       <div v-for="tool in store.visibleTools()" :key="tool.id" class="settings-row tools-row" :class="{ 'missing-path': tool.path.trim() !== 'shell:open' && !tool.path.trim() }">
-        <input v-model="tool.name" placeholder="工具名称" />
+        <input v-model="tool.name" :placeholder="$t('settings.toolName')" />
         <select v-model="tool.type">
           <option v-for="type in toolTypes" :key="type" :value="type">{{ type }}</option>
         </select>
-        <input v-model="tool.path" placeholder="例如 C:\\Program Files\\App\\app.exe" />
+        <input v-model="tool.path" :placeholder="('settings.executablePath') + ': C:\\Program Files\\App\\app.exe'" />
         <input v-model="tool.args" :placeholder="argsPlaceholder(tool.type)" />
-        <button class="default-tool-button" type="button" :class="{ active: tool.default }" :title="tool.default ? '当前类型默认工具' : '设为该类型默认工具'" @click="store.setDefaultTool(tool.id)">
+        <button class="default-tool-button" type="button" :class="{ active: tool.default }" :title="tool.default ? ('settings.currentTypeDefault') : ('settings.setAsTypeDefault')" @click="store.setDefaultTool(tool.id)">
           <CheckCircle2 v-if="tool.default" />
           <Star v-else />
         </button>
-        <button class="icon-button danger" type="button" title="删除工具" @click="deleteTool(tool.id)"><Trash2 /></button>
+        <button class="icon-button danger" type="button" :title="$t('settings.deleteTool')" @click="deleteTool(tool.id)"><Trash2 /></button>
       </div>
       <div class="settings-row tools-row new-tool-row">
-        <input v-model="newTool.name" placeholder="新工具名称" @keydown.enter.prevent="addTool" />
+        <input v-model="newTool.name" :placeholder="$t('settings.newToolName')" @keydown.enter.prevent="addTool" />
         <select :value="newTool.type" @change="updateNewToolType(($event.target as HTMLSelectElement).value as ToolType)">
           <option v-for="type in toolTypes" :key="type" :value="type">{{ type }}</option>
         </select>
-        <input v-model="newTool.path" placeholder="可执行路径或 shell:open" @keydown.enter.prevent="addTool" />
-        <input v-model="newTool.args" placeholder="参数模板" @keydown.enter.prevent="addTool" />
+        <input v-model="newTool.path" :placeholder="$t('settings.pathOrShellOpen')" @keydown.enter.prevent="addTool" />
+        <input v-model="newTool.args" :placeholder="$t('settings.argsTemplate')" @keydown.enter.prevent="addTool" />
         <span></span>
-        <button class="icon-button" type="button" title="新增工具" @click="addTool"><Plus /></button>
+        <button class="icon-button" type="button" :title="$t('settings.addTool')" @click="addTool"><Plus /></button>
       </div>
     </div>
   </section>

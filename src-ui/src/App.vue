@@ -4,6 +4,7 @@ import { Circle, Clock3, Inbox, Layers, Minus, Settings, Square, Star, X } from 
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import type { UnlistenFn } from "@tauri-apps/api/event";
 import { useOpenDockStore } from "./store";
+import { useI18n } from "./i18n";
 import AppSidebar from "./components/AppSidebar.vue";
 import WorkbenchView from "./components/WorkbenchView.vue";
 import SettingsView from "./components/SettingsView.vue";
@@ -12,6 +13,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { themeCssVars } from "./themes";
 
 const store = useOpenDockStore();
+const { t } = useI18n();
 const appWindow = getCurrentWindow();
 
 const activeAppIconSource = computed(() => {
@@ -63,7 +65,7 @@ const tabMenu = reactive({
 });
 
 const menuTab = computed(() => store.state.tabs.find((tab) => tab.id === tabMenu.tabId));
-const maximizeTitle = computed(() => isMaximized.value ? "还原" : "最大化");
+const maximizeTitle = computed(() => isMaximized.value ? t("app.restore") : t("app.maximize"));
 
 function tabTitle(tab: { kind: string; title: string }) {
   const max = 18;
@@ -162,9 +164,9 @@ onUnmounted(() => {
         <span class="titlebar-context">{{ store.activeWorkspace().name }}</span>
       </div>
       <div class="window-controls">
-        <button class="window-control minimize" type="button" title="最小化" @click="minimizeWindow"><Minus /></button>
+        <button class="window-control minimize" type="button" :title="$t('app.minimize')" @click="minimizeWindow"><Minus /></button>
         <button class="window-control maximize" type="button" :title="maximizeTitle" @click="toggleMaximizeWindow"><Square :class="{ restored: isMaximized }" /></button>
-        <button class="window-control close" type="button" title="关闭" @click="closeWindow"><X /></button>
+        <button class="window-control close" type="button" :title="$t('app.close')" @click="closeWindow"><X /></button>
       </div>
     </header>
     <AppSidebar />
@@ -195,9 +197,9 @@ onUnmounted(() => {
 
       <div v-if="tabMenu.open" class="tab-menu-backdrop" @click="closeTabMenu" @contextmenu.prevent="closeTabMenu"></div>
       <div v-if="tabMenu.open" class="tab-context-menu" :style="{ left: tabMenu.x + 'px', top: tabMenu.y + 'px' }" role="menu">
-        <button role="menuitem" :disabled="menuTab?.pinned" @click="closeCurrentTab">关闭当前</button>
-        <button role="menuitem" @click="closeOtherTabs">关闭其他</button>
-        <button role="menuitem" @click="closeAllTabs">关闭全部</button>
+        <button role="menuitem" :disabled="menuTab?.pinned" @click="closeCurrentTab">{{ $t("app.closeCurrent") }}</button>
+        <button role="menuitem" @click="closeOtherTabs">{{ $t("app.closeOthers") }}</button>
+        <button role="menuitem" @click="closeAllTabs">{{ $t("app.closeAll") }}</button>
       </div>
 
       <WorkbenchView v-if="store.state.mainView === 'workspace'" />
@@ -205,8 +207,8 @@ onUnmounted(() => {
 
       <footer class="status-bar">
         <span>{{ store.activeWorkspace().name }}</span>
-        <span>{{ store.state.data.collections.length }} collections</span>
-        <span>{{ store.state.data.plugins.length }} plugins</span>
+        <span>{{ store.state.data.collections.length }} {{ $t("app.collections") }}</span>
+        <span>{{ store.state.data.plugins.length }} {{ $t("app.plugins") }}</span>
       </footer>
     </main>
 

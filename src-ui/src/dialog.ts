@@ -1,4 +1,5 @@
 ﻿import { ask } from "@tauri-apps/plugin-dialog";
+import { useI18n } from "./i18n";
 
 /**
  * Confirm a destructive action via a native dialog.
@@ -6,7 +7,7 @@
  */
 export async function confirmDelete(message: string): Promise<boolean> {
   try {
-    return await ask(message, { title: "确认删除", kind: "warning", okLabel: "删除", cancelLabel: "取消" });
+    return await ask(message, { title: useI18n().t("confirm.title"), kind: "warning", okLabel: useI18n().t("confirm.ok"), cancelLabel: useI18n().t("confirm.cancel") });
   } catch {
     // Not running inside Tauri (tests / browser dev)
     return window.confirm(message);

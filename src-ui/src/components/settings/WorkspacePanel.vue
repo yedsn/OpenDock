@@ -2,9 +2,11 @@
 import { computed } from "vue";
 import { Database, Pencil, Plus, Trash2 } from "lucide-vue-next";
 import { useOpenDockStore } from "../../store";
+import { useI18n } from "../../i18n";
 import { confirmDelete } from "../../dialog";
 
 const store = useOpenDockStore();
+const { t } = useI18n();
 const workspace = computed(() => store.activeWorkspace());
 
 const workspaceStats = computed(() => {
@@ -36,12 +38,12 @@ function editWorkspace(id: string) {
 
 async function deleteWorkspace(id: string) {
   if (store.state.data.workspaces.length <= 1) {
-    window.alert("至少保留一个工作区");
+    window.alert(t("sidebar.atLeastOneWorkspace"));
     return;
   }
   const target = store.state.data.workspaces.find((entry) => entry.id === id);
   if (!target) return;
-  if (await confirmDelete(`确认删除工作区「${target.name}」？所有关联的场景、集合和资源将被删除。`)) {
+  if (await confirmDelete(t("sidebar.confirmDeleteWorkspace", { name: target.name }))) {
     store.deleteWorkspace(id);
   }
 }
@@ -50,49 +52,49 @@ async function deleteWorkspace(id: string) {
 <template>
   <section class="settings-card workspace-settings-card">
     <div class="settings-card-title">
-      <span>当前工作区</span>
+      <span>{{ $t("settings.currentWorkspace") }}</span>
       <div class="workspace-title-actions">
-        <button class="settings-action-button" type="button" @click="openNewWorkspace"><Plus />新建工作区</button>
-        <button class="settings-action-button" type="button" @click="openManage"><Database />侧栏切换</button>
+        <button class="settings-action-button" type="button" @click="openNewWorkspace"><Plus />{{ $t("settings.newWorkspace") }}</button>
+        <button class="settings-action-button" type="button" @click="openManage"><Database />{{ $t("settings.sidebarSwitch") }}</button>
       </div>
     </div>
 
     <div class="workspace-overview">
-      <div class="workspace-stat"><span>场景</span><strong>{{ workspaceStats.scenes }}</strong></div>
-      <div class="workspace-stat"><span>集合</span><strong>{{ workspaceStats.collections }}</strong></div>
-      <div class="workspace-stat"><span>资源</span><strong>{{ workspaceStats.items }}</strong></div>
-      <div class="workspace-stat"><span>收藏集合</span><strong>{{ workspaceStats.favorites }}</strong></div>
+      <div class="workspace-stat"><span>{{ $t("settings.scenes") }}</span><strong>{{ workspaceStats.scenes }}</strong></div>
+      <div class="workspace-stat"><span>{{ $t("settings.collections") }}</span><strong>{{ workspaceStats.collections }}</strong></div>
+      <div class="workspace-stat"><span>{{ $t("settings.resources") }}</span><strong>{{ workspaceStats.items }}</strong></div>
+      <div class="workspace-stat"><span>{{ $t("settings.favoriteCollections") }}</span><strong>{{ workspaceStats.favorites }}</strong></div>
     </div>
 
     <div class="settings-grid">
-      <label class="setting-field"><span>工作区名称</span><input v-model="workspace.name" /></label>
-      <label class="setting-field"><span>存储说明</span><input v-model="workspace.storage" /></label>
-      <label class="setting-field full"><span>备注</span><textarea v-model="workspace.remark"></textarea></label>
+      <label class="setting-field"><span>{{ $t("settings.workspaceName") }}</span><input v-model="workspace.name" /></label>
+      <label class="setting-field"><span>{{ $t("settings.storageDesc") }}</span><input v-model="workspace.storage" /></label>
+      <label class="setting-field full"><span>{{ $t("settings.remark") }}</span><textarea v-model="workspace.remark"></textarea></label>
     </div>
   </section>
 
   <section class="settings-card workspace-settings-card">
-    <div class="settings-card-title">工作区列表</div>
-    <div class="settings-card-description">切换、编辑或删除工作区。删除工作区会同时删除其下的场景、集合和资源。</div>
+    <div class="settings-card-title">{{ $t("settings.workspaceList") }}</div>
+    <div class="settings-card-description">{{ $t("settings.workspaceListDesc") }}</div>
 
     <div class="settings-table workspace-table">
       <div class="settings-row workspace-row workspace-row-head">
-        <strong>名称</strong>
-        <strong>存储</strong>
-        <strong>内容</strong>
+        <strong>{{ $t("settings.name") }}</strong>
+        <strong>{{ $t("settings.storage") }}</strong>
+        <strong>{{ $t("settings.content") }}</strong>
         <strong></strong>
       </div>
       <div v-for="entry in store.state.data.workspaces" :key="entry.id" class="settings-row workspace-row" :class="{ active: entry.id === store.state.data.activeWorkspaceId }">
         <div class="workspace-name-cell">
           <Database />
-          <span><strong>{{ entry.name }}</strong><small>{{ entry.remark || '无备注' }}</small></span>
+          <span><strong>{{ entry.name }}</strong><small>{{ entry.remark || ("settings.noRemark") }}</small></span>
         </div>
-        <span>{{ entry.storage || '本地数据' }}</span>
-        <span>{{ store.state.data.scenes.filter((scene) => scene.workspaceId === entry.id).length }} 场景 / {{ store.state.data.collections.filter((collection) => collection.workspaceId === entry.id).length }} 集合</span>
+        <span>{{ entry.storage || ("settings.localData") }}</span>
+        <span>{{ store.state.data.scenes.filter((scene) => scene.workspaceId === entry.id).length }} {{ $t("settings.scenes") }} / {{ store.state.data.collections.filter((collection) => collection.workspaceId === entry.id).length }} {{ $t("settings.collections") }}</span>
         <div class="workspace-row-actions">
-          <button class="settings-action-button" type="button" :disabled="entry.id === store.state.data.activeWorkspaceId" @click="store.switchWorkspace(entry.id)">切换</button>
-          <button class="icon-button" type="button" title="编辑工作区" @click="editWorkspace(entry.id)"><Pencil /></button>
-          <button class="icon-button danger" type="button" title="删除工作区" :disabled="store.state.data.workspaces.length <= 1" @click="deleteWorkspace(entry.id)"><Trash2 /></button>
+          <button class="settings-action-button" type="button" :disabled="entry.id === store.state.data.activeWorkspaceId" @click="store.switchWorkspace(entry.id)">{{ $t("settings.switchTo") }}</button>
+          <button class="icon-button" type="button" :title="$t('sidebar.editWorkspace')" @click="editWorkspace(entry.id)"><Pencil /></button>
+          <button class="icon-button danger" type="button" :title="$t('sidebar.deleteWorkspace')" :disabled="store.state.data.workspaces.length <= 1" @click="deleteWorkspace(entry.id)"><Trash2 /></button>
         </div>
       </div>
     </div>

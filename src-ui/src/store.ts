@@ -11,6 +11,7 @@ import { getPluginOpenHandler } from "../../plugins/registry";
 import type { AppData, Collection, CollectionItem, CollectionMode, CollectionType, ItemType, MainView, ModalState, OpenTool, PluginItemFormField, PluginItemTypeContribution, PluginManifest, PluginToolTypeContribution, PluginToolTypeEntry, QuickViewId, Scene, SnapshotKind, SnapshotRecord, SceneType, Tab, ThemeDefinition, Workspace } from "./types";
 import type { SearchSuggestion } from "./types";
 import { matchesSearchText, scoreSearchText, createSearchText } from "./pinyin";
+import { useI18n } from "./i18n";
 
 // ---- Tauri command bridge ----
 

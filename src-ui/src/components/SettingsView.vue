@@ -13,6 +13,7 @@ import {
   Wrench
 } from "lucide-vue-next";
 import { useOpenDockStore } from "../store";
+import { useI18n } from "../i18n";
 import type { PluginManifest } from "../types";
 
 import GeneralPanel from "./settings/GeneralPanel.vue";
@@ -29,6 +30,7 @@ import AppearancePanel from "./settings/AppearancePanel.vue";
 import AboutPanel from "./settings/AboutPanel.vue";
 
 const store = useOpenDockStore();
+const { t } = useI18n();
 
 interface SettingsCategory {
   id: string;
@@ -53,15 +55,15 @@ function pluginIconName(plugin: PluginManifest): string {
 
 const categories = computed<SettingsCategory[]>(() => {
   const system: SettingsCategory[] = [
-    { id: "general", label: "通用设置", icon: "SlidersHorizontal", description: "配置启动入口、最近记录和基础行为。", panel: GeneralPanel },
-    { id: "workspace", label: "工作区设置", icon: "Database", description: "查看当前工作区，并进入工作区管理。", panel: WorkspacePanel },
-    { id: "tools", label: "打开工具", icon: "Wrench", description: "配置基础打开工具，以及由插件启用后贡献的专业工具类型。", panel: ToolsPanel },
-    { id: "templates", label: "集合模板", icon: "Blocks", description: "配置项目类场景默认创建的集合模板。", panel: TemplatesPanel },
-    { id: "plugins", label: "插件管理", icon: "Blocks", description: "管理插件状态和扩展能力。", panel: PluginsPanel },
-    { id: "shortcuts", label: "快捷键", icon: "Keyboard", description: "配置高频操作快捷键。", panel: ShortcutsPanel },
-    { id: "search", label: "搜索", icon: "Search", description: "配置搜索结果的回车执行行为和链接打开后的窗口处理。", panel: SearchPanel },
-    { id: "data", label: "数据与备份", icon: "Archive", description: "导入、导出、清理和重置操作。", panel: DataPanel },
-    { id: "appearance", label: "外观", icon: "Paintbrush", description: "调整主题、密度、侧栏宽度和 Console 显示。", panel: AppearancePanel }
+    { id: "general", label: t("settings.general"), icon: "SlidersHorizontal", description: t("settings.generalDesc"), panel: GeneralPanel },
+    { id: "workspace", label: t("settings.workspace"), icon: "Database", description: t("settings.workspaceDesc"), panel: WorkspacePanel },
+    { id: "tools", label: t("settings.tools"), icon: "Wrench", description: t("settings.toolsDesc"), panel: ToolsPanel },
+    { id: "templates", label: t("settings.templates"), icon: "Blocks", description: t("settings.templatesDesc"), panel: TemplatesPanel },
+    { id: "plugins", label: t("settings.plugins"), icon: "Blocks", description: t("settings.pluginsDesc"), panel: PluginsPanel },
+    { id: "shortcuts", label: t("settings.shortcuts"), icon: "Keyboard", description: t("settings.shortcutsDesc"), panel: ShortcutsPanel },
+    { id: "search", label: t("settings.search"), icon: "Search", description: t("settings.searchDesc"), panel: SearchPanel },
+    { id: "data", label: t("settings.data"), icon: "Archive", description: t("settings.dataDesc"), panel: DataPanel },
+    { id: "appearance", label: t("settings.appearance"), icon: "Paintbrush", description: t("settings.appearanceDesc"), panel: AppearancePanel }
   ];
   const pluginItems = store.state.data.plugins
     .filter((plugin: PluginManifest) => plugin.installed && plugin.enabled && plugin.configurable)
@@ -69,14 +71,14 @@ const categories = computed<SettingsCategory[]>(() => {
       id: `plugin:${plugin.id}`,
       label: plugin.name,
       icon: pluginIconName(plugin),
-      description: `${plugin.name} 插件配置。`,
+      description: t("settings.pluginConfig", { name: plugin.name }),
       group: "plugin",
       panel: pluginPanel(plugin)
     }));
   return [
     ...system,
     ...pluginItems,
-    { id: "about", label: "关于", icon: "Info", description: "查看产品定位、版本和当前实现说明。", panel: AboutPanel }
+    { id: "about", label: t("settings.about"), icon: "Info", description: t("settings.aboutDesc"), panel: AboutPanel }
   ];
 });
 

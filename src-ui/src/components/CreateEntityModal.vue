@@ -2,10 +2,12 @@
 import { computed, reactive, watch } from "vue";
 import { X } from "lucide-vue-next";
 import { useOpenDockStore } from "../store";
+import { useI18n } from "../i18n";
 import { sceneTypeOptions, collectionTypeOptions } from "../helpers";
 import type { Collection, CollectionItem, CollectionType, ItemType, Scene, SceneType, Workspace } from "../types";
 
 const store = useOpenDockStore();
+const { t } = useI18n();
 
 const form = reactive({
   sceneName: "",
@@ -29,8 +31,8 @@ const form = reactive({
 const isEdit = computed(() => Boolean(store.state.modal.editingId));
 const itemTypeOptions = computed(() => store.availableItemTypes() as ItemType[]);
 const itemTypeConfig = computed(() => store.pluginItemTypeConfig(form.itemType));
-const itemValueLabel = computed(() => itemTypeConfig.value?.valueLabel || "资源内容");
-const itemValuePlaceholder = computed(() => itemTypeConfig.value?.valuePlaceholder || "路径、URL 或命令");
+const itemValueLabel = computed(() => itemTypeConfig.value?.valueLabel || t("modal.resourceContent"));
+const itemValuePlaceholder = computed(() => itemTypeConfig.value?.valuePlaceholder || t("modal.resourceContentPlaceholder"));
 const itemPluginFields = computed(() => store.pluginItemFields(form.itemType));
 const itemToolOptions = computed(() => {
   const allowed = new Set(store.allowedToolTypesForItem(form.itemType));
@@ -38,11 +40,11 @@ const itemToolOptions = computed(() => {
 });
 const modalTitle = computed(() => {
   const kind = store.state.modal.kind;
-  const verb = isEdit.value ? "编辑" : "新建";
-  if (kind === "scene") return verb + "场景";
-  if (kind === "collection") return verb + "集合";
-  if (kind === "workspace") return verb + "工作区";
-  if (kind === "item") return verb === "新建" ? "添加资源" : "编辑资源";
+  const verb = isEdit.value ? t("modal.edit") : t("modal.create");
+  if (kind === "scene") return verb + t("modal.editScene").replace(t("modal.edit"), "");
+  if (kind === "collection") return verb + t("modal.editCollection").replace(t("modal.edit"), "");
+  if (kind === "workspace") return verb + t("modal.editWorkspace").replace(t("modal.edit"), "");
+  if (kind === "item") return isEdit.value ? t("modal.editResource") : t("modal.addResource");
   return "";
 });
 
@@ -138,34 +140,34 @@ function submitModal() {
       </div>
 
       <div v-if="store.state.modal.kind === 'scene'" class="settings-grid">
-        <label class="setting-field"><span>场景名称</span><input v-model="form.sceneName" required /></label>
-        <label class="setting-field"><span>场景类型</span>
+        <label class="setting-field"><span>{{ $t("modal.sceneName") }}</span><input v-model="form.sceneName" required /></label>
+        <label class="setting-field"><span>{{ $t("modal.sceneType") }}</span>
           <select v-model="form.sceneType">
             <option v-for="type in sceneTypeOptions" :key="type">{{ type }}</option>
           </select>
         </label>
-        <label class="setting-field full"><span>描述</span><textarea v-model="form.sceneDescription"></textarea></label>
+        <label class="setting-field full"><span>{{ $t("modal.description") }}</span><textarea v-model="form.sceneDescription"></textarea></label>
       </div>
 
       <div v-if="store.state.modal.kind === 'collection'" class="settings-grid">
-        <label class="setting-field"><span>集合名称</span><input v-model="form.collectionName" required /></label>
-        <label class="setting-field"><span>集合类型</span>
+        <label class="setting-field"><span>{{ $t("modal.collectionName") }}</span><input v-model="form.collectionName" required /></label>
+        <label class="setting-field"><span>{{ $t("modal.collectionType") }}</span>
           <select v-model="form.collectionType">
             <option v-for="type in collectionTypeOptions" :key="type">{{ type }}</option>
           </select>
         </label>
-        <label class="setting-field"><span>关联场景</span>
+        <label class="setting-field"><span>{{ $t("modal.associatedScene") }}</span>
           <select v-model="form.collectionSceneId">
-            <option value="">无场景</option>
+            <option value="">{{ $t("modal.noScene") }}</option>
             <option v-for="scene in store.activeScenes.value" :key="scene.id" :value="scene.id">{{ scene.name }}</option>
           </select>
         </label>
-        <label class="setting-field full"><span>描述</span><textarea v-model="form.collectionDescription"></textarea></label>
+        <label class="setting-field full"><span>{{ $t("modal.description") }}</span><textarea v-model="form.collectionDescription"></textarea></label>
       </div>
 
       <div v-if="store.state.modal.kind === 'item'" class="settings-grid">
-        <label class="setting-field"><span>资源名称</span><input v-model="form.itemName" required /></label>
-        <label class="setting-field"><span>资源类型</span>
+        <label class="setting-field"><span>{{ $t("modal.resourceName") }}</span><input v-model="form.itemName" required /></label>
+        <label class="setting-field"><span>{{ $t("modal.resourceType") }}</span>
           <select v-model="form.itemType">
             <option v-for="type in itemTypeOptions" :key="type">{{ type }}</option>
           </select>
@@ -176,24 +178,24 @@ function submitModal() {
           <textarea v-if="field.kind === 'textarea'" v-model="form.itemPluginData[field.key]" :required="field.required" :placeholder="field.placeholder"></textarea>
           <input v-else v-model="form.itemPluginData[field.key]" :required="field.required" :placeholder="field.placeholder" />
         </label>
-        <label class="setting-field"><span>打开工具</span>
+        <label class="setting-field"><span>{{ $t("modal.openTool") }}</span>
           <select v-model="form.itemToolId">
-            <option value="">使用集合默认</option>
+            <option value="">{{ $t("modal.useCollectionDefault") }}</option>
             <option v-for="tool in itemToolOptions" :key="tool.id" :value="tool.id">{{ tool.name }} ({{ tool.type }})</option>
           </select>
         </label>
-        <label class="setting-field"><span>工作目录</span><input v-model="form.itemWorkingDirectory" placeholder="命令资源使用，可选" /></label>
+        <label class="setting-field"><span>{{ $t("modal.workingDirectory") }}</span><input v-model="form.itemWorkingDirectory" :placeholder="$t('modal.workingDirectoryHint')" /></label>
       </div>
 
       <div v-if="store.state.modal.kind === 'workspace'" class="settings-grid">
-        <label class="setting-field"><span>工作区名称</span><input v-model="form.workspaceName" required /></label>
-        <label class="setting-field"><span>存储说明</span><input v-model="form.workspaceStorage" /></label>
-        <label class="setting-field full"><span>备注</span><textarea v-model="form.workspaceRemark"></textarea></label>
+        <label class="setting-field"><span>{{ $t("modal.workspaceName") }}</span><input v-model="form.workspaceName" required /></label>
+        <label class="setting-field"><span>{{ $t("modal.storageDescription") }}</span><input v-model="form.workspaceStorage" /></label>
+        <label class="setting-field full"><span>{{ $t("modal.remark") }}</span><textarea v-model="form.workspaceRemark"></textarea></label>
       </div>
 
       <div class="modal-actions">
-        <button class="settings-action-button" type="button" @click="closeModal">取消</button>
-        <button class="run-button" type="submit">{{ isEdit ? '保存' : '确认' }}</button>
+        <button class="settings-action-button" type="button" @click="closeModal">{{ $t("modal.cancel") }}</button>
+        <button class="run-button" type="submit">isEdit ? ("modal.save") : ("modal.confirm")</button>
       </div>
     </form>
   </div>

@@ -14,10 +14,12 @@ import {
   Wrench
 } from "lucide-vue-next";
 import { useOpenDockStore } from "../store";
+import { useI18n } from "../i18n";
 import { confirmDelete } from "../dialog";
 import VirtualList from "./VirtualList.vue";
 
 const store = useOpenDockStore();
+const { t } = useI18n();
 
 const activeCollection = computed(() => store.activeCollection());
 const activeCollectionId = computed(() => store.state.data.activeCollectionId);
@@ -58,7 +60,7 @@ interface CollectionRow {
 const collectionRows = computed<CollectionRow[]>(() => {
   const sceneMap = sceneNameById.value;
   return store.visibleCollections.value.map((collection) => {
-    const sceneName = collection.sceneId ? (sceneMap.get(collection.sceneId) || "无场景") : "无场景";
+    const sceneName = collection.sceneId ? (sceneMap.get(collection.sceneId) || t("types.noScene")) : t("types.noScene");
     return {
       id: collection.id,
       name: collection.name,
@@ -101,10 +103,10 @@ const itemPad = computed(() => (isComfortable.value ? 12 : 9));
 const itemRowHeight = computed(() => 36 + itemPad.value * 2);
 
 const quickViewLabels: Record<string, string> = {
-  all: "全部资源",
-  favorites: "收藏集合",
-  recent: "最近打开",
-  unbound: "无场景集合"
+  all: t("sidebar.allResources"),
+  favorites: t("sidebar.favoriteCollections"),
+  recent: t("sidebar.recentlyOpened"),
+  unbound: t("sidebar.unboundCollections")
 };
 
 const activeTab = computed(() => store.state.tabs.find((tab) => tab.id === store.state.activeTabId));
@@ -112,8 +114,8 @@ const isQuickViewTab = computed(() => activeTab.value?.kind === "quickview");
 const paneTitle = computed(() => isQuickViewTab.value ? quickViewLabels[store.state.quickView] : store.activeScene().name);
 const paneDescription = computed(() => {
   const count = collectionRows.value.length;
-  if (isQuickViewTab.value) return `全部场景 · ${count} 个集合`;
-  return `${store.activeScene().type}场景 · ${count} 个集合`;
+  if (isQuickViewTab.value) return `${t("workbench.allScenes")} \u00b7 ${count} ${t("settings.collections")}`;
+  return `${t("types.scene" + store.activeScene().type.charAt(0).toUpperCase() + store.activeScene().type.slice(1)) || store.activeScene().type}${t("types.sceneSuffix")} \u00b7 ${count} ${t("settings.collections")}`;
 });
 
 function editScene(sceneId: string) {
@@ -124,7 +126,7 @@ function editScene(sceneId: string) {
 async function deleteSceneConfirm(sceneId: string) {
   const scene = store.state.data.scenes.find((s) => s.id === sceneId);
   if (!scene) return;
-  if (await confirmDelete(`确认删除场景「${scene.name}」？此场景下的集合将变为无场景集合。`)) {
+  if (await confirmDelete(t("sidebar.confirmDeleteScene", { name: scene.name }))) {
     store.deleteScene(sceneId);
   }
 }
@@ -137,7 +139,7 @@ function editCollection(collectionId: string) {
 async function deleteCollectionConfirm(collectionId: string) {
   const coll = store.state.data.collections.find((c) => c.id === collectionId);
   if (!coll) return;
-  if (await confirmDelete(`确认删除集合「${coll.name}」及其所有资源？`)) {
+  if (await confirmDelete(t("workbench.confirmDeleteCollection", { name: coll.name }))) {
     store.deleteCollection(collectionId);
   }
 }
@@ -150,7 +152,7 @@ function editItem(itemId: string) {
 async function deleteItemConfirm(itemId: string) {
   const item = store.state.data.items.find((i) => i.id === itemId);
   if (!item) return;
-  if (await confirmDelete(`确认删除资源「${item.name}」？`)) {
+  if (await confirmDelete(t("workbench.confirmDeleteItem", { name: item.name }))) {
     store.deleteItem(itemId);
   }
 }
@@ -174,18 +176,18 @@ function selectCollection(collection: { id: string; name: string; sceneId: strin
           <p>{{ paneDescription }}</p>
         </div>
         <div v-if="!isQuickViewTab" class="pane-header-actions">
-          <button class="icon-button" title="编辑场景" @click="editScene(store.state.data.activeSceneId)"><Pencil /></button>
-          <button class="icon-button" title="删除场景" @click="deleteSceneConfirm(store.state.data.activeSceneId)"><Trash2 /></button>
-          <button class="run-button" @click="store.openScene(store.activeScene())"><Play />打开场景</button>
+          <button class="icon-button" :title="$t('workbench.editScene')" @click="editScene(store.state.data.activeSceneId)"><Pencil /></button>
+          <button class="icon-button" :title="$t('workbench.deleteScene')" @click="deleteSceneConfirm(store.state.data.activeSceneId)"><Trash2 /></button>
+          <button class="run-button" @click="store.openScene(store.activeScene())"><Play />{{ $t("workbench.openScene") }}</button>
         </div>
       </div>
 
       <div class="pane-tools">
-        <button class="tool-chip" :class="{ active: store.state.collectionMode === 'collections' }" @click="store.state.collectionMode = 'collections'"><Layers />集合</button>
-        <button class="tool-chip" :class="{ active: store.state.collectionMode === 'web' }" @click="store.state.collectionMode = 'web'"><Globe />网页</button>
-        <button class="tool-chip" :class="{ active: store.state.collectionMode === 'tool' }" @click="store.state.collectionMode = 'tool'"><Wrench />工具</button>
+        <button class="tool-chip" :class="{ active: store.state.collectionMode === 'collections' }" @click="store.state.collectionMode = 'collections'"><Layers />{{ $t("workbench.collections") }}</button>
+        <button class="tool-chip" :class="{ active: store.state.collectionMode === 'web' }" @click="store.state.collectionMode = 'web'"><Globe />{{ $t("workbench.webPages") }}</button>
+        <button class="tool-chip" :class="{ active: store.state.collectionMode === 'tool' }" @click="store.state.collectionMode = 'tool'"><Wrench />{{ $t("workbench.tools") }}</button>
         <span class="tool-spacer"></span>
-        <button class="tool-chip action" @click="store.state.modal.kind = 'collection'; store.state.modal.editingId = undefined;"><FolderPlus />新建集合</button>
+        <button class="tool-chip action" @click="store.state.modal.kind = 'collection'; store.state.modal.editingId = undefined;"><FolderPlus />{{ $t("workbench.newCollection") }}</button>
       </div>
 
       <VirtualList
@@ -214,8 +216,8 @@ function selectCollection(collection: { id: string; name: string; sceneId: strin
               <small>{{ item.subtitle }}</small>
             </span>
             <span class="card-actions">
-              <button class="icon-button" type="button" title="编辑" @click.stop="editCollection(item.id)"><Pencil /></button>
-              <button class="icon-button danger" type="button" title="删除" @click.stop="deleteCollectionConfirm(item.id)"><Trash2 /></button>
+              <button class="icon-button" type="button" :title="$t('workbench.edit')" @click.stop="editCollection(item.id)"><Pencil /></button>
+              <button class="icon-button danger" type="button" :title="$t('workbench.delete')" @click.stop="deleteCollectionConfirm(item.id)"><Trash2 /></button>
               <button class="icon-button" type="button" @click.stop="store.toggleFavorite(item.source)">
                 <Star :fill="item.favorite ? 'currentColor' : 'none'" />
               </button>
@@ -224,7 +226,7 @@ function selectCollection(collection: { id: string; name: string; sceneId: strin
         </template>
       </VirtualList>
       <div v-else class="collection-list collection-list-empty">
-        <div class="empty-state">没有匹配的集合</div>
+        <div class="empty-state">{{ $t("workbench.noMatchingCollections") }}</div>
       </div>
     </section>
 
@@ -232,13 +234,13 @@ function selectCollection(collection: { id: string; name: string; sceneId: strin
       <div class="resource-header">
         <div>
           <div class="type-label">{{ activeCollection?.type || 'Collection' }}</div>
-          <h2>{{ activeCollection?.name || '未选择集合' }}</h2>
-          <p>{{ activeCollection?.description || '选择一个集合查看资源。' }}</p>
+          <h2>{{ activeCollection?.name || t("workbench.unselectedCollection") }}</h2>
+          <p>{{ activeCollection?.description || t("workbench.selectCollectionHint") }}</p>
         </div>
         <div class="resource-actions">
           <button class="icon-button" @click="store.state.modal.kind = 'item'; store.state.modal.editingId = undefined;"><Plus /></button>
-          <button class="icon-button" v-if="activeCollection" title="编辑集合" @click="editCollection(activeCollection.id)"><Pencil /></button>
-          <button v-if="activeCollection" class="run-button" @click="store.openCollection(activeCollection)"><Play />打开集合</button>
+          <button class="icon-button" v-if="activeCollection" :title="$t('workbench.editCollection')" @click="editCollection(activeCollection.id)"><Pencil /></button>
+          <button v-if="activeCollection" class="run-button" @click="store.openCollection(activeCollection)"><Play />{{ $t("workbench.openCollection") }}</button>
         </div>
       </div>
 
@@ -258,15 +260,15 @@ function selectCollection(collection: { id: string; name: string; sceneId: strin
               <small>{{ item.subtitle }}</small>
             </span>
             <span class="item-actions">
-              <button class="row-open" @click="store.openItem(item.source)"><Play />打开</button>
-              <button class="icon-button" title="编辑" @click="editItem(item.id)"><Pencil /></button>
-              <button class="icon-button danger" title="删除" @click="deleteItemConfirm(item.id)"><Trash2 /></button>
+              <button class="row-open" @click="store.openItem(item.source)"><Play />{{ $t("workbench.open") }}</button>
+              <button class="icon-button" :title="$t('workbench.edit')" @click="editItem(item.id)"><Pencil /></button>
+              <button class="icon-button danger" :title="$t('workbench.delete')" @click="deleteItemConfirm(item.id)"><Trash2 /></button>
             </span>
           </div>
         </template>
       </VirtualList>
       <div v-else class="item-list item-list-empty">
-        <div class="empty-state">这个集合还没有资源</div>
+        <div class="empty-state">{{ $t("workbench.noResourcesYet") }}</div>
       </div>
 
       <section v-if="store.state.data.settings.appearance.showConsole" class="console-pane">

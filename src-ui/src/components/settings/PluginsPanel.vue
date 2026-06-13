@@ -1,8 +1,10 @@
 <script setup lang="ts">
 import { Blocks, Download, Trash2 } from "lucide-vue-next";
 import { useOpenDockStore } from "../../store";
+import { useI18n } from "../../i18n";
 
 const store = useOpenDockStore();
+const { t } = useI18n();
 
 function pluginEnabledCount() {
   return store.state.data.plugins.filter((plugin) => plugin.enabled).length;
@@ -11,16 +13,16 @@ function pluginEnabledCount() {
 
 <template>
   <section class="settings-card">
-    <div class="settings-card-title">插件管理</div>
+    <div class="settings-card-title">{{ $t("settings.pluginManagement") }}</div>
     <div class="plugin-summary-grid">
-      <div class="plugin-summary-item"><span>已安装</span><strong>{{ store.state.data.plugins.length }}</strong></div>
-      <div class="plugin-summary-item"><span>已启用</span><strong>{{ pluginEnabledCount() }}</strong></div>
-      <div class="plugin-summary-item"><span>可配置</span><strong>{{ store.state.data.plugins.filter((plugin) => plugin.configurable).length }}</strong></div>
+      <div class="plugin-summary-item"><span>{{ $t("settings.installed") }}</span><strong>{{ store.state.data.plugins.length }}</strong></div>
+      <div class="plugin-summary-item"><span>{{ $t("settings.enabled") }}</span><strong>{{ pluginEnabledCount() }}</strong></div>
+      <div class="plugin-summary-item"><span>{{ $t("settings.configurable") }}</span><strong>{{ store.state.data.plugins.filter((plugin) => plugin.configurable).length }}</strong></div>
     </div>
   </section>
 
   <section class="settings-card">
-    <div class="settings-card-title">已安装插件</div>
+    <div class="settings-card-title">{{ $t("settings.installedPlugins") }}</div>
     <div class="plugin-list">
       <div v-for="plugin in store.state.data.plugins" :key="plugin.id" class="plugin-card" :class="{ enabled: plugin.enabled }">
         <div class="plugin-card-main">
@@ -43,14 +45,14 @@ function pluginEnabledCount() {
           <span class="setting-switch">
             <input :checked="plugin.enabled" type="checkbox" @change="store.togglePlugin(plugin)" /><span></span>
           </span>
-          <button class="settings-action-button" @click="store.deletePlugin(plugin)"><Trash2 />删除</button>
+          <button class="settings-action-button" @click="store.deletePlugin(plugin)"><Trash2 />{{ $t("settings.deletePlugin") }}</button>
         </div>
       </div>
     </div>
   </section>
 
   <section class="settings-card">
-    <div class="settings-card-title">插件库</div>
+    <div class="settings-card-title">{{ $t("settings.pluginStore") }}</div>
     <div class="plugin-store-grid">
       <div v-for="(plugin, index) in store.state.data.pluginStore" :key="plugin.name" class="plugin-store-card">
         <div class="plugin-title"><strong>{{ plugin.name }}</strong><span>{{ plugin.category }}</span></div>
@@ -61,7 +63,7 @@ function pluginEnabledCount() {
         <div class="plugin-permissions">
           <span v-for="permission in plugin.permissions" :key="permission">{{ permission }}</span>
         </div>
-        <button class="settings-action-button" @click="store.installPlugin(index)"><Download />安装</button>
+        <button class="settings-action-button" @click="store.installPlugin(index)"><Download />{{ $t("settings.install") }}</button>
       </div>
     </div>
   </section>

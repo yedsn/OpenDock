@@ -1,8 +1,10 @@
 <script setup lang="ts">
 import { computed, ref } from "vue";
 import { useOpenDockStore } from "../../store";
+import { useI18n } from "../../i18n";
 
 const store = useOpenDockStore();
+const { t } = useI18n();
 const toggleAction = "显示/隐藏窗口";
 const pendingKey = ref("");
 const captureActive = ref(false);
@@ -49,7 +51,7 @@ async function captureKey(event: KeyboardEvent): Promise<void> {
   const next = keyLabel(event);
   if (!next || !next.includes("+")) {
     statusKind.value = "error";
-    status.value = "请按组合键，例如 Alt+O。";
+    status.value = t("settings.comboKeyHint");
     return;
   }
   captureActive.value = false;
@@ -67,15 +69,15 @@ pendingKey.value = toggleShortcut.value.key;
 <template>
   <section class="settings-card shortcuts-settings-card">
     <div class="settings-card-title">
-      <span>快捷键</span>
-      <button class="secondary-button" type="button" @click="resetDefault">恢复默认</button>
+      <span>{{ $t("settings.shortcutKeys") }}</span>
+      <button class="secondary-button" type="button" @click="resetDefault">{{ $t("settings.restoreDefaultShortcuts") }}</button>
     </div>
-    <p class="settings-card-description">设置全局窗口快捷键。修改后立即生效。</p>
+    <p class="settings-card-description">{{ $t("settings.setGlobalShortcuts") }}</p>
 
     <div class="shortcut-editor">
       <div>
-        <div class="shortcut-name">显示/隐藏窗口</div>
-        <div class="shortcut-note">当前绑定：<code>{{ toggleShortcut.key }}</code></div>
+        <div class="shortcut-name">{{ $t("settings.showHideWindow") }}</div>
+        <div class="shortcut-note">{{ $t("settings.currentBinding") }}<code>{{ toggleShortcut.key }}</code></div>
       </div>
       <input
         v-model="pendingKey"
@@ -84,9 +86,9 @@ pendingKey.value = toggleShortcut.value.key;
         readonly
         @focus="captureActive = true"
         @keydown="captureKey"
-        placeholder="点击后按快捷键"
+        :placeholder="$t('settings.clickThenPress')"
       />
-      <button class="primary-button" type="button" @click="captureActive = true">录入</button>
+      <button class="primary-button" type="button" @click="captureActive = true">{{ $t("settings.record") }}</button>
     </div>
 
     <div v-if="status" class="shortcut-status" :class="statusKind">{{ status }}</div>
@@ -95,7 +97,7 @@ pendingKey.value = toggleShortcut.value.key;
       <div v-for="shortcut in otherShortcuts" :key="shortcut.action" class="settings-row shortcut-row">
         <strong>{{ shortcut.action }}</strong>
         <input v-model="shortcut.key" />
-        <code>应用内快捷键</code>
+        <code>{{ $t("settings.appShortcut") }}</code>
         <span></span>
       </div>
     </div>

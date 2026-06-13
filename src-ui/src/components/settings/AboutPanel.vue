@@ -1,13 +1,14 @@
 <script setup lang="ts">
 import { useOpenDockStore } from "../../store";
+import { useI18n } from "../../i18n";
 const store = useOpenDockStore();
 </script>
 
 <template>
   <section class="settings-card">
-    <div class="settings-card-title">OpenDock</div>
-    <p>版本：0.1.0 · Tauri + Vue 桌面端</p>
-    <p>定位：面向开发者和专业软件用户的资源集合与启动工具。</p>
-    <p>当前工作区：{{ store.activeWorkspace().name }} · 集合 {{ store.state.data.collections.length }} 个 · 插件 {{ store.state.data.plugins.length }} 个</p>
+    <div class="settings-card-title">{{ $t("app.name") }}</div>
+    <p>{{ $t("settings.version") }}: 0.1.0 / {{ $t("settings.tauriVueDesktop") }}</p>
+    <p>{{ $t("settings.positioning") }}: {{ $t("settings.positioningDesc") }}</p>
+    <p>{{ $t("settings.currentWorkspace") }}: {{ store.activeWorkspace().name }} / {{ $t("settings.collectionCount", { count: store.state.data.collections.length }) }} / {{ $t("settings.pluginCount", { count: store.state.data.plugins.length }) }}</p>
   </section>
 </template>

@@ -2,6 +2,7 @@
 import { computed, nextTick, ref, watch } from "vue";
 import { FileText, FolderKanban, Globe, Layers, Search } from "lucide-vue-next";
 import { useOpenDockStore } from "../store";
+import { useI18n } from "../i18n";
 import type { SearchSuggestion } from "../types";
 
 const props = defineProps<{
@@ -13,6 +14,7 @@ const emit = defineEmits<{
 }>();
 
 const store = useOpenDockStore();
+const { t } = useI18n();
 const activeIndex = ref(0);
 const listRef = ref<HTMLElement | null>(null);
 
@@ -30,9 +32,9 @@ function iconFor(result: SearchSuggestion) {
 }
 
 function labelFor(result: SearchSuggestion): string {
-  if (result.kind === "scene") return "场景";
-  if (result.kind === "collection") return "集合";
-  return result.isUrl ? "链接" : "资源";
+  if (result.kind === "scene") return t("search.scene");
+  if (result.kind === "collection") return t("search.collection");
+  return result.isUrl ? t("search.link") : t("search.resource");
 }
 
 function setActive(index: number) {
@@ -66,7 +68,7 @@ defineExpose({
 </script>
 
 <template>
-  <div v-if="open && hasQuery" class="search-overlay" role="listbox" aria-label="搜索结果">
+  <div v-if="open && hasQuery" class="search-overlay" role="listbox" :aria-label="$t('search.searchResults')">
     <div v-if="results.length" ref="listRef" class="search-results">
       <button
         v-for="(result, index) in results"
@@ -89,7 +91,7 @@ defineExpose({
     </div>
     <div v-else class="search-empty">
       <Search />
-      <span>没有匹配结果</span>
+      <span>{{ $t("search.noMatchResults") }}</span>
     </div>
   </div>
 </template>

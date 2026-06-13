@@ -3,8 +3,10 @@ import { computed, ref } from "vue";
 import { ImageUp, RotateCcw, Upload } from "lucide-vue-next";
 import { invoke } from "@tauri-apps/api/core";
 import { useOpenDockStore } from "../../store";
+import { useI18n } from "../../i18n";
 
 const store = useOpenDockStore();
+const { t } = useI18n();
 const appearance = store.state.data.settings.appearance as typeof store.state.data.settings.appearance & {
   appIconStyle?: "dark" | "light" | "custom";
   customAppIconDataUrl?: string;
@@ -13,9 +15,9 @@ const fileInputRef = ref<HTMLInputElement | null>(null);
 const iconError = ref("");
 
 const iconOptions = computed(() => [
-  { id: "dark" as const, label: "Dark", description: "Dark O + Dock icon for the default desktop style.", src: "/icons/opendock-o-dock-dark.svg" },
-  { id: "light" as const, label: "Light", description: "Light high-contrast icon for bright system themes.", src: "/icons/opendock-o-dock-light.svg" },
-  { id: "custom" as const, label: "Custom", description: "Upload a PNG, JPG, WebP, or SVG icon.", src: appearance.customAppIconDataUrl || "/icons/opendock-o-dock-dark.svg" }
+  { id: "dark" as const, label: t("settings.appIconDark"), description: "Dark O + Dock icon for the default desktop style.", src: "/icons/opendock-o-dock-dark.svg" },
+  { id: "light" as const, label: t("settings.appIconLight"), description: "Light high-contrast icon for bright system themes.", src: "/icons/opendock-o-dock-light.svg" },
+  { id: "custom" as const, label: t("settings.appIconCustom"), description: "Upload a PNG, JPG, WebP, or SVG icon.", src: appearance.customAppIconDataUrl || "/icons/opendock-o-dock-dark.svg" }
 ]);
 
 function setTheme(theme: string) {
@@ -50,12 +52,12 @@ function handleCustomIconChange(event: Event) {
   if (!file) return;
   const allowedTypes = ["image/png", "image/jpeg", "image/webp", "image/svg+xml"];
   if (!allowedTypes.includes(file.type)) {
-    iconError.value = "Choose a PNG, JPG, WebP, or SVG icon.";
+    iconError.value = t("settings.iconTypeError");
     input.value = "";
     return;
   }
   if (file.size > 1024 * 1024) {
-    iconError.value = "Icon file should be smaller than 1MB.";
+    iconError.value = t("settings.iconSizeError");
     input.value = "";
     return;
   }
@@ -68,7 +70,7 @@ function handleCustomIconChange(event: Event) {
     applyIconToSystem();
   };
   reader.onerror = () => {
-    iconError.value = "Failed to read the icon file.";
+    iconError.value = t("settings.iconReadError");
   };
   reader.readAsDataURL(file);
   input.value = "";
@@ -100,11 +102,11 @@ function resetAppearance() {
   <section class="settings-card">
     <div class="settings-card-title">
       <span>Appearance</span>
-      <button class="settings-action-button" type="button" @click="resetAppearance"><RotateCcw />Reset</button>
+      <button class="settings-action-button" type="button" @click="resetAppearance"><RotateCcw />{{ $t("settings.reset") }}</button>
     </div>
     <div class="settings-grid">
       <div class="setting-field full">
-        <span>App icon</span>
+        <span>{{ $t("settings.appIcon") }}</span>
         <div class="app-icon-options">
           <button
             v-for="option in iconOptions"
@@ -122,47 +124,47 @@ function resetAppearance() {
           </button>
         </div>
         <div class="custom-icon-actions">
-          <button class="settings-action-button" type="button" @click="chooseCustomIcon"><Upload />Choose custom icon</button>
-          <button v-if="appearance.customAppIconDataUrl" class="settings-action-button" type="button" @click="clearCustomIcon"><ImageUp />Clear custom</button>
+          <button class="settings-action-button" type="button" @click="chooseCustomIcon"><Upload />{{ $t("settings.chooseCustomIcon") }}</button>
+          <button v-if="appearance.customAppIconDataUrl" class="settings-action-button" type="button" @click="clearCustomIcon"><ImageUp />{{ $t("settings.clearCustom") }}</button>
           <input ref="fileInputRef" class="hidden-file-input" type="file" accept="image/png,image/jpeg,image/webp,image/svg+xml" @change="handleCustomIconChange" />
         </div>
-        <small class="setting-help">Updates the titlebar, taskbar, and tray icons immediately. The installer icon is fixed at build time.</small>
+        <small class="setting-help">{{ $t("settings.iconHelp") }}</small>
         <small v-if="iconError" class="setting-error">{{ iconError }}</small>
       </div>
 
       <div class="setting-field full">
-        <span>Theme</span>
+        <span>{{ $t("settings.theme") }}</span>
         <div class="theme-options">
           <button v-for="theme in store.availableThemes()" :key="theme.id" class="theme-option" :class="{ active: appearance.theme === theme.id }" type="button" @click="setTheme(theme.id)">
             <span class="theme-swatches"><i v-for="color in theme.swatches" :key="color" :style="{ background: color }"></i></span>
             <span class="theme-copy">
               <strong>{{ theme.name }}</strong>
-              <small>{{ theme.source === 'plugin' ? 'Plugin theme' : theme.kind === 'light' ? 'Built-in light' : 'Built-in dark' }}</small>
+              <small>{{ theme.source === 'plugin' ? ('settings.pluginTheme') : theme.kind === 'light' ? ('settings.builtInLight') : ('settings.builtInDark') }}</small>
             </span>
           </button>
         </div>
       </div>
 
       <div class="setting-field">
-        <span>Density</span>
+        <span>{{ $t("settings.density") }}</span>
         <div class="segmented-control">
-          <button type="button" :class="{ active: appearance.density === 'compact' }" @click="setDensity('compact')">Compact</button>
-          <button type="button" :class="{ active: appearance.density === 'comfortable' }" @click="setDensity('comfortable')">Comfortable</button>
+          <button type="button" :class="{ active: appearance.density === 'compact' }" @click="setDensity('compact')">{{ $t("settings.compact") }}</button>
+          <button type="button" :class="{ active: appearance.density === 'comfortable' }" @click="setDensity('comfortable')">{{ $t("settings.comfortable") }}</button>
         </div>
       </div>
 
       <label class="setting-field full">
-        <span>Interface font</span>
+        <span>{{ $t("settings.interfaceFont") }}</span>
         <input v-model="appearance.interfaceFontFamily" type="text" placeholder="Segoe UI, Microsoft YaHei, system-ui, sans-serif" />
       </label>
 
       <label class="setting-field full">
-        <span>Monospace font</span>
+        <span>{{ $t("settings.monoFont") }}</span>
         <input v-model="appearance.monospaceFontFamily" type="text" placeholder="Cascadia Code, Consolas, monospace" />
       </label>
 
       <label class="setting-field">
-        <span>Base font size</span>
+        <span>{{ $t("settings.baseFontSize") }}</span>
         <div class="range-field">
           <input v-model.number="appearance.baseFontSize" type="range" min="11" max="16" step="1" />
           <input v-model.number="appearance.baseFontSize" type="number" min="11" max="16" />
@@ -170,14 +172,14 @@ function resetAppearance() {
       </label>
 
       <label class="setting-field">
-        <span>Sidebar width</span>
+        <span>{{ $t("settings.sidebarWidth") }}</span>
         <div class="range-field">
           <input v-model.number="appearance.sidebarWidth" type="range" min="240" max="420" step="2" />
           <input v-model.number="appearance.sidebarWidth" type="number" min="240" max="420" />
         </div>
       </label>
       <label class="setting-field">
-        <span>Show Console</span>
+        <span>{{ $t("settings.showConsole") }}</span>
         <span class="setting-switch">
           <input v-model="appearance.showConsole" type="checkbox" /><span></span>
         </span>
