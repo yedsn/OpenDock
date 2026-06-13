@@ -5,12 +5,12 @@ import en from "./en";
 type LocaleMessages = typeof zhCN;
 
 const locales: Record<string, LocaleMessages> = {
-  "\u7b80\u4f53\u4e2d\u6587": zhCN,
+  "简体中文": zhCN,
   "English": en as unknown as LocaleMessages
 };
 
 const state = reactive({
-  locale: "\u7b80\u4f53\u4e2d\u6587"
+  locale: "简体中文"
 });
 
 function setLocale(locale: string): void {
@@ -52,34 +52,34 @@ function t(key: string, params?: Record<string, string | number>): string {
 
 function typeLabel(chineseType: string): string {
   const typeMap: Record<string, string> = {
-    "\u9879\u76ee": t("types.sceneProject"),
-    "\u529e\u516c": t("types.sceneOffice"),
-    "\u5de5\u7a0b": t("types.sceneEngineering"),
-    "\u8bbe\u8ba1": t("types.sceneDesign"),
-    "\u901a\u7528": t("types.sceneGeneral"),
-    "\u81ea\u5b9a\u4e49": t("types.sceneCustom"),
-    "\u76ee\u5f55\u96c6\u5408": t("types.collectionDirectory"),
-    "\u7f51\u9875\u96c6\u5408": t("types.collectionWebPage"),
-    "\u547d\u4ee4\u96c6\u5408": t("types.collectionCommand"),
-    "Office \u96c6\u5408": t("types.collectionOffice"),
-    "CAD \u96c6\u5408": t("types.collectionCAD"),
-    "\u6587\u4ef6\u96c6\u5408": t("types.collectionFile"),
-    "\u5e94\u7528\u96c6\u5408": t("types.collectionApp"),
-    "\u63d2\u4ef6\u96c6\u5408": t("types.collectionPlugin"),
-    "\u76ee\u5f55": t("types.itemDirectory"),
-    "\u547d\u4ee4": t("types.itemCommand"),
-    "\u6587\u4ef6": t("types.itemFile"),
-    "\u5e94\u7528": t("types.itemApp"),
-    "\u63d2\u4ef6\u8d44\u6e90": t("types.itemPluginResource"),
-    "\u7f16\u8f91\u5668": t("types.toolEditor"),
-    "\u6d4f\u89c8\u5668": t("types.toolBrowser"),
-    "\u7ec8\u7aef": t("types.toolTerminal"),
-    "\u7cfb\u7edf": t("types.toolSystem"),
+    "项目": t("types.sceneProject"),
+    "办公": t("types.sceneOffice"),
+    "工程": t("types.sceneEngineering"),
+    "设计": t("types.sceneDesign"),
+    "通用": t("types.sceneGeneral"),
+    "自定义": t("types.sceneCustom"),
+    "目录集合": t("types.collectionDirectory"),
+    "网页集合": t("types.collectionWebPage"),
+    "命令集合": t("types.collectionCommand"),
+    "Office 集合": t("types.collectionOffice"),
+    "CAD 集合": t("types.collectionCAD"),
+    "文件集合": t("types.collectionFile"),
+    "应用集合": t("types.collectionApp"),
+    "插件集合": t("types.collectionPlugin"),
+    "目录": t("types.itemDirectory"),
+    "命令": t("types.itemCommand"),
+    "文件": t("types.itemFile"),
+    "应用": t("types.itemApp"),
+    "插件资源": t("types.itemPluginResource"),
+    "编辑器": t("types.toolEditor"),
+    "浏览器": t("types.toolBrowser"),
+    "终端": t("types.toolTerminal"),
+    "系统": t("types.toolSystem"),
     "Office": t("types.toolOffice"),
     "CAD": t("types.toolCAD"),
-    "\u65e0\u573a\u666f": t("types.noScene"),
-    "\u8212\u9002": t("settings.comfortable"),
-    "\u7d27\u51d1": t("settings.compact")
+    "无场景": t("types.noScene"),
+    "舒适": t("settings.comfortable"),
+    "紧凑": t("settings.compact")
   };
   return typeMap[chineseType] || chineseType;
 }
