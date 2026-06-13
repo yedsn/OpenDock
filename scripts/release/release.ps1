@@ -46,7 +46,7 @@ if ($current -match '^(\d+)\.(\d+)\.(\d+)$') {
 
 if (-not $Version) {
   if ($suggestedVersion) {
-    $inputVersion = Read-Host "请输入发布版本号 [默认: $suggestedVersion]"
+    $inputVersion = Read-Host "Release version [default: $suggestedVersion]"
     $Version = if ($inputVersion.Trim()) { $inputVersion.Trim() } else { $suggestedVersion }
   } else {
     Fail "Missing version argument. Current package version is not semantic: $current"
@@ -58,7 +58,7 @@ if ($Version -notmatch '^\d+\.\d+\.\d+([.-][0-9A-Za-z.-]+)?$') {
 }
 
 if (-not $Branch) {
-  $inputBranch = Read-Host "请输入发布分支 [默认: master]"
+  $inputBranch = Read-Host "Release branch [default: master]"
   $Branch = if ($inputBranch.Trim()) { $inputBranch.Trim() } else { "master" }
 }
 
@@ -68,8 +68,8 @@ if ($remotes.Count -eq 0) { Fail "No git remotes configured." }
 $dirty = (git -C $RootDir status --porcelain)
 if ($dirty) { Fail "Working tree is not clean. Commit or stash changes before running the release script." }
 
-git -C $RootDir rev-parse "v$Version" *> $null
-if ($LASTEXITCODE -eq 0) { Fail "Git tag v$Version already exists locally." }
+$localTag = git -C $RootDir tag --list "v$Version"
+if ($localTag) { Fail "Git tag v$Version already exists locally." }
 
 foreach ($remote in $remotes) {
   $existing = git -C $RootDir ls-remote --tags $remote "refs/tags/v$Version"
