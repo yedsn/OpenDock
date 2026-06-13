@@ -253,7 +253,7 @@ function selectCollection(collection: { id: string; name: string; sceneId: strin
         :padding="listPad"
       >
         <template #row="{ item }">
-          <div class="item-row" v-memo="[item.id, item.subtitle, itemRowHeight]" :style="{ height: itemRowHeight + 'px' }">
+          <div class="item-row" v-memo="[item.id, item.subtitle, itemRowHeight]" :style="{ height: itemRowHeight + 'px' }" role="button" tabindex="0" @keydown.enter.prevent="store.openItem(item.source)">
             <span class="card-icon"><FileText /></span>
             <span class="item-main">
               <strong>{{ item.name }}</strong>

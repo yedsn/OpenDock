@@ -1,4 +1,4 @@
-﻿import { computed, reactive, watch } from "vue";
+import { computed, reactive, watch } from "vue";
 import { invoke } from "@tauri-apps/api/core";
 import { collectionMeta, itemMeta, sceneMeta } from "./seed";
 import { exportAppData, loadAppData, resetAppData, saveActiveState, saveAppData } from "./storage";
@@ -722,7 +722,7 @@ async function openItemWithTool(item: CollectionItem, tool: OpenTool | undefined
   // For browser tools opening URLs, pre-start the browser to avoid Edge/Chrome
   // session restore on cold start, then open the URL.
   if (tool.type === "浏览器" && (item.type === "URL" || item.value.startsWith("http://") || item.value.startsWith("https://"))) {
-    await callOpenCommand("prestart_browser", { browserPath: tool.path });
+    callOpenCommand("prestart_browser", { browserPath: tool.path });
     return callOpenCommand("open_url_in_browser", {
       browserPath: tool.path,
       url: item.value,
@@ -766,7 +766,7 @@ async function openCollection(collection: Collection): Promise<void> {
     const urls = urlItems.map((item) => item.value);
     // Pre-start browser to consume session restore on cold start,
     // then open all URLs in one call so they land as tabs in a single window.
-    await callOpenCommand("prestart_browser", { browserPath: tool.path });
+    callOpenCommand("prestart_browser", { browserPath: tool.path });
     const args = argsForUrlBatch(tool, urls);
     const result = await callOpenCommand("open_application", { path: tool.path, args });
     urlItems.forEach((item) => openedInBatch.add(item.id));

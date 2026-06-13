@@ -1,4 +1,4 @@
-﻿use std::env;
+use std::env;
 use std::fs;
 use std::path::PathBuf;
 use std::process::Command;
@@ -398,7 +398,9 @@ fn prestart_browser(browser_path: String) -> OpenActionResult {
     // Check if the browser process is already running.
     let running = if cfg!(target_os = "windows") {
         Command::new("tasklist")
-            .args(["/FI", &format!("IMAGENAME eq {exe_name}"), "/NH"])
+            .args(["/FI", &format!("IMAGENAME eq {exe_name}"), "/NH", "/FO", "CSV"])
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::null())
             .output()
             .map(|o| String::from_utf8_lossy(&o.stdout).to_lowercase().contains(&exe_name))
             .unwrap_or(false)
@@ -425,8 +427,8 @@ fn prestart_browser(browser_path: String) -> OpenActionResult {
     pre_cmd.arg("about:blank");
     match pre_cmd.spawn() {
         Ok(_) => {
-            // Give the browser a moment to complete session restore.
-            std::thread::sleep(std::time::Duration::from_millis(300));
+
+            // No sleep needed - caller opens URL immediately.
             success("Browser pre-started")
         }
         Err(e) => failure(format!("Failed to pre-start browser: {e}")),
