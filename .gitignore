@@ -1,4 +1,4 @@
-﻿# Dependencies
+# Dependencies
 node_modules
 .cargo-home
 # Build output
@@ -13,3 +13,6 @@ target
 *.log
 
 __pycache__
+
+# VitePress docs build output
+docs/.vitepress/dist

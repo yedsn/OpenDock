@@ -1,116 +1,206 @@
-﻿# OpenDock
+# OpenDock
 
-OpenDock 是一个面向开发者、办公和专业软件用户的桌面资源集合与启动工具。它用于统一管理目录、网页、命令、文件、应用入口和插件扩展资源，并支持按工作场景快速打开单个资源、批量资源或整个集合。
+<p align="center">
+  <img src="src-tauri/icons/icon.png" alt="OpenDock" width="160">
+</p>
 
-当前项目采用 Vue 3 + Vite 构建前端界面，使用 Tauri 2 提供桌面壳、系统托盘、全局快捷键、本地 SQLite 存储和系统打开能力。
+<p align="center"><strong>一个面向开发者和专业用户的桌面资源集合与启动工具。</strong></p>
+<p align="center">用集合的方式管理目录、网页、命令、文件、应用入口和插件扩展资源，按场景快速打开。</p>
 
-## 功能概览
+<p align="center">
+  <img src="https://img.shields.io/badge/Rust-2021-000000?logo=rust" alt="Rust 2021">
+  <img src="https://img.shields.io/badge/Tauri-2.x-24C8DB?logo=tauri" alt="Tauri 2">
+  <img src="https://img.shields.io/badge/UI-Vue_3-4FC08D?logo=vue.js" alt="Vue 3">
+  <img src="https://img.shields.io/badge/Storage-SQLite-003B57?logo=sqlite" alt="SQLite">
+  <img src="https://img.shields.io/badge/Plugin-Extensible-8B5CF6" alt="Plugin System">
+  <a href="https://github.com/yedsn/OpenDock/actions/workflows/pages.yml">
+    <img src="https://github.com/yedsn/OpenDock/actions/workflows/pages.yml/badge.svg?branch=master" alt="Docs Site">
+  </a>
+  <img src="https://img.shields.io/badge/License-AGPL--3.0-8A2BE2" alt="AGPL-3.0">
+</p>
 
-- 工作空间、场景、集合、集合项的资源组织模型
-- 目录、网页、命令、文件、Office、CAD、应用等资源类型原型
-- 场景视图、快捷视图、标签页和搜索入口
-- 资源打开能力：系统默认打开、浏览器打开、应用启动、命令执行
-- 设置中心：通用、外观、搜索、快捷键、工具、插件、数据等配置面板
-- 本地 SQLite 数据存储
-- Tauri 桌面能力：系统托盘、单实例运行、全局快捷键 `Alt+O`
-- WebDAV 同步和插件系统原型入口
+<p align="center">
+  <a href="https://yedsn.github.io/OpenDock/">官网</a>
+  ·
+  <a href="https://gitee.com/hongxiaojian/open-dock">Gitee</a>
+  ·
+  <a href="https://github.com/yedsn/OpenDock">GitHub</a>
+  ·
+  <a href="docs/guide/quick-start.md">使用说明</a>
+</p>
 
-## 技术栈
+---
 
-- 前端：Vue 3、TypeScript、Vite
-- 桌面端：Tauri 2、Rust
-- UI 图标：lucide-vue-next
-- 搜索辅助：pinyin-pro
-- 测试：Vitest
-- 本地数据：SQLite（Tauri/Rust 侧通过 rusqlite 管理）
+## 一句话介绍
 
-## 目录结构
+OpenDock 使用 **Tauri 2 + Rust + Vue 3** 构建，把"桌面资源管理"变成一种低心智负担的日常体验：
 
-```text
-.
-├── src-ui/                 # Vue 前端源码
-│   ├── index.html          # Vite 入口 HTML
-│   └── src/
-│       ├── App.vue         # 应用外壳和主布局
-│       ├── main.ts         # 前端入口
-│       ├── store.ts        # 核心状态、资源操作、Tauri 命令桥接
-│       ├── storage.ts      # 数据读写封装
-│       ├── seed.ts         # 初始示例数据
-│       ├── db.ts           # 数据库访问封装
-│       ├── themes.ts       # 主题配置
-│       ├── components/     # 业务组件和设置面板
-│       └── __tests__/      # Vitest 测试
-├── src-tauri/              # Tauri/Rust 桌面端源码
-│   ├── src/lib.rs          # Tauri 命令、托盘、快捷键、SQLite 初始化
-│   ├── src/main.rs         # 桌面端入口
-│   ├── tauri.conf.json     # Tauri 配置
-│   └── Cargo.toml          # Rust 依赖配置
-├── docs/                   # 产品和需求文档
-├── openspec/               # OpenSpec 变更设计与规格
-├── vite.config.ts          # Vite 配置，前端根目录为 src-ui
-├── vitest.config.ts        # 测试配置
-├── package.json            # npm 脚本和前端依赖
-└── tsconfig.json           # TypeScript 配置
-```
+- 用工作空间、场景、集合、集合项四级结构组织所有软件相关资源
+- 支持目录、网页、命令、文件、Office、CAD、应用等多种资源类型
+- 单个打开、批量打开、打开整个集合，一键恢复工作场景
+- 插件系统支持自定义资源类型、打开工具和打开流程
+- 本地 SQLite 存储，WebDAV 同步，数据始终在自己手中
 
-## 环境要求
+如果你想要的是一个：
 
-### Web 前端开发
+- 不只是书签、不只是项目管理，而是统一管理所有软件使用资源的桌面工具
+- 既能收纳不同类型的资源，又能按场景快速打开，还能批量恢复工作上下文
+- 可通过插件扩展新的资源类型和打开方式，不被内置功能限制
 
-- Node.js 18+（建议使用当前 LTS 版本）
-- npm
+那么 OpenDock 就是为这个场景设计的。
 
-### Tauri 桌面开发
+## 为什么值得用
 
-除 Node.js/npm 外，还需要：
+| 方向 | 你得到什么 |
+|------|-------------|
+| 集合式资源管理 | 目录、网页、命令、文件、应用入口统一收纳，不再散落各处 |
+| 场景驱动启动 | 按场景一键打开单个资源、批量资源或整个集合，快速恢复工作上下文 |
+| 多类型打开支持 | 系统默认、浏览器、终端、应用启动、命令执行，不同资源用不同方式打开 |
+| 插件扩展平台 | 自定义资源类型、工具类型、表单字段和打开流程，不受内置功能限制 |
+| 数据自主可控 | 本地 SQLite 存储 + WebDAV 同步，数据始终在自己手中 |
 
-- Rust stable toolchain
-- Windows 环境下的 Microsoft C++ Build Tools / Visual Studio Build Tools
-- Tauri 2 所需系统依赖
+## 核心概念
 
-Tauri 环境可参考官方文档：[Tauri prerequisites](https://v2.tauri.app/start/prerequisites/)
+### 工作空间
 
-## 本地启动
+工作空间是 OpenDock 的顶层使用环境，承载用户的全部集合、资源、工具配置和插件配置。
 
-安装依赖：
+### 场景
+
+场景是对集合的上层归类，可以理解为"某类工作上下文"。项目只是场景的一种。
+
+示例：官网项目、CAD 出图工作、财务报表处理、前端开发环境、常用工具
+
+### 集合
+
+集合是 OpenDock 最核心的管理单位，类似一个可打开的资源收藏夹。
+
+示例：项目目录集合、API 文档集合、Office 文件集合、CAD 图纸集合、开发工具集合
+
+### 集合项
+
+集合项是集合中的单个资源条目，支持多种资源类型：
+
+- **目录**：本地文件夹路径
+- **网页**：URL 地址
+- **命令**：可执行的 Shell 命令
+- **文件**：本地文件路径
+- **应用**：本地应用程序
+
+插件还可以贡献更多资源类型，例如 Office 文件、CAD 图纸、设计文件等。
+
+## 核心工作流
+
+### 日常使用
+
+1. 创建场景，例如"前端开发"
+2. 在场景下创建集合，例如"项目目录"、"API 文档"
+3. 添加集合项：本地目录、网页 URL、命令等
+4. 配置每个集合项的打开方式
+5. 单击打开单个资源，或一键打开整个集合
+
+### 插件扩展
+
+1. 在插件管理页安装并启用插件
+2. 插件贡献新的资源类型和打开工具
+3. 在设置页的"打开工具"中看到插件贡献的类型
+4. 创建集合时即可使用插件贡献的资源类型和打开方式
+
+### WebDAV 同步
+
+1. 在设置页启用 WebDAV Sync 插件
+2. 配置 WebDAV 地址、用户名和密码
+3. 工作空间数据自动同步到 WebDAV
+4. 在其他设备上恢复相同的工作空间
+
+## 快速开始
+
+### 推荐阅读顺序
+
+- 只想先跑起来：看 `1` 和 `2`
+- 想自己构建程序：继续看 `3`
+- 想开发插件：跳到"插件开发速览"
+
+### 1. 准备环境
+
+请先阅读：[`docs/guide/quick-start.md`](docs/guide/quick-start.md)
+
+快速摘要：
+
+- 安装 Node.js 18+ 和 npm
+- 安装 Rust / Cargo
+- 安装 Tauri CLI：`cargo install tauri-cli --locked`
+- Windows 需要 VS Build Tools 与 WebView2 Runtime
+
+### 2. 启动桌面应用
 
 ```bash
 npm install
+npm run tauri:dev
 ```
 
-启动 Web 开发服务：
+如果只想启动 Web 前端：
 
 ```bash
 npm run dev
 ```
 
-默认访问地址：
+默认访问地址：`http://127.0.0.1:5180`
 
-```text
-http://127.0.0.1:5180
-```
-
-Vite 配置启用了固定端口：`5180`。如果该端口被占用，开发服务会启动失败，需要先释放端口或修改 `vite.config.ts`。
-
-## 启动桌面应用
-
-在已安装 Tauri/Rust 环境后运行：
+### 3. 构建发布包
 
 ```bash
-npm run tauri:dev
+npm run tauri:build
 ```
 
-该命令会先执行 `npm run dev` 启动前端服务，然后通过 Tauri 打开桌面窗口。Tauri 开发地址配置在 `src-tauri/tauri.conf.json`：
+构建产物默认位于：
+
+- Windows：`target/release/bundle/`
+- macOS：`target/release/bundle/`
+
+## 插件开发速览
+
+OpenDock 内置插件系统，支持扩展资源类型、打开工具、表单字段和打开流程。
+
+- 插件目录：`plugins/`
+- 内置插件：`plugins/.system/`
+- 每个插件必须包含 `plugin.json`
+- 插件可以贡献 Vue 设置面板和 Rust 服务
+
+完整说明见：[`docs/guide/plugin-development.md`](docs/guide/plugin-development.md)
+
+## 项目结构
 
 ```text
-http://127.0.0.1:5180
+opendock/
+├── src-ui/                 # Vue 3 前端源码
+│   └── src/
+│       ├── App.vue         # 应用外壳和主布局
+│       ├── store.ts        # 核心状态、资源操作、Tauri 命令桥接
+│       ├── components/     # 业务组件和设置面板
+│       └── __tests__/      # Vitest 测试
+├── src-tauri/              # Tauri/Rust 桌面端源码
+│   ├── src/lib.rs          # Tauri 命令、托盘、快捷键、SQLite
+│   └── Cargo.toml          # Rust 依赖配置
+├── plugins/                # 插件系统
+│   ├── .system/            # 内置插件
+│   ├── external-demo/      # 外置插件 demo
+│   └── registry.ts         # 插件动态注册表
+├── docs/                   # 官网源码与项目文档
+├── scripts/                # 打包与发布辅助脚本
+├── openspec/               # OpenSpec 变更设计与规格
+├── package.json            # npm 脚本和前端依赖
+└── vite.config.ts          # Vite 配置
 ```
 
 ## 常用命令
 
 ```bash
-# 启动 Vite Web 开发服务
+# 启动 Web 开发服务
 npm run dev
+
+# 启动 Tauri 桌面开发模式
+npm run tauri:dev
 
 # TypeScript 类型检查
 npm run typecheck
@@ -121,22 +211,9 @@ npm run test
 # 构建 Web 产物
 npm run build
 
-# 启动 Tauri 桌面开发模式
-npm run tauri:dev
-
-# 构建 Tauri 桌面安装包/可执行产物
+# 构建 Tauri 桌面安装包
 npm run tauri:build
 ```
-
-## 构建产物
-
-Web 构建输出目录为：
-
-```text
-dist/
-```
-
-Tauri 桌面构建时会使用 `dist/` 作为前端静态资源目录，配置项为 `src-tauri/tauri.conf.json` 中的 `frontendDist`。
 
 ## 数据存储
 
@@ -148,58 +225,16 @@ Windows 默认数据库位置：
 %LOCALAPPDATA%\OpenDock\opendock.db
 ```
 
-前端启动时会尝试从数据库加载数据；如果数据库不可用或读取失败，会使用 `src-ui/src/seed.ts` 中的初始数据。
+## License
 
-## 当前验证状态
+本项目采用 **GNU Affero General Public License v3.0** (`AGPL-3.0-or-later`) 许可证。
 
-在当前工作区已完成以下验证：
+- 允许个人学习、使用、修改和分发
+- 修改后的版本需要继续开源
+- 即使以网络服务形式提供，也需遵循 AGPL 要求
+- 如有商业授权诉求，请联系项目维护者进一步沟通
 
-```bash
-npm install
-npm run test
-npm run build
-```
+## 项目链接
 
-验证结果：
-
-- `npm run test`：1 个测试文件通过，32 个用例通过
-- `npm run build`：构建成功，输出到 `dist/`
-- `npm run dev`：本地服务已在 `http://127.0.0.1:5180` 可访问
-
-构建时 Vite 会提示 `@tauri-apps/api/window.js` 同时被静态和动态导入，该提示不影响当前构建结果。
-
-## 常见问题
-
-### 端口 5180 被占用
-
-项目配置了 `strictPort: true`，端口被占用时 Vite 不会自动切换端口。
-
-可在 PowerShell 中查看占用进程：
-
-```powershell
-Get-NetTCPConnection -LocalPort 5180 | Select-Object LocalAddress,LocalPort,State,OwningProcess
-```
-
-### 只能打开 Web 页面，桌面功能不可用
-
-直接运行 `npm run dev` 时只启动 Web 前端。系统托盘、全局快捷键、本地 SQLite、打开本地文件和应用等能力需要通过 Tauri 运行：
-
-```bash
-npm run tauri:dev
-```
-
-### Tauri 启动失败
-
-优先检查 Rust 和 Windows 构建工具是否安装完整，然后运行：
-
-```bash
-npm run build
-npm run tauri:dev
-```
-
-如果 Web 构建通过但 Tauri 失败，通常是 Rust/Tauri 本地环境或系统依赖问题。
-
-## 相关文档
-
-- 产品需求：[docs/OpenDock需求文档.md](docs/OpenDock需求文档.md)
-- OpenSpec 变更说明：[openspec/changes/implement-tauri-vue-opendock](openspec/changes/implement-tauri-vue-opendock)
+- GitHub：<https://github.com/yedsn/OpenDock>
+- Gitee：<https://gitee.com/hongxiaojian/open-dock>
