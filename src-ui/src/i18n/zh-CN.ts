@@ -210,6 +210,7 @@
     marketplaceLoading: "加载中...",
     marketplaceEmpty: "当前无可用插件，点击刷新重试",
     install: "安装",
+    installing: "安装中...",
     deletePlugin: "删除",
     // Shortcuts panel
     shortcutKeys: "快捷键",

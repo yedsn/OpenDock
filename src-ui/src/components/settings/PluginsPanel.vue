@@ -93,7 +93,7 @@ onMounted(() => {
           <span v-if="plugin.author">{{ plugin.author }}</span>
           <span v-for="tag in plugin.tags" :key="tag" class="marketplace-tag">{{ tag }}</span>
         </div>
-        <button class="settings-action-button" @click="store.installFromMarketplace(plugin)"><Download />{{ $t("settings.install") }}</button>
+        <button class="settings-action-button" @click="store.installFromMarketplace(plugin)" :disabled="store.state.marketplaceInstalling === plugin.id"><Loader2 v-if="store.state.marketplaceInstalling === plugin.id" class="spinning" /><Download v-else />{{ store.state.marketplaceInstalling === plugin.id ? $t("settings.installing") : $t("settings.install") }}</button>
       </div>
     </div>
   </section>

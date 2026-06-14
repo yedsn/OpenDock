@@ -199,6 +199,7 @@
     marketplaceLoading: "Loading...",
     marketplaceEmpty: "No plugins available, click refresh to retry",
     install: "Install",
+    installing: "Installing...",
     deletePlugin: "Delete",
     shortcutKeys: "Shortcuts",
     setGlobalShortcuts: "Set the global window shortcut. Changes take effect immediately.",

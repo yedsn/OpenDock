@@ -75,7 +75,8 @@ const state = reactive({
   activeTabId: "" as string,
   marketplacePlugins: [] as MarketplacePlugin[],
   marketplaceLoading: false,
-  marketplaceError: ""
+  marketplaceError: "",
+  marketplaceInstalling: null as string | null
 });
 
 let saveTimer: ReturnType<typeof setTimeout> | null = null;
@@ -869,8 +870,8 @@ async function fetchMarketplaceIndex(): Promise<void> {
     state.marketplaceLoading = false;
   }
 }
-
 async function installFromMarketplace(plugin: MarketplacePlugin): Promise<void> {
+  state.marketplaceInstalling = plugin.id;
   try {
     const files: { path: string; content: string }[] = [];
 
@@ -920,6 +921,8 @@ async function installFromMarketplace(plugin: MarketplacePlugin): Promise<void> 
     log(`从市场安装插件: ${plugin.name} v${plugin.version}`);
   } catch (e) {
     log(`安装插件失败: ${plugin.name} - ${e}`);
+  } finally {
+    state.marketplaceInstalling = null;
   }
 }
 
