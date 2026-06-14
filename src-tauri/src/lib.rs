@@ -685,13 +685,14 @@ fn test_webdav_connection(server_url: String, username: String, password: String
 
 const WEBDAV_SPLIT_FORMAT: &str = "opendock-webdav-split-v1";
 const WEBDAV_SPLIT_DIR: &str = "opendock-sync";
-const WEBDAV_SPLIT_FILES: [(&str, &str); 9] = [
+const WEBDAV_SPLIT_FILES: [(&str, &str); 10] = [
     ("activeState", "active-state.json"),
     ("workspaces", "workspaces.json"),
     ("scenes", "scenes.json"),
     ("collections", "collections.json"),
     ("items", "items.json"),
     ("tools", "tools.json"),
+    ("settings", "settings.json"),
     ("plugins", "plugins.json"),
     ("pluginStore", "plugin-store.json"),
     ("activity", "activity.json"),
@@ -1625,5 +1626,63 @@ pub fn run() {
         ])
         .run(tauri::generate_context!())
         .expect("error while running OpenDock");
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::collections::HashMap;
+
+    fn sample_app_data() -> String {
+        serde_json::json!({
+            "schemaVersion": 1,
+            "activeWorkspaceId": "default",
+            "activeSceneId": "scene-1",
+            "activeCollectionId": "collection-1",
+            "workspaces": [{ "id": "default", "name": "OpenDock" }],
+            "scenes": [{ "id": "scene-1", "workspaceId": "default" }],
+            "collections": [{ "id": "collection-1", "sceneId": "scene-1" }],
+            "items": [{ "id": "item-1", "collectionId": "collection-1" }],
+            "tools": [{ "id": "system", "name": "系统默认应用" }],
+            "plugins": [{ "id": "webdav-sync", "enabled": true }],
+            "pluginStore": [{ "name": "AList Import" }],
+            "settings": { "webdavSync": { "remotePath": "/OpenDock/workspaces" } },
+            "activity": [{ "id": "activity-1", "text": "loaded" }]
+        }).to_string()
+    }
+
+    #[test]
+    fn webdav_split_payload_can_be_assembled_back() {
+        let local_data = sample_app_data();
+        let (files, manifest) = split_webdav_sync_payload(&local_data).expect("split payload");
+        let manifest_value: serde_json::Value = serde_json::from_str(&manifest).expect("manifest json");
+        assert_eq!(manifest_value.get("format").and_then(|value| value.as_str()), Some(WEBDAV_SPLIT_FORMAT));
+        assert!(files.iter().any(|(path, _)| path == "opendock-sync/items.json"));
+        assert!(files.iter().any(|(path, _)| path == "opendock-sync/settings.json"));
+
+        let file_map: HashMap<String, String> = files.into_iter().collect();
+        let assembled = assemble_webdav_split_payload(&manifest, |path| {
+            file_map.get(path).cloned().ok_or_else(|| format!("missing {path}"))
+        }).expect("assemble payload");
+
+        let original: serde_json::Value = serde_json::from_str(&local_data).expect("original json");
+        let restored: serde_json::Value = serde_json::from_str(&assembled).expect("restored json");
+        assert_eq!(restored, original);
+    }
+
+    #[test]
+    fn webdav_legacy_single_file_payload_is_still_supported() {
+        let local_data = sample_app_data();
+        let assembled = assemble_webdav_split_payload(&local_data, |_path| Err("should not load split files".to_string()))
+            .expect("legacy payload");
+        assert_eq!(assembled, local_data);
+    }
+
+    #[test]
+    fn webdav_json_equality_ignores_pretty_formatting() {
+        let compact = sample_app_data();
+        let pretty = serde_json::to_string_pretty(&serde_json::from_str::<serde_json::Value>(&compact).unwrap()).unwrap();
+        assert!(json_values_equal(&compact, &pretty));
+    }
 }
 
