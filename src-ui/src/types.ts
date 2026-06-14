@@ -207,6 +207,7 @@ export interface WebDavSyncConfig {
   conflictPolicy: "本地优先" | "远端优先" | "保留两份" | "手动处理";
   lastSyncAt: string;
   status: string;
+  lastError?: string;
 }
 
 export interface WebDavPendingConflict {

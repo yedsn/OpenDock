@@ -14,8 +14,11 @@ fn curl_base_args(username: &str, password: &str, extra_headers: &[&str]) -> Vec
     let mut args = vec![
         "--silent".to_string(),
         "--show-error".to_string(),
-        "--connect-timeout".to_string(), "15".to_string(),
-        "--max-time".to_string(), "30".to_string(),
+        "--fail-with-body".to_string(),
+        "--location".to_string(),
+        "--http1.1".to_string(),
+        "--connect-timeout".to_string(), "20".to_string(),
+        "--max-time".to_string(), "90".to_string(),
     ];
     if !username.is_empty() {
         args.push("--user".to_string());
@@ -38,6 +41,20 @@ fn run_curl(args: &[String]) -> Result<(bool, String, String), String> {
     let stdout = String::from_utf8_lossy(&output.stdout).to_string();
     let stderr = String::from_utf8_lossy(&output.stderr).to_string();
     Ok((output.status.success(), stdout, stderr))
+}
+
+fn curl_error_message(stderr: &str) -> String {
+    let message = stderr.trim().chars().take(500).collect::<String>();
+    if message.contains("curl: (28)") || message.to_lowercase().contains("operation timed out") {
+        return format!(
+            "WebDAV 服务请求超时。请检查地址和远程目录是否正确、网络/代理是否可访问，或服务端是否支持 WebDAV PROPFIND/PUT。原始错误: {message}"
+        );
+    }
+    if message.is_empty() {
+        "WebDAV 服务未返回错误内容，请检查地址、凭据和远程目录。".to_string()
+    } else {
+        message
+    }
 }
 
 /// Format the full URL from server_url + remote_path.
@@ -65,7 +82,7 @@ pub fn test_connection(server_url: &str, username: &str, password: &str, remote_
             if ok {
                 WebDavResult::success("OK")
             } else {
-                WebDavResult::failure(stderr.trim().chars().take(200).collect::<String>())
+                WebDavResult::failure(curl_error_message(&stderr))
             }
         }
         Err(e) => WebDavResult::failure(e),
@@ -80,25 +97,38 @@ pub fn upload(server_url: &str, username: &str, password: &str, remote_path: &st
     }
 
     let url = format_url(server_url, remote_path);
+    let temp_path = std::env::temp_dir().join(format!(
+        "opendock-webdav-upload-{}-{}.json",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|duration| duration.as_nanos())
+            .unwrap_or_default()
+    ));
+    if let Err(e) = std::fs::write(&temp_path, data.as_bytes()) {
+        return WebDavResult::failure(format!("写入上传临时文件失败: {e}"));
+    }
     let mut args = curl_base_args(username, password, &[
         "Content-Type: application/json; charset=utf-8",
     ]);
     args.push("--request".to_string());
     args.push("PUT".to_string());
     args.push("--data-binary".to_string());
-    args.push(data.to_string());
+    args.push(format!("@{}", temp_path.to_string_lossy()));
     args.push(url);
 
-    match run_curl(&args) {
+    let result = match run_curl(&args) {
         Ok((ok, _stdout, stderr)) => {
             if ok {
                 WebDavResult::success("OK")
             } else {
-                WebDavResult::failure(stderr.trim().chars().take(200).collect::<String>())
+                WebDavResult::failure(curl_error_message(&stderr))
             }
         }
         Err(e) => WebDavResult::failure(e),
-    }
+    };
+    let _ = std::fs::remove_file(&temp_path);
+    result
 }
 
 /// Download data from a WebDAV path (GET).
@@ -114,7 +144,7 @@ pub fn download(server_url: &str, username: &str, password: &str, remote_path: &
     if ok {
         Ok(stdout)
     } else {
-        Err(stderr.trim().chars().take(200).collect::<String>())
+        Err(curl_error_message(&stderr))
     }
 }
 
@@ -151,7 +181,7 @@ fn ensure_remote_dir(server_url: &str, username: &str, password: &str, dir_path:
             if ok || output.contains("405") {
                 WebDavResult::success("OK")
             } else {
-                WebDavResult::failure(output.trim().chars().take(200).collect::<String>())
+                WebDavResult::failure(curl_error_message(&output))
             }
         }
         Err(e) => WebDavResult::failure(e),

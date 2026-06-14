@@ -497,6 +497,7 @@
     syncing: "同步中...",
     conflictDetected: "检测到本地与远程数据差异",
     conflictDetectedDesc: "为避免删错或覆盖错数据，本次同步已暂停。请选择用远程覆盖本地，或用本地覆盖远程。覆盖本地前会自动拍摄本地快照。",
+    lastError: "失败原因",
     localVersion: "本地版本",
     remoteVersion: "远程版本",
     overwriteLocal: "用远程覆盖本地",

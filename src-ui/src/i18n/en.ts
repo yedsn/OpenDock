@@ -477,6 +477,7 @@
     syncing: "Syncing...",
     conflictDetected: "Local and remote data differ",
     conflictDetectedDesc: "Sync is paused to avoid deleting or overwriting the wrong data. Choose whether the remote copy should replace local data, or local data should replace the remote copy. A local snapshot is created before replacing local data.",
+    lastError: "Failure reason",
     localVersion: "Local version",
     remoteVersion: "Remote version",
     overwriteLocal: "Replace local with remote",

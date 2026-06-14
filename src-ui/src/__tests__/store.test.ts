@@ -210,6 +210,24 @@ describe("OpenDock store - CRUD operations", () => {
     expect(store.state.webdavPendingConflict).toBeTruthy();
     expect(store.state.data.settings.webdavSync.status).toBe("需要手动处理冲突");
   });
+  it("keeps WebDAV failure details visible in settings state", async () => {
+    invokeMock.mockImplementation(async (...args: unknown[]) => {
+      const command = args[0] as string;
+      if (command === "webdav_get_credential") return "secret";
+      if (command === "test_webdav_connection") return { ok: false, message: "HTTP 401 Unauthorized" };
+      if (command === "sync_webdav_now") return { ok: false, message: "远程目录不存在: /OpenDock/workspaces" };
+      return { ok: true, message: "stub" };
+    });
+    const { useOpenDockStore } = await import("../store");
+    const store = useOpenDockStore();
+    await store.testWebdav();
+    expect(invokeMock).toHaveBeenCalledWith("test_webdav_connection", expect.objectContaining({ remotePath: store.state.data.settings.webdavSync.remotePath }));
+    expect(store.state.data.settings.webdavSync.status).toBe("连接失败");
+    expect(store.state.data.settings.webdavSync.lastError).toBe("HTTP 401 Unauthorized");
+    await store.syncWebdavNow();
+    expect(store.state.data.settings.webdavSync.status).toBe("同步失败");
+    expect(store.state.data.settings.webdavSync.lastError).toBe("远程目录不存在: /OpenDock/workspaces");
+  });
   it("requires explicit WebDAV overwrite actions for either direction", async () => {
     const { createSeedData } = await import("../seed");
     const remoteData = createSeedData();

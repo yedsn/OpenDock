@@ -69,6 +69,13 @@ function handleConfigChange() {
       <span>{{ t("webdav.lastSync") }}{{ config.lastSyncAt }}</span>
       <span>{{ t("webdav.scope") }}{{ config.syncScope }}</span>
     </div>
+    <div v-if="config.lastError" class="webdav-error-panel">
+      <AlertTriangle />
+      <div>
+        <strong>{{ t("webdav.lastError") }}</strong>
+        <p>{{ config.lastError }}</p>
+      </div>
+    </div>
     <div v-if="pendingConflict" class="webdav-conflict-panel">
       <div class="webdav-conflict-head">
         <AlertTriangle />
@@ -136,6 +143,33 @@ function handleConfigChange() {
 }
 .sync-status-strip span {
   white-space: nowrap;
+}
+.webdav-error-panel {
+  display: grid;
+  grid-template-columns: 20px 1fr;
+  gap: 10px;
+  margin-top: 10px;
+  padding: 10px 12px;
+  border: 1px solid rgba(182, 90, 84, 0.42);
+  border-radius: 8px;
+  background: rgba(182, 90, 84, 0.08);
+}
+.webdav-error-panel svg {
+  width: 18px;
+  height: 18px;
+  color: var(--red, #b65a54);
+}
+.webdav-error-panel strong {
+  display: block;
+  font-size: 12px;
+  color: var(--red, #b65a54);
+}
+.webdav-error-panel p {
+  margin: 4px 0 0;
+  color: var(--text);
+  font-size: 12px;
+  line-height: 1.5;
+  word-break: break-word;
 }
 .webdav-conflict-panel {
   display: grid;

@@ -944,8 +944,9 @@ async function uninstallFromMarketplace(plugin: PluginManifest): Promise<void> {
 async function testWebdav(): Promise<void> {
   const config = state.data.settings.webdavSync;
   const password = await webdavGetCredential();
-  const result = await callOpenCommand("test_webdav_connection", { serverUrl: config.serverUrl, username: config.username, password });
+  const result = await callOpenCommand("test_webdav_connection", { serverUrl: config.serverUrl, username: config.username, password, remotePath: config.remotePath });
   config.status = result.ok ? "连接正常" : "连接失败";
+  config.lastError = result.ok ? "" : formatWebdavError(result.message);
   log(`WebDAV Sync 测试连接: ${result.message}`);
 }
 
@@ -969,9 +970,11 @@ async function syncWebdavNow(): Promise<void> {
         parseWebdavRemoteData(remoteJson);
         state.webdavPendingConflict = createWebdavPendingConflict(localData, remoteJson);
         config.status = "需要手动处理冲突";
+        config.lastError = "";
       } catch {
         state.webdavPendingConflict = null;
         config.status = "同步失败（远程数据解析错误）";
+        config.lastError = "远程返回的数据不是可导入的 OpenDock JSON。";
       }
     } else if (result.message.startsWith("SYNC_REMOTE_DATA:")) {
       const remoteJson = result.message.slice("SYNC_REMOTE_DATA:".length);
@@ -979,20 +982,31 @@ async function syncWebdavNow(): Promise<void> {
         const remoteData = parseWebdavRemoteData(remoteJson);
         await replaceLocalDataFromWebdav(remoteData, "WebDAV 远程覆盖前快照");
         state.data.settings.webdavSync.status = "同步成功（远程优先）";
+        state.data.settings.webdavSync.lastError = "";
       } catch {
         config.status = "同步失败（远程数据解析错误）";
+        config.lastError = "远程返回的数据不是可导入的 OpenDock JSON。";
       }
     } else if (result.message.startsWith("SYNC_MANUAL:")) {
       config.status = "需要手动处理冲突";
+      config.lastError = "";
     } else {
       state.webdavPendingConflict = null;
       config.status = "同步成功";
+      config.lastError = "";
     }
   } else {
     config.status = "同步失败";
+    config.lastError = formatWebdavError(result.message);
   }
   state.data.settings.webdavSync.lastSyncAt = new Date().toLocaleString("zh-CN", { hour12: false });
   log(`WebDAV Sync 立即同步: ${result.message}`);
+}
+
+function formatWebdavError(message: string): string {
+  const trimmed = message.trim();
+  if (!trimmed) return "未返回具体错误，请检查 WebDAV 地址、用户名、密码/Token 和远程目录。";
+  return trimmed;
 }
 
 function parseWebdavRemoteData(remoteJson: string): AppData {
@@ -1064,11 +1078,13 @@ async function webdavOverwriteLocal(): Promise<void> {
     const remoteData = parseWebdavRemoteData(pending.remoteData);
     await replaceLocalDataFromWebdav(remoteData, "WebDAV 手动覆盖本地前快照");
     state.data.settings.webdavSync.status = "同步成功（远程优先）";
+    state.data.settings.webdavSync.lastError = "";
     state.data.settings.webdavSync.lastSyncAt = new Date().toLocaleString("zh-CN", { hour12: false });
     state.webdavPendingConflict = null;
     log("WebDAV Sync 手动覆盖本地完成");
   } catch {
     state.data.settings.webdavSync.status = "同步失败（远程数据解析错误）";
+    state.data.settings.webdavSync.lastError = "远程返回的数据不是可导入的 OpenDock JSON。";
   }
 }
 
@@ -1087,9 +1103,11 @@ async function webdavOverwriteRemote(): Promise<void> {
   });
   if (result.ok) {
     config.status = "同步成功";
+    config.lastError = "";
     state.webdavPendingConflict = null;
   } else {
     config.status = "同步失败";
+    config.lastError = formatWebdavError(result.message);
   }
   config.lastSyncAt = new Date().toLocaleString("zh-CN", { hour12: false });
   log(`WebDAV Sync 手动覆盖远程: ${result.message}`);
@@ -1100,6 +1118,7 @@ function clearWebdavPendingConflict(): void {
   if (state.data.settings.webdavSync.status === "需要手动处理冲突") {
     state.data.settings.webdavSync.status = "已取消冲突处理";
   }
+  state.data.settings.webdavSync.lastError = "";
 }
 
 // ---- Snapshots ----
