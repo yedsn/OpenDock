@@ -775,8 +775,11 @@ async function openCollection(collection: Collection): Promise<void> {
     // Pre-start browser to consume session restore on cold start,
     // then open all URLs in one call so they land as tabs in a single window.
     callOpenCommand("prestart_browser", { browserPath: tool.path });
-    const args = argsForUrlBatch(tool, urls);
-    const result = await callOpenCommand("open_application", { path: tool.path, args });
+    const result = await callOpenCommand("open_urls_in_browser", {
+      browserPath: tool.path,
+      urls,
+      newWindow: state.data.settings.general.openWebInNewWindow
+    });
     urlItems.forEach((item) => openedInBatch.add(item.id));
     log(`${result.ok ? "打开" : "打开失败"}: ${urlItems.length} 个网页资源 via ${tool.name} - ${result.message}`);
   }
@@ -1647,4 +1650,3 @@ export function useOpenDockStore() {
     stopAutoSnapshotTimer
   };
 }
-
