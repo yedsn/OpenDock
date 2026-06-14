@@ -1,4 +1,4 @@
-# OpenDock 插件开发说明
+﻿# OpenDock 插件开发说明
 
 ## 目录边界
 
@@ -16,14 +16,6 @@ plugins/
       assets/              # 插件资源，可选
       plugin.ts            # 前端插件定义，可选，主题插件常用
   registry.ts              # 插件动态注册表
-  external-demo/           # 外置插件 demo，不属于 .system
-    plugin.json
-    plugin.ts
-    ui/
-  tool-type-demo/          # 示例工具类型插件 demo
-    plugin.json
-    plugin.ts
-    ui/
 ```
 
 当前内置插件示例：
@@ -31,16 +23,14 @@ plugins/
 - `plugins/.system/webdav-sync/`：WebDAV Sync 设置页和 WebDAV 服务实现。
 - `plugins/.system/theme-forest-mist/`：内置 Forest Mist 主题插件。
 - `plugins/.system/theme-ink-blue/`：内置 Ink Blue 主题插件商店条目。
-- `plugins/external-demo/`：外置插件 demo，用于验证动态发现、安装、停用和删除流程。
-- `plugins/tool-type-demo/`：完整扩展 demo，用于验证插件贡献自定义打开工具类型、资源类型、表单字段和打开流程。
+- `https://github.com/yedsn/OpenDockPlugins`：社区插件市场仓库，包含 `external-demo` 和 `tool-type-demo` 等外置插件示例。
 
 ## 动态加载
 
 前端通过 `plugins/registry.ts` 注册插件能力：
 
 - 使用 `import.meta.glob("./.system/*/plugin.ts", { eager: true })` 自动发现内置插件定义。
-- 使用 `import.meta.glob("./*/plugin.ts", { eager: true })` 自动发现外置插件定义。
-- 使用 `defineAsyncComponent(() => import(...))` 按需加载插件设置面板；外置插件 demo 的面板来自 `plugins/external-demo/ui/ExternalDemoPanel.vue`。
+- 使用 `defineAsyncComponent(() => import(...))` 按需加载内置插件设置面板。
 - 设置页只通过插件 id 查询注册表，不在页面内硬编码具体插件组件。
 
 插件菜单只在插件同时满足 `installed && enabled && configurable` 时出现。停用或删除插件后，对应设置菜单会立即消失；如果当前正在该插件设置页，主应用会自动回到插件管理页。
@@ -98,7 +88,7 @@ export const openHandlers = {
 };
 ```
 
-`plugins/tool-type-demo/` 演示了完整链路：`Diagram Tool` 工具类型、`Diagram Spec` 资源类型、`renderer/layout` 表单字段，以及插件自己的打开处理器。
+插件市场仓库中的 `tool-type-demo` 演示了完整链路：`Diagram Tool` 工具类型、`Diagram Spec` 资源类型、`renderer/layout` 表单字段，以及插件自己的打开处理器。
 
 ## manifest 约定
 
@@ -172,7 +162,7 @@ key       = secret:default
 
 ## 新增插件步骤
 
-1. 在 `plugins/.system/<plugin-id>/` 或外部插件目录下创建 `plugin.json`。
+1. 内置插件在 `plugins/.system/<plugin-id>/` 下创建 `plugin.json`；社区插件在插件市场仓库 `plugins/<plugin-id>/<version>/` 下创建 `plugin.json`。
 2. 如有插件专属设置页，把 Vue 组件放入 `ui/`。
 3. 如有后端能力，把 Rust/服务实现放入 `service/`。
 4. 如是主题插件，在 `plugin.ts` 中导出 `manifest` 或 `storeEntry`。
@@ -189,3 +179,4 @@ key       = secret:default
 - 可配置插件停用或删除后，对应设置菜单消失。
 - 插件私有数据写入用户数据目录数据库，不写入项目目录。
 - 导出 JSON 不包含插件凭据明文。
+

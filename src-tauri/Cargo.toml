@@ -1,6 +1,6 @@
 [package]
 name = "opendock"
-version = "0.1.10"
+version = "0.1.13"
 description = "OpenDock desktop resource launcher"
 authors = ["OpenDock"]
 edition = "2021"
@@ -22,6 +22,7 @@ dirs = "6"
 chrono = { version = "0.4", features = ["serde"] }
 base64 = "0.22"
 image = { version = "0.25", default-features = false, features = ["png", "jpeg", "webp"] }
+reqwest = { version = "0.13", features = ["json"] }
 
 [target.'cfg(windows)'.dependencies]
 windows-sys = { version = "0.61", features = ["Win32_UI_Shell", "Win32_UI_WindowsAndMessaging"] }

@@ -1,4 +1,4 @@
-# OpenDock
+﻿# OpenDock
 
 <p align="center">
   <img src="src-tauri/icons/icon.png" alt="OpenDock" width="160">
@@ -182,10 +182,7 @@ opendock/
 ├── src-tauri/              # Tauri/Rust 桌面端源码
 │   ├── src/lib.rs          # Tauri 命令、托盘、快捷键、SQLite
 │   └── Cargo.toml          # Rust 依赖配置
-├── plugins/                # 插件系统
-│   ├── .system/            # 内置插件
-│   ├── external-demo/      # 外置插件 demo
-│   └── registry.ts         # 插件动态注册表
+├── plugins/                # 内置插件系统\r\n│   ├── .system/            # 随应用发布的内置插件\r\n│   └── registry.ts         # 内置插件动态注册表
 ├── docs/                   # 官网源码与项目文档
 ├── scripts/                # 打包与发布辅助脚本
 ├── openspec/               # OpenSpec 变更设计与规格
@@ -238,3 +235,4 @@ Windows 默认数据库位置：
 
 - GitHub：<https://github.com/yedsn/OpenDock>
 - Gitee：<https://gitee.com/hongxiaojian/open-dock>
+

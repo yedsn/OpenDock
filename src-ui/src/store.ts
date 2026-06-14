@@ -1,14 +1,14 @@
-import { computed, reactive, watch } from "vue";
+﻿import { computed, reactive, watch } from "vue";
 import { invoke } from "@tauri-apps/api/core";
 import { collectionMeta, itemMeta, sceneMeta } from "./seed";
-import { exportAppData, loadAppData, resetAppData, saveActiveState, saveAppData } from "./storage";
+import { exportAppData, loadAppData, normalizeAppData, resetAppData, saveActiveState, saveAppData } from "./storage";
 import { createSnapshot, listSnapshots, loadSnapshot, deleteSnapshot, pruneSnapshots, updateSnapshotMeta } from "./storage";
 import { webdavSetCredential, webdavGetCredential } from "./db";
 import { createSeedData } from "./seed";
 import { nowIso, makeId, expandToolArgs, templateToCollectionType } from "./helpers";
 import { builtInThemes } from "./themes";
 import { getPluginOpenHandler } from "../../plugins/registry";
-import type { AppData, Collection, CollectionItem, CollectionMode, CollectionType, ItemType, MainView, ModalState, OpenTool, PluginItemFormField, PluginItemTypeContribution, PluginManifest, PluginToolTypeContribution, PluginToolTypeEntry, QuickViewId, Scene, SnapshotKind, SnapshotRecord, SceneType, Tab, ThemeDefinition, Workspace } from "./types";
+import type { AppData, Collection, CollectionItem, CollectionMode, CollectionType, ItemType, MainView, MarketplaceIndex, MarketplacePlugin, ModalState, OpenTool, PluginItemFormField, PluginItemTypeContribution, PluginManifest, PluginToolTypeContribution, PluginToolTypeEntry, QuickViewId, Scene, SnapshotKind, SnapshotRecord, SceneType, Tab, ThemeDefinition, WebDavPendingConflict, Workspace } from "./types";
 import type { SearchSuggestion } from "./types";
 import { matchesSearchText, scoreSearchText, createSearchText } from "./pinyin";
 import { useI18n } from "./i18n";
@@ -72,7 +72,12 @@ const state = reactive({
   selectedExport: "",
   snapshots: [] as SnapshotRecord[],
   tabs: [] as Tab[],
-  activeTabId: "" as string
+  activeTabId: "" as string,
+  marketplacePlugins: [] as MarketplacePlugin[],
+  marketplaceLoading: false,
+  marketplaceError: "",
+  marketplaceInstalling: null as string | null,
+  webdavPendingConflict: null as WebDavPendingConflict | null
 });
 
 let saveTimer: ReturnType<typeof setTimeout> | null = null;
@@ -155,36 +160,29 @@ async function init() {
   }
   ensureToggleWindowShortcut();
   const seed = createSeedData();
-  const seedThemePlugins = seed.plugins.filter((plugin) => plugin.theme);
-  for (const plugin of seedThemePlugins) {
-    if (!state.data.plugins.some((entry) => entry.id === plugin.id)) {
-      state.data.plugins.push(plugin);
+  // Backfill all built-in plugins so they always appear in the installed list
+  const seedBuiltInPlugins = seed.plugins.filter((plugin) => plugin.builtIn);
+  for (const seedPlugin of seedBuiltInPlugins) {
+    const existing = state.data.plugins.find((entry) => entry.id === seedPlugin.id);
+    if (!existing) {
+      state.data.plugins.push(seedPlugin);
+    } else {
+      if (seedPlugin.builtIn) { existing.builtIn = true; }
+      if (seedPlugin.toolTypes) { existing.toolTypes = [...seedPlugin.toolTypes]; }
+      if (seedPlugin.itemTypes) { existing.itemTypes = [...seedPlugin.itemTypes]; }
     }
   }
+  // Also backfill non-built-in seed plugins that may have been removed from user data
   for (const seedPlugin of seed.plugins) {
-    const plugin = state.data.plugins.find((entry) => entry.id === seedPlugin.id);
-    if (plugin && seedPlugin.toolTypes) {
-      plugin.toolTypes = [...seedPlugin.toolTypes];
-    }
-    if (plugin && seedPlugin.itemTypes) {
-      plugin.itemTypes = [...seedPlugin.itemTypes];
-    }
-  }
-  for (const entry of seed.pluginStore) {
-    const entryId = entry.name.toLowerCase().replace(/\s+/g, "-");
-    const alreadyInstalled = state.data.plugins.some((plugin) => plugin.id === entryId || plugin.name === entry.name);
-    const storeEntry = state.data.pluginStore.find((item) => item.name === entry.name);
-    if (storeEntry) {
-      storeEntry.toolTypes = entry.toolTypes ? [...entry.toolTypes] : storeEntry.toolTypes;
-      storeEntry.itemTypes = entry.itemTypes ? [...entry.itemTypes] : storeEntry.itemTypes;
-      storeEntry.configurable = entry.configurable ?? storeEntry.configurable;
-      storeEntry.permissions = [...entry.permissions];
-      storeEntry.capability = entry.capability;
-      storeEntry.category = entry.category;
-    }
-    const alreadyInStore = Boolean(storeEntry);
-    if (!alreadyInstalled && !alreadyInStore) {
-      state.data.pluginStore.push(entry);
+    if (seedPlugin.builtIn) continue;
+    const existing = state.data.plugins.find((entry) => entry.id === seedPlugin.id);
+    if (!existing) {
+      state.data.plugins.push(seedPlugin);
+    } else {
+      if (seedPlugin.toolTypes) { existing.toolTypes = [...seedPlugin.toolTypes]; }
+      if (seedPlugin.itemTypes) { existing.itemTypes = [...seedPlugin.itemTypes]; }
+
+
     }
   }
   const matchedTheme = availableThemes().find((theme) => theme.id === state.data.settings.appearance.theme || theme.name === state.data.settings.appearance.theme);
@@ -229,9 +227,9 @@ async function init() {
   } catch (e) {
     console.error("Snapshot init failed:", e);
   }
+  startWebdavAutoSync();
   startAutoSnapshotTimer();
 }
-  startWebdavAutoSync();
 // ---- Computed ----
 
 const currentCollections = computed(() =>
@@ -815,31 +813,6 @@ function switchWorkspace(id: string): void {
 }
 
 // ---- Plugin ----
-
-function installPlugin(index: number): void {
-  const entry = state.data.pluginStore[index];
-  if (!entry) return;
-  const id = entry.name.toLowerCase().replace(/\s+/g, "-");
-  const plugin: PluginManifest = {
-    id,
-    name: entry.name,
-    version: "0.1.0",
-    category: entry.category,
-    capability: entry.capability,
-    permissions: entry.permissions,
-    installed: true,
-    enabled: entry.configurable || Boolean(entry.theme) || Boolean(entry.toolTypes?.length) || Boolean(entry.itemTypes?.length),
-    configurable: entry.configurable || false,
-    theme: entry.theme,
-    toolTypes: entry.toolTypes,
-    itemTypes: entry.itemTypes
-  };
-  state.data.plugins.push(plugin);
-  state.data.pluginStore.splice(index, 1);
-  if (plugin.configurable && plugin.enabled) state.settingsCategory = `plugin:${plugin.id}`;
-  log(`安装插件: ${plugin.name}`);
-}
-
 function togglePlugin(plugin: PluginManifest): void {
   plugin.enabled = !plugin.enabled;
   if (!plugin.enabled && state.settingsCategory === `plugin:${plugin.id}`) {
@@ -851,26 +824,121 @@ function togglePlugin(plugin: PluginManifest): void {
   log(`${plugin.enabled ? "启用" : "停用"}插件: ${plugin.name}`);
 }
 
-function deletePlugin(plugin: PluginManifest): void {
-  state.data.plugins = state.data.plugins.filter((entry) => entry.id !== plugin.id);
-  if (!state.data.pluginStore.some((entry) => entry.name === plugin.name)) {
-    state.data.pluginStore.push({
-      name: plugin.name,
-      category: plugin.category,
-      capability: plugin.capability,
-      permissions: [...plugin.permissions],
-      configurable: plugin.configurable,
-      theme: plugin.theme,
-      toolTypes: plugin.toolTypes,
-      itemTypes: plugin.itemTypes
+// ---- Marketplace ----
+
+const REGISTRY_PRIMARY = "https://gitee.com/hongxiaojian/open-dock-plugins/raw/master/index.json";
+const REGISTRY_MIRROR = "https://raw.githubusercontent.com/yedsn/OpenDockPlugins/master/index.json";
+const REGISTRY_FILES_BASE_PRIMARY = "https://gitee.com/hongxiaojian/open-dock-plugins/raw/master/plugins";
+const REGISTRY_FILES_BASE_MIRROR = "https://raw.githubusercontent.com/yedsn/OpenDockPlugins/master/plugins";
+
+async function fetchTextWithFallback(urls: string[]): Promise<string | null> {
+  // Use Tauri backend for fetching (supports proxy auto-detection)
+  for (const url of urls) {
+    try {
+      const body = await invoke<string>("marketplace_fetch_text", { url });
+      if (body) return body;
+    } catch {
+      continue;
+    }
+  }
+  // Fallback to browser fetch if Tauri backend fails
+  for (const url of urls) {
+    try {
+      const response = await fetch(url, { cache: "no-store" });
+      if (response.ok) return await response.text();
+    } catch {
+      continue;
+    }
+  }
+  return null;
+
+}
+
+async function fetchMarketplaceIndex(): Promise<void> {
+  state.marketplaceLoading = true;
+  state.marketplaceError = "";
+  try {
+    const body = await fetchTextWithFallback([REGISTRY_PRIMARY, REGISTRY_MIRROR]);
+    if (!body) {
+      state.marketplaceError = "无法连接插件市场";
+      return;
+    }
+    const index: MarketplaceIndex = JSON.parse(body);
+    state.marketplacePlugins = index.plugins.filter((p) => {
+      const installed = state.data.plugins.some((ip) => ip.id === p.id);
+      return !installed;
     });
+  } catch (e) {
+    state.marketplaceError = String(e);
+  } finally {
+    state.marketplaceLoading = false;
   }
-  if (state.settingsCategory === `plugin:${plugin.id}`) {
-    state.settingsCategory = "plugins";
+}
+async function installFromMarketplace(plugin: MarketplacePlugin): Promise<void> {
+  state.marketplaceInstalling = plugin.id;
+  try {
+    const files: { path: string; content: string }[] = [];
+
+    // Download plugin.json from the registry
+    const pluginJsonContent = await fetchTextWithFallback([
+      `${REGISTRY_FILES_BASE_PRIMARY}/${plugin.id}/${plugin.version}/plugin.json`,
+      `${REGISTRY_FILES_BASE_MIRROR}/${plugin.id}/${plugin.version}/plugin.json`
+    ]);
+    if (pluginJsonContent) {
+      files.push({ path: "plugin.json", content: pluginJsonContent });
+    }
+
+    if (files.length === 0) {
+      log(`安装插件失败: ${plugin.name} - 无法下载插件配置`);
+      return;
+    }
+
+    // Write plugin files to user data directory
+    await invoke<string>("marketplace_install_plugin_files", {
+      pluginId: plugin.id,
+      version: plugin.version,
+      files
+    });
+
+    // Parse plugin.json for any declarative contributions (toolTypes, itemTypes, theme)
+    let pluginJson: Record<string, unknown> = {};
+    try {
+      pluginJson = JSON.parse(files[0].content);
+    } catch { /* ignore parse error, use marketplace metadata */ }
+
+    const manifest: PluginManifest = {
+      id: plugin.id,
+      name: plugin.name,
+      version: plugin.version,
+      category: plugin.category,
+      capability: plugin.description,
+      permissions: plugin.permissions,
+      installed: true,
+      enabled: true,
+      configurable: false,
+      toolTypes: Array.isArray(pluginJson.toolTypes) ? pluginJson.toolTypes as PluginToolTypeEntry[] : undefined,
+      itemTypes: Array.isArray(pluginJson.itemTypes) ? pluginJson.itemTypes as PluginItemTypeContribution[] : undefined
+    };
+
+    state.data.plugins.push(manifest);
+    state.marketplacePlugins = state.marketplacePlugins.filter((p) => p.id !== plugin.id);
+    log(`从市场安装插件: ${plugin.name} v${plugin.version}`);
+  } catch (e) {
+    log(`安装插件失败: ${plugin.name} - ${e}`);
+  } finally {
+    state.marketplaceInstalling = null;
   }
-  if (plugin.theme && state.data.settings.appearance.theme === plugin.theme.id) {
-    state.data.settings.appearance.theme = builtInThemes[0].id;
+}
+
+async function uninstallFromMarketplace(plugin: PluginManifest): Promise<void> {
+  try {
+    await invoke<string>("marketplace_delete_plugin_dir", { pluginId: plugin.id });
+  } catch {
+    // Directory may not exist for built-in plugins
   }
+  state.data.plugins = state.data.plugins.filter((entry) => entry.id !== plugin.id);
+  if (state.settingsCategory === `plugin:${plugin.id}`) state.settingsCategory = "plugins";
+  if (plugin.theme && state.data.settings.appearance.theme === plugin.theme.id) state.data.settings.appearance.theme = builtInThemes[0].id;
   log(`删除插件: ${plugin.name}`);
 }
 
@@ -898,26 +966,143 @@ async function syncWebdavNow(): Promise<void> {
   });
 
   if (result.ok) {
-    if (result.message.startsWith("SYNC_REMOTE_DATA:")) {
+    if (result.message.startsWith("SYNC_CONFLICT:")) {
+      const remoteJson = result.message.slice("SYNC_CONFLICT:".length);
+      try {
+        parseWebdavRemoteData(remoteJson);
+        state.webdavPendingConflict = createWebdavPendingConflict(localData, remoteJson);
+        config.status = "需要手动处理冲突";
+      } catch {
+        state.webdavPendingConflict = null;
+        config.status = "同步失败（远程数据解析错误）";
+      }
+    } else if (result.message.startsWith("SYNC_REMOTE_DATA:")) {
       const remoteJson = result.message.slice("SYNC_REMOTE_DATA:".length);
       try {
-        const { normalizeAppData } = await import("./storage");
-        const remoteData = normalizeAppData(JSON.parse(remoteJson));
-        state.data = remoteData;
-        config.status = "同步成功（远程优先）";
+        const remoteData = parseWebdavRemoteData(remoteJson);
+        await replaceLocalDataFromWebdav(remoteData, "WebDAV 远程覆盖前快照");
+        state.data.settings.webdavSync.status = "同步成功（远程优先）";
       } catch {
         config.status = "同步失败（远程数据解析错误）";
       }
     } else if (result.message.startsWith("SYNC_MANUAL:")) {
       config.status = "需要手动处理冲突";
     } else {
+      state.webdavPendingConflict = null;
       config.status = "同步成功";
     }
   } else {
     config.status = "同步失败";
   }
-  config.lastSyncAt = new Date().toLocaleString("zh-CN", { hour12: false });
+  state.data.settings.webdavSync.lastSyncAt = new Date().toLocaleString("zh-CN", { hour12: false });
   log(`WebDAV Sync 立即同步: ${result.message}`);
+}
+
+function parseWebdavRemoteData(remoteJson: string): AppData {
+  const remoteData = JSON.parse(remoteJson) as unknown;
+  return normalizeWebdavData(remoteData);
+}
+
+function normalizeWebdavData(input: unknown): AppData {
+  return normalizeAppData(input);
+}
+
+function countData(data: AppData): { workspaces: number; scenes: number; collections: number; items: number } {
+  return {
+    workspaces: data.workspaces.length,
+    scenes: data.scenes.length,
+    collections: data.collections.length,
+    items: data.items.length
+  };
+}
+
+function summarizeWebdavData(raw: string): string {
+  try {
+    const data = normalizeWebdavData(JSON.parse(raw));
+    const counts = countData(data);
+    return `工作区 ${counts.workspaces} 个 · 场景 ${counts.scenes} 个 · 集合 ${counts.collections} 个 · 资源 ${counts.items} 个`;
+  } catch {
+    return "无法解析数据摘要";
+  }
+}
+
+function createWebdavPendingConflict(localData: string, remoteData: string): WebDavPendingConflict {
+  return {
+    localData,
+    remoteData,
+    detectedAt: new Date().toLocaleString("zh-CN", { hour12: false }),
+    localSummary: summarizeWebdavData(localData),
+    remoteSummary: summarizeWebdavData(remoteData)
+  };
+}
+
+async function replaceLocalDataFromWebdav(remoteData: AppData, snapshotLabel: string): Promise<void> {
+  try {
+    await createSnapshot(state.data, "pre-import", `${snapshotLabel} ${new Date().toLocaleString()}`);
+  } catch (e) {
+    console.error("WebDAV pre-overwrite snapshot failed:", e);
+  }
+  const localWebdavConfig = { ...state.data.settings.webdavSync };
+  const credentialRef = localWebdavConfig.credentialRef;
+  state.data = remoteData;
+  state.data.settings.webdavSync = {
+    ...remoteData.settings.webdavSync,
+    serverUrl: localWebdavConfig.serverUrl,
+    username: localWebdavConfig.username,
+    credentialRef,
+    remotePath: localWebdavConfig.remotePath,
+    autoSync: localWebdavConfig.autoSync,
+    syncInterval: localWebdavConfig.syncInterval,
+    syncScope: localWebdavConfig.syncScope,
+    conflictPolicy: localWebdavConfig.conflictPolicy
+  };
+  await refreshSnapshots();
+  startAutoSnapshotTimer();
+}
+
+async function webdavOverwriteLocal(): Promise<void> {
+  const pending = state.webdavPendingConflict;
+  if (!pending) return;
+  try {
+    const remoteData = parseWebdavRemoteData(pending.remoteData);
+    await replaceLocalDataFromWebdav(remoteData, "WebDAV 手动覆盖本地前快照");
+    state.data.settings.webdavSync.status = "同步成功（远程优先）";
+    state.data.settings.webdavSync.lastSyncAt = new Date().toLocaleString("zh-CN", { hour12: false });
+    state.webdavPendingConflict = null;
+    log("WebDAV Sync 手动覆盖本地完成");
+  } catch {
+    state.data.settings.webdavSync.status = "同步失败（远程数据解析错误）";
+  }
+}
+
+async function webdavOverwriteRemote(): Promise<void> {
+  const pending = state.webdavPendingConflict;
+  if (!pending) return;
+  const config = state.data.settings.webdavSync;
+  const password = await webdavGetCredential();
+  const result = await callOpenCommand("sync_webdav_now", {
+    serverUrl: config.serverUrl,
+    username: config.username,
+    password,
+    remotePath: config.remotePath,
+    conflictPolicy: "覆盖远程",
+    localData: pending.localData,
+  });
+  if (result.ok) {
+    config.status = "同步成功";
+    state.webdavPendingConflict = null;
+  } else {
+    config.status = "同步失败";
+  }
+  config.lastSyncAt = new Date().toLocaleString("zh-CN", { hour12: false });
+  log(`WebDAV Sync 手动覆盖远程: ${result.message}`);
+}
+
+function clearWebdavPendingConflict(): void {
+  state.webdavPendingConflict = null;
+  if (state.data.settings.webdavSync.status === "需要手动处理冲突") {
+    state.data.settings.webdavSync.status = "已取消冲突处理";
+  }
 }
 
 // ---- Snapshots ----
@@ -1401,11 +1586,15 @@ export function useOpenDockStore() {
     openScene,
     createWorkspace,
     switchWorkspace,
-    installPlugin,
     togglePlugin,
-    deletePlugin,
+    fetchMarketplaceIndex,
+    installFromMarketplace,
+    uninstallFromMarketplace,
     testWebdav,
     syncWebdavNow,
+    webdavOverwriteLocal,
+    webdavOverwriteRemote,
+    clearWebdavPendingConflict,
     saveWebdavPassword,
     startWebdavAutoSync,
     stopWebdavAutoSync,

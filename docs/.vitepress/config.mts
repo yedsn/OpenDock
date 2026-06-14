@@ -1,4 +1,4 @@
-import { defineConfig } from 'vitepress'
+﻿import { defineConfig } from 'vitepress'
 
 const githubRepo = 'https://github.com/yedsn/OpenDock'
 const giteeRepo = 'https://gitee.com/hongxiaojian/open-dock'
@@ -41,6 +41,7 @@ export default defineConfig({
           text: '扩展与同步',
           items: [
             { text: '插件开发', link: '/guide/plugin-development' },
+            { text: '插件市场', link: '/guide/plugin-marketplace' },
             { text: 'WebDAV 同步', link: '/guide/webdav-sync' }
           ]
         }

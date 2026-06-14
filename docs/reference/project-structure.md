@@ -1,4 +1,4 @@
-# 项目结构
+﻿# 项目结构
 
 ```text
 opendock/
@@ -18,14 +18,7 @@ opendock/
 │   ├── src/main.rs         # 桌面端入口
 │   ├── tauri.conf.json     # Tauri 配置
 │   └── Cargo.toml          # Rust 依赖配置
-├── plugins/                # 插件系统
-│   ├── .system/            # 内置插件
-│   │   ├── webdav-sync/    # WebDAV Sync 插件
-│   │   ├── theme-forest-mist/  # Forest Mist 主题插件
-│   │   └── theme-ink-blue/     # Ink Blue 主题插件
-│   ├── external-demo/      # 外置插件 demo
-│   ├── tool-type-demo/     # 工具类型扩展 demo
-│   └── registry.ts         # 插件动态注册表
+├── plugins/                # 内置插件系统\r\n│   ├── .system/            # 随应用发布的内置插件\r\n│   │   ├── webdav-sync/    # WebDAV Sync 插件\r\n│   │   ├── theme-forest-mist/  # Forest Mist 主题插件\r\n│   │   └── theme-ink-blue/     # Ink Blue 主题插件\r\n│   └── registry.ts         # 内置插件动态注册表
 ├── docs/                   # 官网源码与项目文档
 │   ├── .vitepress/         # VitePress 站点配置与主题
 │   ├── guide/              # 使用说明
@@ -56,3 +49,4 @@ opendock/
 - `docs/guide/`：使用说明和插件开发文档
 - `docs/develop/`：开发环境、构建与发布文档
 - `docs/reference/`：项目结构、命令参考、站点部署说明
+

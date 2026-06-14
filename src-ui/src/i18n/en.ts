@@ -195,7 +195,11 @@
     configurable: "Configurable",
     installedPlugins: "Installed plugins",
     pluginStore: "Plugin store",
+    pluginMarketplace: "Plugin Marketplace",
+    marketplaceLoading: "Loading...",
+    marketplaceEmpty: "No plugins available, click refresh to retry",
     install: "Install",
+    installing: "Installing...",
     deletePlugin: "Delete",
     shortcutKeys: "Shortcuts",
     setGlobalShortcuts: "Set the global window shortcut. Changes take effect immediately.",
@@ -470,6 +474,14 @@
     conflictManual: "Manual handling",
     autoSync: "Auto sync",
     testing: "Testing...",
-    syncing: "Syncing..."
+    syncing: "Syncing...",
+    conflictDetected: "Local and remote data differ",
+    conflictDetectedDesc: "Sync is paused to avoid deleting or overwriting the wrong data. Choose whether the remote copy should replace local data, or local data should replace the remote copy. A local snapshot is created before replacing local data.",
+    localVersion: "Local version",
+    remoteVersion: "Remote version",
+    overwriteLocal: "Replace local with remote",
+    overwriteRemote: "Replace remote with local",
+    cancelConflict: "Not now",
+    syncTimingNote: "Automatic sync runs on the interval above. If local and remote data differ, automatic sync pauses for a manual choice and never overwrites either side by itself."
   }
 } as const;

@@ -1,4 +1,4 @@
-use std::env;
+﻿use std::env;
 use std::fs;
 use std::path::PathBuf;
 use std::process::Command;
@@ -19,6 +19,7 @@ mod app_icon_light_rgba;
 mod webdav;
 
 use base64::Engine as _Base64Engine;
+use std::io::Write;
 
 #[cfg(target_os = "windows")]
 use windows_sys::Win32::UI::Shell::ShellExecuteW;
@@ -955,19 +956,23 @@ fn sync_webdav_now(
             Err(e) => return failure(format!("下载远程数据失败: {e}")),
         };
 
+        if remote_data == local_data {
+            return success("同步成功（本地与远程一致）");
+        }
+
         match conflict_policy.as_str() {
-            "本地优先" => {
+            "覆盖远程" => {
                 // Upload local data, overwrite remote
                 let result = webdav::upload(&server_url, &username, &password, &remote_file_path, &local_data);
-                if result.ok { success("同步成功（本地优先，已覆盖远程数据）") } else { failure(format!("上传失败: {}", result.message)) }
+                if result.ok { success("同步成功（已覆盖远程数据）") } else { failure(format!("上传失败: {}", result.message)) }
             }
-            "远程优先" => {
+            "覆盖本地" => {
                 // Return remote data to the frontend; it will replace local
                 success(format!("SYNC_REMOTE_DATA:{remote_data}"))
             }
             _ => {
-                // "保留两份" or "手动处理" — return both to the frontend
-                success(format!("SYNC_MANUAL:远程数据:\n{remote_data}"))
+                // Any normal sync against different remote data requires an explicit user choice.
+                success(format!("SYNC_CONFLICT:{remote_data}"))
             }
         }
     } else {
@@ -1609,6 +1614,91 @@ fn set_global_hotkey(app: AppHandle, key: String) -> OpenActionResult {
     }
 }
 
+// ---- Tauri commands: marketplace ----
+
+#[tauri::command]
+async fn marketplace_fetch_text(url: String) -> Result<String, String> {
+    let mut client_builder = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(15));
+    // Try local proxy: HTTPS_PROXY / HTTP_PROXY env, or default 127.0.0.1:7890 / 7779
+    let proxy_url = std::env::var("HTTPS_PROXY")
+        .or_else(|_| std::env::var("HTTP_PROXY"))
+        .ok()
+        .or_else(|| {
+            let check = ["http://127.0.0.1:7890", "http://127.0.0.1:7779"];
+            check.iter().find(|addr| {
+                std::net::TcpStream::connect_timeout(
+                    &addr[7..].parse::<std::net::SocketAddr>().unwrap_or("127.0.0.1:1".parse().unwrap()),
+                    std::time::Duration::from_millis(300),
+                ).is_ok()
+            }).map(|s| s.to_string())
+        });
+    if let Some(proxy_str) = proxy_url {
+        if let Ok(proxy) = reqwest::Proxy::all(&proxy_str) {
+            client_builder = client_builder.proxy(proxy);
+        }
+    }
+    let client = client_builder.build().map_err(|e| format!("HTTP client error: {e}"))?;
+    let resp = client.get(&url).send().await.map_err(|e| format!("Fetch failed: {e}"))?;
+    if !resp.status().is_success() {
+        return Err(format!("HTTP {}", resp.status()));
+    }
+    let body = resp.text().await.map_err(|e| format!("Read body failed: {e}"))?;
+    Ok(body)
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+struct PluginFileEntry {
+    path: String,
+    content: String,
+}
+
+#[tauri::command]
+async fn marketplace_install_plugin_files(plugin_id: String, version: String, files: Vec<PluginFileEntry>) -> Result<String, String> {
+    let plugin_dir = get_plugin_install_dir(&plugin_id, &version);
+    std::fs::create_dir_all(&plugin_dir).map_err(|e| format!("Create plugin dir failed: {e}"))?;
+
+    for file in &files {
+        let file_path = std::path::PathBuf::from(&plugin_dir).join(&file.path);
+        if let Some(parent) = file_path.parent() {
+            if !parent.as_os_str().is_empty() {
+                std::fs::create_dir_all(parent).map_err(|e| format!("Create dir failed: {e}"))?;
+            }
+        }
+        let mut f = std::fs::File::create(&file_path).map_err(|e| format!("Create file failed: {e}"))?;
+        f.write_all(file.content.as_bytes()).map_err(|e| format!("Write file failed: {e}"))?;
+    }
+
+    Ok(plugin_dir)
+}
+
+#[tauri::command]
+fn marketplace_get_installed_dir(plugin_id: String, version: String) -> String {
+    get_plugin_install_dir(&plugin_id, &version)
+}
+
+#[tauri::command]
+fn marketplace_delete_plugin_dir(plugin_id: String) -> Result<String, String> {
+    let base = get_plugin_install_base();
+    let dir = std::path::PathBuf::from(&base).join(&plugin_id);
+    if dir.exists() {
+        std::fs::remove_dir_all(&dir).map_err(|e| format!("Remove dir failed: {e}"))?;
+    }
+    Ok(format!("Removed {}", dir.display()))
+}
+
+fn get_plugin_install_base() -> String {
+    let data_dir = dirs::data_local_dir()
+        .unwrap_or_else(|| std::path::PathBuf::from("."));
+    data_dir.join("OpenDock").join("plugins").to_string_lossy().to_string()
+}
+
+fn get_plugin_install_dir(plugin_id: &str, version: &str) -> String {
+    let base = get_plugin_install_base();
+    std::path::PathBuf::from(&base).join(plugin_id).join(version).to_string_lossy().to_string()
+}
+
+
 pub fn run() {
     let db_path = dirs::data_local_dir()
         .unwrap_or_else(|| std::path::PathBuf::from("."))
@@ -1662,7 +1752,8 @@ pub fn run() {
             test_webdav_connection, sync_webdav_now, webdav_set_credential, webdav_get_credential, set_global_hotkey, set_app_icon_style, write_text_file,
             get_app_version, check_app_update, download_and_install_update, restart_app,
             db_init, db_execute, db_execute_params, db_get_value, db_set_value, db_list_table, db_bulk_insert,
-            snapshot_create, snapshot_update_meta, snapshot_list, snapshot_get, snapshot_delete, snapshot_prune
+            snapshot_create, snapshot_update_meta, snapshot_list, snapshot_get, snapshot_delete, snapshot_prune,
+            marketplace_fetch_text, marketplace_install_plugin_files, marketplace_get_installed_dir, marketplace_delete_plugin_dir
         ])
         .run(tauri::generate_context!())
         .expect("error while running OpenDock");

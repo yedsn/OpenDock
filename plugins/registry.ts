@@ -1,4 +1,4 @@
-import { defineAsyncComponent, type Component } from "vue";
+﻿import { defineAsyncComponent, type Component } from "vue";
 import { Blocks, RefreshCw, type LucideIcon } from "lucide-vue-next";
 import type { CollectionItem, OpenTool, PluginManifest, PluginStoreEntry } from "../src-ui/src/types";
 
@@ -48,9 +48,26 @@ export const externalPluginStoreEntries: PluginStoreEntry[] = Object.values(exte
   .map((plugin) => plugin.storeEntry)
   .filter((plugin): plugin is PluginStoreEntry => Boolean(plugin));
 
+const builtInOpenHandlers: Record<string, PluginOpenHandler> = {
+  "Diagram Spec": async ({ item, tool, callOpenCommand }) => {
+    const renderer = String(item.pluginData?.renderer || "diagram");
+    const layout = String(item.pluginData?.layout || "default");
+    const command = `echo Open diagram ${JSON.stringify(item.value)} with ${renderer} layout=${layout}`;
+
+    if (tool?.path && tool.path !== "shell:open") {
+      return await callOpenCommand("open_application", {
+        path: tool.path,
+        args: [item.value, `--renderer=${renderer}`, `--layout=${layout}`]
+      });
+    }
+
+    return await callOpenCommand("run_command", { command, workingDirectory: item.workingDirectory || null });
+  }
+};
+
 const openHandlersByItemType: Record<string, PluginOpenHandler> = Object.values(externalPluginModules)
   .concat(Object.values(builtInPluginModules))
-  .reduce<Record<string, PluginOpenHandler>>((handlers, plugin) => ({ ...handlers, ...(plugin.openHandlers || {}) }), {});
+  .reduce<Record<string, PluginOpenHandler>>((handlers, plugin) => ({ ...handlers, ...(plugin.openHandlers || {}) }), { ...builtInOpenHandlers });
 
 export const builtInPluginUi: PluginUiRegistration[] = [
   {

@@ -1,4 +1,4 @@
-export type SceneType = "项目" | "办公" | "工程" | "设计" | "通用" | "自定义";
+﻿export type SceneType = "项目" | "办公" | "工程" | "设计" | "通用" | "自定义";
 export type CollectionType = "目录集合" | "网页集合" | "命令集合" | "Office 集合" | "CAD 集合" | "文件集合" | "应用集合" | "插件集合";
 export type ItemType = string;
 export type ToolType = string;
@@ -146,6 +146,7 @@ export interface PluginManifest {
   installed: boolean;
   enabled: boolean;
   configurable: boolean;
+  builtIn?: boolean;
   status?: string;
   theme?: ThemeDefinition;
   toolTypes?: PluginToolTypeEntry[];
@@ -175,6 +176,26 @@ export interface PluginStoreEntry {
   itemTypes?: PluginItemTypeContribution[];
 }
 
+export interface MarketplacePlugin {
+  id: string;
+  name: string;
+  version: string;
+  category: string;
+  description: string;
+  permissions: string[];
+  author: string;
+  repository?: string;
+  tags: string[];
+  minAppVersion: string;
+  verified: boolean;
+}
+
+export interface MarketplaceIndex {
+  schemaVersion: number;
+  updatedAt: string;
+  plugins: MarketplacePlugin[];
+}
+
 export interface WebDavSyncConfig {
   serverUrl: string;
   username: string;
@@ -186,6 +207,14 @@ export interface WebDavSyncConfig {
   conflictPolicy: "本地优先" | "远端优先" | "保留两份" | "手动处理";
   lastSyncAt: string;
   status: string;
+}
+
+export interface WebDavPendingConflict {
+  localData: string;
+  remoteData: string;
+  detectedAt: string;
+  localSummary: string;
+  remoteSummary: string;
 }
 
 export interface GeneralSettings {
