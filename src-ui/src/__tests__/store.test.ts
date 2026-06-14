@@ -30,6 +30,10 @@ const LOCAL_WEB = "\u672c\u5730\u7f51\u9875";
 beforeEach(() => {
   for (const k of Object.keys(storage)) delete storage[k];
   invokeMock.mockClear();
+  invokeMock.mockImplementation(async (...args: unknown[]): Promise<unknown> => {
+    if (args[0] === "marketplace_fetch_text") throw new Error("fallback to fetch");
+    return { ok: true, message: "stub" };
+  });
   hideWindowMock.mockClear();
   vi.unstubAllGlobals();
   vi.resetModules();
@@ -188,6 +192,49 @@ describe("OpenDock store - CRUD operations", () => {
     const parsed = JSON.parse(exportAppData(store.state.data));
     expect(parsed.settings.webdavSync.credentialRef).toBe("");
   });
+  it("pauses WebDAV sync on remote differences without overwriting local data", async () => {
+    const { createSeedData } = await import("../seed");
+    const remoteData = createSeedData();
+    remoteData.workspaces[0].name = "Remote Workspace";
+    invokeMock.mockImplementation(async (...args: unknown[]) => {
+      const command = args[0] as string;
+      if (command === "webdav_get_credential") return "secret";
+      if (command === "sync_webdav_now") return { ok: true, message: `SYNC_CONFLICT:${JSON.stringify(remoteData)}` };
+      return { ok: true, message: "stub" };
+    });
+    const { useOpenDockStore } = await import("../store");
+    const store = useOpenDockStore();
+    const originalName = store.state.data.workspaces[0].name;
+    await store.syncWebdavNow();
+    expect(store.state.data.workspaces[0].name).toBe(originalName);
+    expect(store.state.webdavPendingConflict).toBeTruthy();
+    expect(store.state.data.settings.webdavSync.status).toBe("需要手动处理冲突");
+  });
+  it("requires explicit WebDAV overwrite actions for either direction", async () => {
+    const { createSeedData } = await import("../seed");
+    const remoteData = createSeedData();
+    remoteData.workspaces[0].name = "Remote Workspace";
+    invokeMock.mockImplementation(async (...args: unknown[]) => {
+      const command = args[0] as string;
+      const payload = args[1] as { conflictPolicy?: string } | undefined;
+      if (command === "webdav_get_credential") return "secret";
+      if (command === "sync_webdav_now" && payload?.conflictPolicy === "覆盖远程") return { ok: true, message: "同步成功（已覆盖远程数据）" };
+      if (command === "sync_webdav_now") return { ok: true, message: `SYNC_CONFLICT:${JSON.stringify(remoteData)}` };
+      if (command === "snapshot_list") return [];
+      return { ok: true, message: "stub" };
+    });
+    const { useOpenDockStore } = await import("../store");
+    const store = useOpenDockStore();
+    await store.syncWebdavNow();
+    await store.webdavOverwriteRemote();
+    expect(invokeMock).toHaveBeenCalledWith("sync_webdav_now", expect.objectContaining({ conflictPolicy: "覆盖远程" }));
+    expect(store.state.webdavPendingConflict).toBeNull();
+    await store.syncWebdavNow();
+    await store.webdavOverwriteLocal();
+    expect(store.state.data.workspaces[0].name).toBe("Remote Workspace");
+    expect(invokeMock).toHaveBeenCalledWith("snapshot_create", expect.objectContaining({ kind: "pre-import" }));
+    invokeMock.mockImplementation(async (..._args: unknown[]): Promise<unknown> => ({ ok: true, message: "stub" }));
+  });
   it("normalizes invalid appearance settings during init", async () => {
     const { createSeedData } = await import("../seed");
     const data = createSeedData();
@@ -292,6 +339,7 @@ describe("OpenDock store - CRUD operations", () => {
     vi.stubGlobal("fetch", vi.fn(async () => ({ ok: true, text: async () => pluginJson })));
     invokeMock.mockImplementation(async (...args: unknown[]) => {
       const command = args[0] as string;
+      if (command === "marketplace_fetch_text") throw new Error("fallback to fetch");
       if (command === "marketplace_install_plugin_files") return "C:/OpenDock/plugins/tool-type-demo/0.1.0";
       return { ok: true, message: "stub" };
     });

@@ -209,6 +209,14 @@ export interface WebDavSyncConfig {
   status: string;
 }
 
+export interface WebDavPendingConflict {
+  localData: string;
+  remoteData: string;
+  detectedAt: string;
+  localSummary: string;
+  remoteSummary: string;
+}
+
 export interface GeneralSettings {
   defaultView: string;
   recentLimit: number;

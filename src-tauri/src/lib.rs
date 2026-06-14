@@ -707,19 +707,23 @@ fn sync_webdav_now(
             Err(e) => return failure(format!("下载远程数据失败: {e}")),
         };
 
+        if remote_data == local_data {
+            return success("同步成功（本地与远程一致）");
+        }
+
         match conflict_policy.as_str() {
-            "本地优先" => {
+            "覆盖远程" => {
                 // Upload local data, overwrite remote
                 let result = webdav::upload(&server_url, &username, &password, &remote_file_path, &local_data);
-                if result.ok { success("同步成功（本地优先，已覆盖远程数据）") } else { failure(format!("上传失败: {}", result.message)) }
+                if result.ok { success("同步成功（已覆盖远程数据）") } else { failure(format!("上传失败: {}", result.message)) }
             }
-            "远程优先" => {
+            "覆盖本地" => {
                 // Return remote data to the frontend; it will replace local
                 success(format!("SYNC_REMOTE_DATA:{remote_data}"))
             }
             _ => {
-                // "保留两份" or "手动处理" — return both to the frontend
-                success(format!("SYNC_MANUAL:远程数据:\n{remote_data}"))
+                // Any normal sync against different remote data requires an explicit user choice.
+                success(format!("SYNC_CONFLICT:{remote_data}"))
             }
         }
     } else {

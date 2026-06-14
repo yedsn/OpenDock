@@ -1,14 +1,14 @@
 ﻿import { computed, reactive, watch } from "vue";
 import { invoke } from "@tauri-apps/api/core";
 import { collectionMeta, itemMeta, sceneMeta } from "./seed";
-import { exportAppData, loadAppData, resetAppData, saveActiveState, saveAppData } from "./storage";
+import { exportAppData, loadAppData, normalizeAppData, resetAppData, saveActiveState, saveAppData } from "./storage";
 import { createSnapshot, listSnapshots, loadSnapshot, deleteSnapshot, pruneSnapshots, updateSnapshotMeta } from "./storage";
 import { webdavSetCredential, webdavGetCredential } from "./db";
 import { createSeedData } from "./seed";
 import { nowIso, makeId, expandToolArgs, templateToCollectionType } from "./helpers";
 import { builtInThemes } from "./themes";
 import { getPluginOpenHandler } from "../../plugins/registry";
-import type { AppData, Collection, CollectionItem, CollectionMode, CollectionType, ItemType, MainView, MarketplaceIndex, MarketplacePlugin, ModalState, OpenTool, PluginItemFormField, PluginItemTypeContribution, PluginManifest, PluginToolTypeContribution, PluginToolTypeEntry, QuickViewId, Scene, SnapshotKind, SnapshotRecord, SceneType, Tab, ThemeDefinition, Workspace } from "./types";
+import type { AppData, Collection, CollectionItem, CollectionMode, CollectionType, ItemType, MainView, MarketplaceIndex, MarketplacePlugin, ModalState, OpenTool, PluginItemFormField, PluginItemTypeContribution, PluginManifest, PluginToolTypeContribution, PluginToolTypeEntry, QuickViewId, Scene, SnapshotKind, SnapshotRecord, SceneType, Tab, ThemeDefinition, WebDavPendingConflict, Workspace } from "./types";
 import type { SearchSuggestion } from "./types";
 import { matchesSearchText, scoreSearchText, createSearchText } from "./pinyin";
 import { useI18n } from "./i18n";
@@ -76,7 +76,8 @@ const state = reactive({
   marketplacePlugins: [] as MarketplacePlugin[],
   marketplaceLoading: false,
   marketplaceError: "",
-  marketplaceInstalling: null as string | null
+  marketplaceInstalling: null as string | null,
+  webdavPendingConflict: null as WebDavPendingConflict | null
 });
 
 let saveTimer: ReturnType<typeof setTimeout> | null = null;
@@ -962,26 +963,143 @@ async function syncWebdavNow(): Promise<void> {
   });
 
   if (result.ok) {
-    if (result.message.startsWith("SYNC_REMOTE_DATA:")) {
+    if (result.message.startsWith("SYNC_CONFLICT:")) {
+      const remoteJson = result.message.slice("SYNC_CONFLICT:".length);
+      try {
+        parseWebdavRemoteData(remoteJson);
+        state.webdavPendingConflict = createWebdavPendingConflict(localData, remoteJson);
+        config.status = "需要手动处理冲突";
+      } catch {
+        state.webdavPendingConflict = null;
+        config.status = "同步失败（远程数据解析错误）";
+      }
+    } else if (result.message.startsWith("SYNC_REMOTE_DATA:")) {
       const remoteJson = result.message.slice("SYNC_REMOTE_DATA:".length);
       try {
-        const { normalizeAppData } = await import("./storage");
-        const remoteData = normalizeAppData(JSON.parse(remoteJson));
-        state.data = remoteData;
-        config.status = "同步成功（远程优先）";
+        const remoteData = parseWebdavRemoteData(remoteJson);
+        await replaceLocalDataFromWebdav(remoteData, "WebDAV 远程覆盖前快照");
+        state.data.settings.webdavSync.status = "同步成功（远程优先）";
       } catch {
         config.status = "同步失败（远程数据解析错误）";
       }
     } else if (result.message.startsWith("SYNC_MANUAL:")) {
       config.status = "需要手动处理冲突";
     } else {
+      state.webdavPendingConflict = null;
       config.status = "同步成功";
     }
   } else {
     config.status = "同步失败";
   }
-  config.lastSyncAt = new Date().toLocaleString("zh-CN", { hour12: false });
+  state.data.settings.webdavSync.lastSyncAt = new Date().toLocaleString("zh-CN", { hour12: false });
   log(`WebDAV Sync 立即同步: ${result.message}`);
+}
+
+function parseWebdavRemoteData(remoteJson: string): AppData {
+  const remoteData = JSON.parse(remoteJson) as unknown;
+  return normalizeWebdavData(remoteData);
+}
+
+function normalizeWebdavData(input: unknown): AppData {
+  return normalizeAppData(input);
+}
+
+function countData(data: AppData): { workspaces: number; scenes: number; collections: number; items: number } {
+  return {
+    workspaces: data.workspaces.length,
+    scenes: data.scenes.length,
+    collections: data.collections.length,
+    items: data.items.length
+  };
+}
+
+function summarizeWebdavData(raw: string): string {
+  try {
+    const data = normalizeWebdavData(JSON.parse(raw));
+    const counts = countData(data);
+    return `工作区 ${counts.workspaces} 个 · 场景 ${counts.scenes} 个 · 集合 ${counts.collections} 个 · 资源 ${counts.items} 个`;
+  } catch {
+    return "无法解析数据摘要";
+  }
+}
+
+function createWebdavPendingConflict(localData: string, remoteData: string): WebDavPendingConflict {
+  return {
+    localData,
+    remoteData,
+    detectedAt: new Date().toLocaleString("zh-CN", { hour12: false }),
+    localSummary: summarizeWebdavData(localData),
+    remoteSummary: summarizeWebdavData(remoteData)
+  };
+}
+
+async function replaceLocalDataFromWebdav(remoteData: AppData, snapshotLabel: string): Promise<void> {
+  try {
+    await createSnapshot(state.data, "pre-import", `${snapshotLabel} ${new Date().toLocaleString()}`);
+  } catch (e) {
+    console.error("WebDAV pre-overwrite snapshot failed:", e);
+  }
+  const localWebdavConfig = { ...state.data.settings.webdavSync };
+  const credentialRef = localWebdavConfig.credentialRef;
+  state.data = remoteData;
+  state.data.settings.webdavSync = {
+    ...remoteData.settings.webdavSync,
+    serverUrl: localWebdavConfig.serverUrl,
+    username: localWebdavConfig.username,
+    credentialRef,
+    remotePath: localWebdavConfig.remotePath,
+    autoSync: localWebdavConfig.autoSync,
+    syncInterval: localWebdavConfig.syncInterval,
+    syncScope: localWebdavConfig.syncScope,
+    conflictPolicy: localWebdavConfig.conflictPolicy
+  };
+  await refreshSnapshots();
+  startAutoSnapshotTimer();
+}
+
+async function webdavOverwriteLocal(): Promise<void> {
+  const pending = state.webdavPendingConflict;
+  if (!pending) return;
+  try {
+    const remoteData = parseWebdavRemoteData(pending.remoteData);
+    await replaceLocalDataFromWebdav(remoteData, "WebDAV 手动覆盖本地前快照");
+    state.data.settings.webdavSync.status = "同步成功（远程优先）";
+    state.data.settings.webdavSync.lastSyncAt = new Date().toLocaleString("zh-CN", { hour12: false });
+    state.webdavPendingConflict = null;
+    log("WebDAV Sync 手动覆盖本地完成");
+  } catch {
+    state.data.settings.webdavSync.status = "同步失败（远程数据解析错误）";
+  }
+}
+
+async function webdavOverwriteRemote(): Promise<void> {
+  const pending = state.webdavPendingConflict;
+  if (!pending) return;
+  const config = state.data.settings.webdavSync;
+  const password = await webdavGetCredential();
+  const result = await callOpenCommand("sync_webdav_now", {
+    serverUrl: config.serverUrl,
+    username: config.username,
+    password,
+    remotePath: config.remotePath,
+    conflictPolicy: "覆盖远程",
+    localData: pending.localData,
+  });
+  if (result.ok) {
+    config.status = "同步成功";
+    state.webdavPendingConflict = null;
+  } else {
+    config.status = "同步失败";
+  }
+  config.lastSyncAt = new Date().toLocaleString("zh-CN", { hour12: false });
+  log(`WebDAV Sync 手动覆盖远程: ${result.message}`);
+}
+
+function clearWebdavPendingConflict(): void {
+  state.webdavPendingConflict = null;
+  if (state.data.settings.webdavSync.status === "需要手动处理冲突") {
+    state.data.settings.webdavSync.status = "已取消冲突处理";
+  }
 }
 
 // ---- Snapshots ----
@@ -1471,6 +1589,9 @@ export function useOpenDockStore() {
     uninstallFromMarketplace,
     testWebdav,
     syncWebdavNow,
+    webdavOverwriteLocal,
+    webdavOverwriteRemote,
+    clearWebdavPendingConflict,
     saveWebdavPassword,
     startWebdavAutoSync,
     stopWebdavAutoSync,

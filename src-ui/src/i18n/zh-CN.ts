@@ -494,6 +494,14 @@
     conflictManual: "手动处理",
     autoSync: "自动同步",
     testing: "测试中...",
-    syncing: "同步中..."
+    syncing: "同步中...",
+    conflictDetected: "检测到本地与远程数据差异",
+    conflictDetectedDesc: "为避免删错或覆盖错数据，本次同步已暂停。请选择用远程覆盖本地，或用本地覆盖远程。覆盖本地前会自动拍摄本地快照。",
+    localVersion: "本地版本",
+    remoteVersion: "远程版本",
+    overwriteLocal: "用远程覆盖本地",
+    overwriteRemote: "用本地覆盖远程",
+    cancelConflict: "暂不处理",
+    syncTimingNote: "自动同步按上方间隔触发；只要远程与本地存在差异，自动同步也会暂停并等待手动选择，不会自动覆盖任何一侧。"
   }
 } as const;
