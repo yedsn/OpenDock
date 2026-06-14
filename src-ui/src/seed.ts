@@ -1,4 +1,4 @@
-﻿import { builtInPluginManifests, builtInPluginStoreEntries, externalPluginStoreEntries } from "../../plugins/registry";
+﻿import { builtInPluginManifests, builtInPluginStoreEntries } from "../../plugins/registry";
 import type { AppData, Collection, CollectionItem, CollectionType, ItemType, OpenTool, PluginManifest, Scene, SceneType, Workspace } from "./types";
 
 export const schemaVersion = 1;
@@ -126,12 +126,12 @@ const items: CollectionItem[] = [
 ];
 
 const plugins: PluginManifest[] = [
-  { id: "browser", name: "Browser", version: "1.0.0", category: "资源打开", capability: "多浏览器网页集合打开", permissions: ["workspace:read", "opener:browser"], installed: true, enabled: true, configurable: false },
-  { id: "terminal", name: "Terminal", version: "1.0.0", category: "资源打开", capability: "命令集合执行策略", permissions: ["workspace:read", "opener:terminal"], installed: true, enabled: true, configurable: false },
-  { id: "webdav-sync", name: "WebDAV Sync", version: "0.2.0", category: "同步", capability: "通过 WebDAV 同步工作区数据", permissions: ["workspace:read", "workspace:write", "network:webdav"], installed: true, enabled: true, configurable: true, status: "待同步" },
-  { id: "office", name: "Office", version: "0.1.0", category: "专业文件", capability: "Word / Excel / PPT 文件集合", permissions: ["workspace:read", "opener:office"], installed: true, enabled: true, configurable: false, toolTypes: [{ type: "Office", collectionTypes: ["Office 集合", "文件集合"], itemTypes: ["Excel", "文件"] }] },
-  { id: "cad", name: "CAD", version: "0.1.0", category: "专业文件", capability: "DWG / DXF 图纸集合", permissions: ["workspace:read", "opener:cad"], installed: true, enabled: false, configurable: false, toolTypes: [{ type: "CAD", collectionTypes: ["CAD 集合", "文件集合"], itemTypes: ["CAD", "文件"] }] },
-  { id: "database", name: "Database", version: "0.1.0", category: "开发工具", capability: "数据库连接入口", permissions: ["workspace:read", "secret:connection"], installed: true, enabled: true, configurable: false },
+  { id: "browser", name: "Browser", version: "1.0.0", category: "资源打开", capability: "多浏览器网页集合打开", permissions: ["workspace:read", "opener:browser"], installed: true, enabled: true, configurable: false, builtIn: true },
+  { id: "terminal", name: "Terminal", version: "1.0.0", category: "资源打开", capability: "命令集合执行策略", permissions: ["workspace:read", "opener:terminal"], installed: true, enabled: true, configurable: false, builtIn: true },
+  { id: "webdav-sync", name: "WebDAV Sync", version: "0.2.0", category: "同步", capability: "通过 WebDAV 同步工作区数据", permissions: ["workspace:read", "workspace:write", "network:webdav"], installed: true, enabled: true, configurable: true, builtIn: true, status: "待同步" },
+  { id: "office", name: "Office", version: "0.1.0", category: "专业文件", capability: "Word / Excel / PPT 文件集合", permissions: ["workspace:read", "opener:office"], installed: true, enabled: true, configurable: false, builtIn: true, toolTypes: [{ type: "Office", collectionTypes: ["Office 集合", "文件集合"], itemTypes: ["Excel", "文件"] }] },
+  { id: "cad", name: "CAD", version: "0.1.0", category: "专业文件", capability: "DWG / DXF 图纸集合", permissions: ["workspace:read", "opener:cad"], installed: true, enabled: false, configurable: false, builtIn: true, toolTypes: [{ type: "CAD", collectionTypes: ["CAD 集合", "文件集合"], itemTypes: ["CAD", "文件"] }] },
+  { id: "database", name: "Database", version: "0.1.0", category: "开发工具", capability: "数据库连接入口", permissions: ["workspace:read", "secret:connection"], installed: true, enabled: true, configurable: false, builtIn: true },
   ...builtInPluginManifests
 ];
 
@@ -151,7 +151,6 @@ export function createSeedData(): AppData {
       { name: "Remote", category: "开发工具", capability: "SSH、远程桌面、服务器入口", permissions: ["workspace:read", "network:remote"] },
       { name: "API Docs", category: "开发工具", capability: "接口文档、Postman、Apifox 入口", permissions: ["workspace:read", "opener:app"] },
       { name: "AList Import", category: "导入", capability: "从 AList 目录导入文件资源", permissions: ["workspace:write", "network:http"], configurable: true },
-      ...externalPluginStoreEntries,
       ...builtInPluginStoreEntries
     ]),
     settings: {

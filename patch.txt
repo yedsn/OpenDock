@@ -1,0 +1,14 @@
+﻿*** Update File: src-ui/src/store.ts
+@@ const REGISTRY_PRIMARY = "https://gitee.com/hongxiaojian/open-dock-plugins/raw/main/index.json";
+-const REGISTRY_PRIMARY = "https://gitee.com/hongxiaojian/open-dock-plugins/raw/main/index.json";
++const REGISTRY_PRIMARY = "https://gitee.com/hongxiaojian/open-dock-plugins/raw/master/index.json";
+@@ const REGISTRY_MIRROR = "https://raw.githubusercontent.com/yedsn/OpenDockPlugins/main/index.json";
+-const REGISTRY_MIRROR = "https://raw.githubusercontent.com/yedsn/OpenDockPlugins/main/index.json";
++const REGISTRY_MIRROR = "https://raw.githubusercontent.com/yedsn/OpenDockPlugins/master/index.json";
+@@ const REGISTRY_FILES_BASE_PRIMARY = "https://gitee.com/hongxiaojian/open-dock-plugins/raw/main/plugins";
+-const REGISTRY_FILES_BASE_PRIMARY = "https://gitee.com/hongxiaojian/open-dock-plugins/raw/main/plugins";
++const REGISTRY_FILES_BASE_PRIMARY = "https://gitee.com/hongxiaojian/open-dock-plugins/raw/master/plugins";
+@@ const REGISTRY_FILES_BASE_MIRROR = "https://raw.githubusercontent.com/yedsn/OpenDockPlugins/main/plugins";
+-const REGISTRY_FILES_BASE_MIRROR = "https://raw.githubusercontent.com/yedsn/OpenDockPlugins/main/plugins";
++const REGISTRY_FILES_BASE_MIRROR = "https://raw.githubusercontent.com/yedsn/OpenDockPlugins/master/plugins";
+*** End Patch

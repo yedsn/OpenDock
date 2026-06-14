@@ -1,4 +1,4 @@
-[source.crates-io]
+﻿[source.crates-io]
 replace-with = "aliyun"
 
 [source.aliyun]
@@ -6,3 +6,7 @@ registry = "sparse+https://mirrors.aliyun.com/crates.io-index/"
 
 [http]
 multiplexing = false
+check-revoke = false
+
+[net]
+retry = 5

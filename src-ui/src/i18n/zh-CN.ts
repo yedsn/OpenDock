@@ -206,6 +206,9 @@
     configurable: "可配置",
     installedPlugins: "已安装插件",
     pluginStore: "插件库",
+    pluginMarketplace: "插件市场",
+    marketplaceLoading: "加载中...",
+    marketplaceEmpty: "当前无可用插件，点击刷新重试",
     install: "安装",
     deletePlugin: "删除",
     // Shortcuts panel

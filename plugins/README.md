@@ -1,6 +1,6 @@
 ﻿# OpenDock Plugins
 
-OpenDock 的插件实现统一放在本目录下。插件管理页、通用插件配置页属于主应用设置模块，不放在 `plugins/` 下。
+OpenDock 随应用发布的内置插件实现放在本目录下。插件管理页、通用插件配置页属于主应用设置模块，不放在 `plugins/` 下。
 
 ```text
 plugins/
@@ -15,15 +15,7 @@ plugins/
     theme-ink-blue/
       plugin.json
       plugin.ts
-  registry.ts              # 插件动态注册表
-  external-demo/           # 外置插件 demo
-    plugin.json
-    plugin.ts
-    ui/
-  tool-type-demo/          # 示例工具类型插件 demo
-    plugin.json
-    plugin.ts
-    ui/
+  registry.ts              # 内置插件动态注册表
 ```
 
 目录约定：
@@ -33,5 +25,6 @@ plugins/
 - `service/`：插件自己的后端服务实现，由 `src-tauri` 显式加载。
 - `plugin.ts`：纯前端插件定义，例如主题插件导出的主题对象、插件清单或商店条目。
 - `.system/`：OpenDock 随应用发布的内置插件目录。
-- `registry.ts`：动态发现 `.system/*/plugin.ts` 和外置插件 `*/plugin.ts`，并按需异步加载插件 UI 面板。
+- `registry.ts`：动态发现 `.system/*/plugin.ts`，并按需异步加载插件 UI 面板。
+- 社区插件和示例外置插件已迁移到独立插件市场仓库：`https://github.com/yedsn/OpenDockPlugins` / `https://gitee.com/hongxiaojian/open-dock-plugins`。
 - 插件数据不得写入仓库目录，应写入用户数据目录中的应用数据库；插件私有数据使用 `plugin_data(plugin_id, key, value)` 命名空间。
