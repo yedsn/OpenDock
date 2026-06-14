@@ -652,7 +652,7 @@ describe("OpenDock store - search suggestions", () => {
     expect(invokeMock).toHaveBeenCalledWith("prestart_browser", {
       browserPath: "C:/Browser/browser.exe"
     });
-    expect(invokeMock).toHaveBeenCalledWith("open_application", {
+    expect(invokeMock).toHaveBeenCalledWith("open_urls_in_browser", {
       browserPath: "C:/Browser/browser.exe",
       urls: ["https://example.test/a", "https://example.test/b"],
       newWindow: true

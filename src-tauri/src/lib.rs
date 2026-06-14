@@ -953,9 +953,30 @@ fn webdav_join_path(base: &str, child: &str) -> String {
 }
 
 fn json_values_equal(left: &str, right: &str) -> bool {
-    let Ok(left_value) = serde_json::from_str::<serde_json::Value>(left) else { return left == right; };
-    let Ok(right_value) = serde_json::from_str::<serde_json::Value>(right) else { return left == right; };
+    let Ok(left_value) = normalized_webdav_comparable_value(left) else { return left == right; };
+    let Ok(right_value) = normalized_webdav_comparable_value(right) else { return left == right; };
     left_value == right_value
+}
+
+fn normalized_webdav_comparable_value(raw: &str) -> Result<serde_json::Value, serde_json::Error> {
+    let mut value = serde_json::from_str::<serde_json::Value>(raw)?;
+    if let Some(object) = value.as_object_mut() {
+        object.remove("activeWorkspaceId");
+        object.remove("activeSceneId");
+        object.remove("activeCollectionId");
+        object.remove("activity");
+        if let Some(webdav_sync) = object
+            .get_mut("settings")
+            .and_then(|settings| settings.as_object_mut())
+            .and_then(|settings| settings.get_mut("webdavSync"))
+            .and_then(|webdav_sync| webdav_sync.as_object_mut())
+        {
+            webdav_sync.remove("status");
+            webdav_sync.remove("lastSyncAt");
+            webdav_sync.remove("lastError");
+        }
+    }
+    Ok(value)
 }
 
 fn split_webdav_sync_payload(local_data: &str) -> Result<(Vec<(String, String)>, String), String> {
@@ -1932,6 +1953,43 @@ mod tests {
         let compact = sample_app_data();
         let pretty = serde_json::to_string_pretty(&serde_json::from_str::<serde_json::Value>(&compact).unwrap()).unwrap();
         assert!(json_values_equal(&compact, &pretty));
+    }
+
+    #[test]
+    fn webdav_json_equality_ignores_sync_runtime_metadata() {
+        let base = sample_app_data();
+        let mut changed = serde_json::from_str::<serde_json::Value>(&base).unwrap();
+        let object = changed.as_object_mut().unwrap();
+        object.insert("activeWorkspaceId".to_string(), serde_json::Value::String("another-workspace".to_string()));
+        object.insert("activeSceneId".to_string(), serde_json::Value::String("another-scene".to_string()));
+        object.insert("activeCollectionId".to_string(), serde_json::Value::String("another-collection".to_string()));
+        object.insert("activity".to_string(), serde_json::json!([{ "id": "activity-2", "text": "WebDAV Sync 立即同步" }]));
+        let webdav_sync = object
+            .get_mut("settings")
+            .and_then(|settings| settings.as_object_mut())
+            .and_then(|settings| settings.get_mut("webdavSync"))
+            .and_then(|webdav_sync| webdav_sync.as_object_mut())
+            .unwrap();
+        webdav_sync.insert("status".to_string(), serde_json::Value::String("同步成功".to_string()));
+        webdav_sync.insert("lastSyncAt".to_string(), serde_json::Value::String("2026/6/14 16:00:00".to_string()));
+        webdav_sync.insert("lastError".to_string(), serde_json::Value::String(String::new()));
+
+        assert!(json_values_equal(&base, &changed.to_string()));
+    }
+
+    #[test]
+    fn webdav_json_equality_still_detects_business_data_changes() {
+        let base = sample_app_data();
+        let mut changed = serde_json::from_str::<serde_json::Value>(&base).unwrap();
+        changed
+            .get_mut("items")
+            .and_then(|items| items.as_array_mut())
+            .and_then(|items| items.first_mut())
+            .and_then(|item| item.as_object_mut())
+            .unwrap()
+            .insert("name".to_string(), serde_json::Value::String("changed".to_string()));
+
+        assert!(!json_values_equal(&base, &changed.to_string()));
     }
 }
 
