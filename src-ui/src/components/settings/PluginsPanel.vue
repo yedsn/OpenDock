@@ -40,7 +40,7 @@ onMounted(() => {
               <code>v{{ plugin.version }}</code>
               <span>{{ plugin.category }}</span>
               <span v-if="plugin.theme">theme</span>
-              <span v-if="plugin.builtIn" class="plugin-badge-built-in">built-in</span>
+              <span v-if="plugin.builtIn" class="plugin-badge-built-in">内置</span>
             </div>
             <p>{{ plugin.capability }}</p>
             <div class="plugin-permissions">
