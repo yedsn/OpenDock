@@ -46,6 +46,7 @@ function taskIcon(status: string) {
       v-if="store.webdavPluginInstalled.value"
       type="button"
       class="task-sync-button"
+      :class="{ running: syncRunning }"
       :disabled="syncRunning"
       title="手动同步 WebDAV"
       @click="store.syncWebdavNow()"
@@ -59,6 +60,11 @@ function taskIcon(status: string) {
 
 <style scoped>
 .task-dock {
+  --task-idle: var(--faint);
+  --task-active: color-mix(in srgb, var(--accent) 54%, var(--muted));
+  --task-row-success: color-mix(in srgb, var(--green) 62%, var(--faint));
+  --task-row-error: color-mix(in srgb, var(--red) 62%, var(--faint));
+  --task-row-warning: color-mix(in srgb, #d19a66 58%, var(--faint));
   position: relative;
   margin-left: auto;
   min-width: 0;
@@ -79,7 +85,7 @@ function taskIcon(status: string) {
   border: 0;
   border-radius: 5px;
   background: transparent;
-  color: var(--text);
+  color: var(--task-idle);
   box-shadow: none;
   font-size: 11px;
   font-weight: 720;
@@ -96,9 +102,14 @@ function taskIcon(status: string) {
   padding: 0 7px;
 }
 .task-sync-button:disabled {
-  color: var(--muted);
   cursor: wait;
-  opacity: 0.82;
+}
+.task-sync-button.running:disabled {
+  color: var(--task-active);
+  background: color-mix(in srgb, var(--task-active) 10%, transparent);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--task-active) 24%, transparent);
+  opacity: 1;
+  animation: task-sync-pulse 1.15s ease-in-out infinite;
 }
 .task-status-button svg,
 .task-sync-button svg,
@@ -107,10 +118,10 @@ function taskIcon(status: string) {
   height: 15px;
   flex: 0 0 auto;
 }
-.task-status-button.success { color: var(--green); }
-.task-status-button.error { color: var(--red); }
-.task-status-button.warning { color: #d19a66; }
-.task-status-button.running { color: var(--accent); }
+.task-status-button.success,
+.task-status-button.error,
+.task-status-button.warning { color: var(--task-idle); }
+.task-status-button.running { color: var(--task-active); }
 .task-status-text {
   overflow: hidden;
   white-space: nowrap;
@@ -123,8 +134,8 @@ function taskIcon(status: string) {
   align-items: center;
   justify-content: center;
   border-radius: 999px;
-  background: var(--accent);
-  color: var(--bg);
+  background: color-mix(in srgb, var(--task-active) 72%, var(--bg));
+  color: color-mix(in srgb, var(--text) 72%, var(--bg));
   font-size: 11px;
 }
 .task-panel {
@@ -171,16 +182,20 @@ function taskIcon(status: string) {
 }
 .task-row:last-child { border-bottom: 0; }
 .task-row > svg { width: 16px; height: 16px; margin-top: 1px; }
-.task-row.success > svg { color: var(--green); }
-.task-row.error > svg { color: var(--red); }
-.task-row.warning > svg { color: #d19a66; }
-.task-row.running > svg { color: var(--accent); }
+.task-row.success > svg { color: var(--task-row-success); }
+.task-row.error > svg { color: var(--task-row-error); }
+.task-row.warning > svg { color: var(--task-row-warning); }
+.task-row.running > svg { color: var(--task-active); }
 .task-row-body { min-width: 0; display: grid; gap: 5px; }
 .task-row-title { display: flex; justify-content: space-between; gap: 8px; font-size: 12px; font-weight: 800; }
 .task-row-title small { color: var(--muted); font-size: 11px; }
 .task-row p { margin: 0; color: var(--muted); font-size: 12px; line-height: 1.45; word-break: break-word; }
 .task-progress { height: 3px; overflow: hidden; border-radius: 999px; background: var(--bg-3); }
-.task-progress span { display: block; height: 100%; border-radius: inherit; background: var(--accent); transition: width .18s ease; }
+.task-progress span { display: block; height: 100%; border-radius: inherit; background: var(--task-active); transition: width .18s ease; }
 .spin { animation: task-spin .8s linear infinite; }
 @keyframes task-spin { to { transform: rotate(360deg); } }
+@keyframes task-sync-pulse {
+  0%, 100% { background: color-mix(in srgb, var(--task-active) 8%, transparent); }
+  50% { background: color-mix(in srgb, var(--task-active) 16%, transparent); }
+}
 </style>
