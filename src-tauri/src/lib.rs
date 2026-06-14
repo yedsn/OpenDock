@@ -979,6 +979,123 @@ fn normalized_webdav_comparable_value(raw: &str) -> Result<serde_json::Value, se
     Ok(value)
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum WebDavMergeOutcome {
+    Same,
+    Merged(String),
+    Conflict,
+}
+
+fn stable_entity_key(collection: &str, value: &serde_json::Value) -> Option<String> {
+    let object = value.as_object()?;
+    object.get("id").and_then(|id| id.as_str()).map(|id| id.to_string()).or_else(|| {
+        match collection {
+            "pluginStore" => object.get("name").and_then(|name| name.as_str()).map(|name| name.to_string()),
+            _ => None,
+        }
+    })
+}
+
+fn entity_updated_at_millis(value: &serde_json::Value) -> Option<i64> {
+    let updated_at = value.as_object()?.get("updatedAt")?.as_str()?;
+    chrono::DateTime::parse_from_rfc3339(updated_at).ok().map(|time| time.timestamp_millis())
+}
+
+fn merge_same_key_entity(local_item: &serde_json::Value, remote_item: &serde_json::Value) -> Result<serde_json::Value, ()> {
+    if normalized_webdav_value(local_item.clone()) == normalized_webdav_value(remote_item.clone()) {
+        return Ok(local_item.clone());
+    }
+    let Some(local_updated_at) = entity_updated_at_millis(local_item) else { return Err(()); };
+    let Some(remote_updated_at) = entity_updated_at_millis(remote_item) else { return Err(()); };
+    if local_updated_at > remote_updated_at {
+        Ok(local_item.clone())
+    } else if remote_updated_at > local_updated_at {
+        Ok(remote_item.clone())
+    } else {
+        Err(())
+    }
+}
+
+fn merge_entity_array(collection: &str, local: &serde_json::Value, remote: &serde_json::Value) -> Result<serde_json::Value, ()> {
+    let local_items = local.as_array().ok_or(())?;
+    let remote_items = remote.as_array().ok_or(())?;
+    let mut merged = Vec::new();
+    let mut seen: std::collections::HashSet<String> = std::collections::HashSet::new();
+
+    for local_item in local_items {
+        let Some(key) = stable_entity_key(collection, local_item) else { return Err(()); };
+        if let Some(remote_item) = remote_items.iter().find(|item| stable_entity_key(collection, item).as_deref() == Some(key.as_str())) {
+            merged.push(merge_same_key_entity(local_item, remote_item)?);
+        } else {
+            merged.push(local_item.clone());
+        }
+        seen.insert(key);
+    }
+
+    for remote_item in remote_items {
+        let Some(key) = stable_entity_key(collection, remote_item) else { return Err(()); };
+        if !seen.contains(&key) {
+            merged.push(remote_item.clone());
+        }
+    }
+
+    Ok(serde_json::Value::Array(merged))
+}
+
+fn normalized_webdav_value(mut value: serde_json::Value) -> serde_json::Value {
+    if let Some(object) = value.as_object_mut() {
+        if let Some(webdav_sync) = object
+            .get_mut("webdavSync")
+            .and_then(|webdav_sync| webdav_sync.as_object_mut())
+        {
+            webdav_sync.remove("status");
+            webdav_sync.remove("lastSyncAt");
+            webdav_sync.remove("lastError");
+        }
+    }
+    value
+}
+
+fn merge_webdav_payload_without_conflict(local: &str, remote: &str) -> WebDavMergeOutcome {
+    if json_values_equal(local, remote) { return WebDavMergeOutcome::Same; }
+
+    let Ok(local_value) = serde_json::from_str::<serde_json::Value>(local) else { return WebDavMergeOutcome::Conflict; };
+    let Ok(remote_value) = serde_json::from_str::<serde_json::Value>(remote) else { return WebDavMergeOutcome::Conflict; };
+    let Some(local_object) = local_value.as_object() else { return WebDavMergeOutcome::Conflict; };
+    let Some(remote_object) = remote_value.as_object() else { return WebDavMergeOutcome::Conflict; };
+
+    let mut merged = local_object.clone();
+    for collection in ["workspaces", "scenes", "collections", "items", "tools", "plugins", "pluginStore", "activity"] {
+        let empty_local = serde_json::Value::Array(Vec::new());
+        let empty_remote = serde_json::Value::Array(Vec::new());
+        let local_collection = local_object.get(collection).unwrap_or(&empty_local);
+        let remote_collection = remote_object.get(collection).unwrap_or(&empty_remote);
+        let Ok(merged_collection) = merge_entity_array(collection, local_collection, remote_collection) else {
+            return WebDavMergeOutcome::Conflict;
+        };
+        merged.insert(collection.to_string(), merged_collection);
+    }
+
+    for key in ["schemaVersion", "settings"] {
+        let local_field = local_object.get(key).cloned().unwrap_or(serde_json::Value::Null);
+        let remote_field = remote_object.get(key).cloned().unwrap_or(serde_json::Value::Null);
+        if normalized_webdav_value(local_field) != normalized_webdav_value(remote_field) {
+            return WebDavMergeOutcome::Conflict;
+        }
+    }
+
+    for key in ["activeWorkspaceId", "activeSceneId", "activeCollectionId"] {
+        merged.insert(key.to_string(), local_object.get(key).cloned().unwrap_or(serde_json::Value::String(String::new())));
+    }
+
+    match serde_json::to_string(&serde_json::Value::Object(merged)) {
+        Ok(merged_json) => {
+            if json_values_equal(&merged_json, local) { WebDavMergeOutcome::Same } else { WebDavMergeOutcome::Merged(merged_json) }
+        }
+        Err(_) => WebDavMergeOutcome::Conflict,
+    }
+}
+
 fn split_webdav_sync_payload(local_data: &str) -> Result<(Vec<(String, String)>, String), String> {
     let data = serde_json::from_str::<serde_json::Value>(local_data)
         .map_err(|e| format!("本地同步数据不是合法 JSON: {e}"))?;
@@ -1094,6 +1211,22 @@ fn sync_webdav_now(
 
         if json_values_equal(&remote_data, &local_data) {
             return success("同步成功（本地与远程一致）");
+        }
+
+        match merge_webdav_payload_without_conflict(&local_data, &remote_data) {
+            WebDavMergeOutcome::Same => return success("同步成功（本地与远程一致）"),
+            WebDavMergeOutcome::Merged(merged_data) => {
+                if conflict_policy.as_str() != "覆盖远程" && conflict_policy.as_str() != "覆盖本地" {
+                    if let Err(e) = upload_webdav_sync_payload(&server_url, &username, &password, remote_dir, &remote_file_path, &merged_data) {
+                        return failure(format!("上传合并数据失败: {e}"));
+                    }
+                    if json_values_equal(&merged_data, &local_data) {
+                        return success("同步成功（已增量同步到远程）");
+                    }
+                    return success(format!("SYNC_MERGED_DATA:{merged_data}"));
+                }
+            }
+            WebDavMergeOutcome::Conflict => {}
         }
 
         match conflict_policy.as_str() {
@@ -1909,10 +2042,10 @@ mod tests {
             "activeWorkspaceId": "default",
             "activeSceneId": "scene-1",
             "activeCollectionId": "collection-1",
-            "workspaces": [{ "id": "default", "name": "OpenDock" }],
-            "scenes": [{ "id": "scene-1", "workspaceId": "default" }],
-            "collections": [{ "id": "collection-1", "sceneId": "scene-1" }],
-            "items": [{ "id": "item-1", "collectionId": "collection-1" }],
+            "workspaces": [{ "id": "default", "name": "OpenDock", "createdAt": "2026-06-14T00:00:00.000Z", "updatedAt": "2026-06-14T00:00:00.000Z" }],
+            "scenes": [{ "id": "scene-1", "workspaceId": "default", "createdAt": "2026-06-14T00:00:00.000Z", "updatedAt": "2026-06-14T00:00:00.000Z" }],
+            "collections": [{ "id": "collection-1", "sceneId": "scene-1", "createdAt": "2026-06-14T00:00:00.000Z", "updatedAt": "2026-06-14T00:00:00.000Z" }],
+            "items": [{ "id": "item-1", "collectionId": "collection-1", "createdAt": "2026-06-14T00:00:00.000Z", "updatedAt": "2026-06-14T00:00:00.000Z" }],
             "tools": [{ "id": "system", "name": "系统默认应用" }],
             "plugins": [{ "id": "webdav-sync", "enabled": true }],
             "pluginStore": [{ "name": "AList Import" }],
@@ -1990,6 +2123,113 @@ mod tests {
             .insert("name".to_string(), serde_json::Value::String("changed".to_string()));
 
         assert!(!json_values_equal(&base, &changed.to_string()));
+    }
+
+    #[test]
+    fn webdav_merge_allows_local_only_new_entities() {
+        let local = sample_app_data();
+        let mut remote_value = serde_json::from_str::<serde_json::Value>(&local).unwrap();
+        remote_value
+            .get_mut("items")
+            .and_then(|items| items.as_array_mut())
+            .unwrap()
+            .clear();
+
+        match merge_webdav_payload_without_conflict(&local, &remote_value.to_string()) {
+            WebDavMergeOutcome::Same => {}
+            other => panic!("expected same after local-only merge, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn webdav_merge_returns_remote_only_new_entities() {
+        let local = sample_app_data();
+        let mut remote_value = serde_json::from_str::<serde_json::Value>(&local).unwrap();
+        remote_value
+            .get_mut("items")
+            .and_then(|items| items.as_array_mut())
+            .unwrap()
+            .push(serde_json::json!({ "id": "item-remote", "collectionId": "collection-1" }));
+
+        match merge_webdav_payload_without_conflict(&local, &remote_value.to_string()) {
+            WebDavMergeOutcome::Merged(merged) => {
+                let merged_value: serde_json::Value = serde_json::from_str(&merged).unwrap();
+                assert!(merged_value
+                    .get("items")
+                    .and_then(|items| items.as_array())
+                    .unwrap()
+                    .iter()
+                    .any(|item| item.get("id").and_then(|id| id.as_str()) == Some("item-remote")));
+            }
+            other => panic!("expected merged remote-only entity, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn webdav_merge_uses_newer_local_updated_at_for_same_id_changes() {
+        let local = sample_app_data();
+        let mut local_value = serde_json::from_str::<serde_json::Value>(&local).unwrap();
+        local_value
+            .get_mut("items")
+            .and_then(|items| items.as_array_mut())
+            .and_then(|items| items.first_mut())
+            .and_then(|item| item.as_object_mut())
+            .unwrap()
+            .insert("name".to_string(), serde_json::Value::String("local changed".to_string()));
+        local_value
+            .get_mut("items")
+            .and_then(|items| items.as_array_mut())
+            .and_then(|items| items.first_mut())
+            .and_then(|item| item.as_object_mut())
+            .unwrap()
+            .insert("updatedAt".to_string(), serde_json::Value::String("2026-06-14T01:00:00.000Z".to_string()));
+
+        match merge_webdav_payload_without_conflict(&local_value.to_string(), &local) {
+            WebDavMergeOutcome::Same => {}
+            other => panic!("expected local newer version to be accepted, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn webdav_merge_uses_newer_remote_updated_at_for_same_id_changes() {
+        let local = sample_app_data();
+        let mut remote_value = serde_json::from_str::<serde_json::Value>(&local).unwrap();
+        let item = remote_value
+            .get_mut("items")
+            .and_then(|items| items.as_array_mut())
+            .and_then(|items| items.first_mut())
+            .and_then(|item| item.as_object_mut())
+            .unwrap();
+        item.insert("name".to_string(), serde_json::Value::String("remote changed".to_string()));
+        item.insert("updatedAt".to_string(), serde_json::Value::String("2026-06-14T01:00:00.000Z".to_string()));
+
+        match merge_webdav_payload_without_conflict(&local, &remote_value.to_string()) {
+            WebDavMergeOutcome::Merged(merged) => {
+                let merged_value: serde_json::Value = serde_json::from_str(&merged).unwrap();
+                assert_eq!(merged_value
+                    .get("items")
+                    .and_then(|items| items.as_array())
+                    .and_then(|items| items.first())
+                    .and_then(|item| item.get("name"))
+                    .and_then(|name| name.as_str()), Some("remote changed"));
+            }
+            other => panic!("expected remote newer version to be merged, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn webdav_merge_conflicts_on_same_id_different_business_data_without_newer_timestamp() {
+        let local = sample_app_data();
+        let mut remote_value = serde_json::from_str::<serde_json::Value>(&local).unwrap();
+        remote_value
+            .get_mut("items")
+            .and_then(|items| items.as_array_mut())
+            .and_then(|items| items.first_mut())
+            .and_then(|item| item.as_object_mut())
+            .unwrap()
+            .insert("name".to_string(), serde_json::Value::String("remote changed".to_string()));
+
+        assert_eq!(merge_webdav_payload_without_conflict(&local, &remote_value.to_string()), WebDavMergeOutcome::Conflict);
     }
 }
 

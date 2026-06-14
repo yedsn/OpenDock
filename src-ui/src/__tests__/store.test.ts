@@ -253,6 +253,37 @@ describe("OpenDock store - CRUD operations", () => {
     expect(invokeMock).toHaveBeenCalledWith("snapshot_create", expect.objectContaining({ kind: "pre-import" }));
     invokeMock.mockImplementation(async (..._args: unknown[]): Promise<unknown> => ({ ok: true, message: "stub" }));
   });
+  it("applies WebDAV merged data without entering conflict handling", async () => {
+    const { createSeedData } = await import("../seed");
+    const mergedData = createSeedData();
+    mergedData.items.push({
+      id: "remote-added-item",
+      workspaceId: "default",
+      collectionId: "code",
+      name: "Remote Added",
+      type: "URL",
+      value: "https://remote.example.test",
+      tool: "Chrome",
+      icon: "Globe",
+      color: "#74a4d4",
+      sort: 99,
+      createdAt: "2026-06-14T00:00:00.000Z",
+      updatedAt: "2026-06-14T00:00:00.000Z"
+    });
+    invokeMock.mockImplementation(async (...args: unknown[]) => {
+      const command = args[0] as string;
+      if (command === "webdav_get_credential") return "secret";
+      if (command === "sync_webdav_now") return { ok: true, message: `SYNC_MERGED_DATA:${JSON.stringify(mergedData)}` };
+      if (command === "snapshot_list") return [];
+      return { ok: true, message: "stub" };
+    });
+    const { useOpenDockStore } = await import("../store");
+    const store = useOpenDockStore();
+    await store.syncWebdavNow();
+    expect(store.state.webdavPendingConflict).toBeNull();
+    expect(store.state.data.items.some((item) => item.id === "remote-added-item")).toBe(true);
+    expect(store.state.data.settings.webdavSync.status).toBe("同步成功（已增量合并）");
+  });
   it("normalizes invalid appearance settings during init", async () => {
     const { createSeedData } = await import("../seed");
     const data = createSeedData();

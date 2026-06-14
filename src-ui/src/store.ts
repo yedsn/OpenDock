@@ -979,12 +979,13 @@ async function syncWebdavNow(): Promise<void> {
         config.status = "同步失败（远程数据解析错误）";
         config.lastError = "远程返回的数据不是可导入的 OpenDock JSON。";
       }
-    } else if (result.message.startsWith("SYNC_REMOTE_DATA:")) {
-      const remoteJson = result.message.slice("SYNC_REMOTE_DATA:".length);
+    } else if (result.message.startsWith("SYNC_REMOTE_DATA:") || result.message.startsWith("SYNC_MERGED_DATA:")) {
+      const isMergedData = result.message.startsWith("SYNC_MERGED_DATA:");
+      const remoteJson = result.message.slice(isMergedData ? "SYNC_MERGED_DATA:".length : "SYNC_REMOTE_DATA:".length);
       try {
         const remoteData = parseWebdavRemoteData(remoteJson);
-        await replaceLocalDataFromWebdav(remoteData, "WebDAV 远程覆盖前快照");
-        state.data.settings.webdavSync.status = "同步成功（远程优先）";
+        await replaceLocalDataFromWebdav(remoteData, isMergedData ? "WebDAV 增量合并前快照" : "WebDAV 远程覆盖前快照");
+        state.data.settings.webdavSync.status = isMergedData ? "同步成功（已增量合并）" : "同步成功（远程优先）";
         state.data.settings.webdavSync.lastError = "";
       } catch {
         config.status = "同步失败（远程数据解析错误）";
