@@ -9,6 +9,7 @@ import AppSidebar from "./components/AppSidebar.vue";
 import WorkbenchView from "./components/WorkbenchView.vue";
 import SettingsView from "./components/SettingsView.vue";
 import CreateEntityModal from "./components/CreateEntityModal.vue";
+import TaskDock from "./components/TaskDock.vue";
 import { invoke } from "@tauri-apps/api/core";
 import { themeCssVars } from "./themes";
 
@@ -224,6 +225,7 @@ onUnmounted(() => {
         <span>{{ store.activeWorkspace().name }}</span>
         <span>{{ store.state.data.collections.length }} {{ $t("app.collections") }}</span>
         <span>{{ store.state.data.plugins.length }} {{ $t("app.plugins") }}</span>
+        <TaskDock />
       </footer>
     </main>
 

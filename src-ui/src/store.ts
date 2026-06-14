@@ -8,7 +8,7 @@ import { createSeedData } from "./seed";
 import { nowIso, makeId, expandToolArgs, templateToCollectionType } from "./helpers";
 import { builtInThemes } from "./themes";
 import { getPluginOpenHandler } from "../../plugins/registry";
-import type { AppData, Collection, CollectionItem, CollectionMode, CollectionType, ItemType, MainView, MarketplaceIndex, MarketplacePlugin, ModalState, OpenTool, PluginItemFormField, PluginItemTypeContribution, PluginManifest, PluginToolTypeContribution, PluginToolTypeEntry, QuickViewId, Scene, SnapshotKind, SnapshotRecord, SceneType, Tab, ThemeDefinition, WebDavPendingConflict, Workspace } from "./types";
+import type { AppData, Collection, CollectionItem, CollectionMode, CollectionType, ItemType, MainView, MarketplaceIndex, MarketplacePlugin, ModalState, OpenTool, PluginItemFormField, PluginItemTypeContribution, PluginManifest, PluginToolTypeContribution, PluginToolTypeEntry, QuickViewId, Scene, SnapshotKind, SnapshotRecord, SceneType, Tab, TaskEntry, TaskStatus, ThemeDefinition, WebDavPendingConflict, Workspace } from "./types";
 import type { SearchSuggestion } from "./types";
 import { matchesSearchText, scoreSearchText, createSearchText } from "./pinyin";
 import { useI18n } from "./i18n";
@@ -77,7 +77,9 @@ const state = reactive({
   marketplaceLoading: false,
   marketplaceError: "",
   marketplaceInstalling: null as string | null,
-  webdavPendingConflict: null as WebDavPendingConflict | null
+  webdavPendingConflict: null as WebDavPendingConflict | null,
+  taskPanelOpen: false,
+  tasks: [] as TaskEntry[]
 });
 
 let saveTimer: ReturnType<typeof setTimeout> | null = null;
@@ -453,6 +455,42 @@ function defaultToolForItem(type: ItemType): string {
 function log(text: string): void {
   state.data.activity.unshift({ id: makeId("activity"), text, createdAt: nowIso() });
   state.data.activity = state.data.activity.slice(0, 80);
+}
+
+function upsertTask(task: Omit<TaskEntry, "startedAt" | "updatedAt"> & Partial<Pick<TaskEntry, "startedAt" | "updatedAt">>): TaskEntry {
+  const existing = state.tasks.find((entry) => entry.id === task.id);
+  const now = nowIso();
+  if (existing) {
+    Object.assign(existing, task, { updatedAt: now });
+    state.tasks = [existing, ...state.tasks.filter((entry) => entry.id !== existing.id)].slice(0, 30);
+    return existing;
+  }
+  const next: TaskEntry = {
+    ...task,
+    startedAt: task.startedAt || now,
+    updatedAt: task.updatedAt || now
+  };
+  state.tasks.unshift(next);
+  state.tasks = state.tasks.slice(0, 30);
+  return next;
+}
+
+function updateTask(id: string, patch: Partial<Pick<TaskEntry, "message" | "status" | "progress" | "finishedAt">>): void {
+  const task = state.tasks.find((entry) => entry.id === id);
+  if (!task) return;
+  Object.assign(task, patch, { updatedAt: nowIso() });
+}
+
+function finishTask(id: string, status: Exclude<TaskStatus, "running">, message: string): void {
+  updateTask(id, { status, message, progress: 100, finishedAt: nowIso() });
+}
+
+function toggleTaskPanel(open?: boolean): void {
+  state.taskPanelOpen = open === undefined ? !state.taskPanelOpen : open;
+}
+
+function clearFinishedTasks(): void {
+  state.tasks = state.tasks.filter((task) => task.status === "running");
 }
 
 function setActiveCollection(collection: Collection): void {
@@ -955,7 +993,22 @@ async function testWebdav(): Promise<void> {
 
 async function syncWebdavNow(): Promise<void> {
   const config = state.data.settings.webdavSync;
+  const taskId = "webdav-sync";
+  const existingTask = state.tasks.find((task) => task.id === taskId && task.status === "running");
+  if (existingTask) {
+    state.taskPanelOpen = true;
+    return;
+  }
+  upsertTask({
+    id: taskId,
+    type: "webdav-sync",
+    title: "WebDAV 同步",
+    message: "准备同步数据...",
+    status: "running",
+    progress: 8
+  });
   const password = await webdavGetCredential();
+  updateTask(taskId, { message: "正在读取本地数据并连接 WebDAV...", progress: 22 });
   const localData = exportAppData(state.data);
   const result = await callOpenCommand("sync_webdav_now", {
     serverUrl: config.serverUrl,
@@ -965,6 +1018,7 @@ async function syncWebdavNow(): Promise<void> {
     conflictPolicy: config.conflictPolicy,
     localData,
   });
+  updateTask(taskId, { message: "正在处理同步结果...", progress: 82 });
 
   if (result.ok) {
     if (result.message.startsWith("SYNC_CONFLICT:")) {
@@ -974,10 +1028,12 @@ async function syncWebdavNow(): Promise<void> {
         state.webdavPendingConflict = createWebdavPendingConflict(localData, remoteJson);
         config.status = "需要手动处理冲突";
         config.lastError = "";
+        finishTask(taskId, "warning", "WebDAV 同步需要手动处理冲突");
       } catch {
         state.webdavPendingConflict = null;
         config.status = "同步失败（远程数据解析错误）";
         config.lastError = "远程返回的数据不是可导入的 OpenDock JSON。";
+        finishTask(taskId, "error", config.lastError);
       }
     } else if (result.message.startsWith("SYNC_REMOTE_DATA:") || result.message.startsWith("SYNC_MERGED_DATA:")) {
       const isMergedData = result.message.startsWith("SYNC_MERGED_DATA:");
@@ -987,21 +1043,26 @@ async function syncWebdavNow(): Promise<void> {
         await replaceLocalDataFromWebdav(remoteData, isMergedData ? "WebDAV 增量合并前快照" : "WebDAV 远程覆盖前快照");
         state.data.settings.webdavSync.status = isMergedData ? "同步成功（已增量合并）" : "同步成功（远程优先）";
         state.data.settings.webdavSync.lastError = "";
+        finishTask(taskId, "success", state.data.settings.webdavSync.status);
       } catch {
         config.status = "同步失败（远程数据解析错误）";
         config.lastError = "远程返回的数据不是可导入的 OpenDock JSON。";
+        finishTask(taskId, "error", config.lastError);
       }
     } else if (result.message.startsWith("SYNC_MANUAL:")) {
       config.status = "需要手动处理冲突";
       config.lastError = "";
+      finishTask(taskId, "warning", "WebDAV 同步需要手动处理冲突");
     } else {
       state.webdavPendingConflict = null;
       config.status = "同步成功";
       config.lastError = "";
+      finishTask(taskId, "success", result.message || config.status);
     }
   } else {
     config.status = "同步失败";
     config.lastError = formatWebdavError(result.message);
+    finishTask(taskId, "error", config.lastError);
   }
   state.data.settings.webdavSync.lastSyncAt = new Date().toLocaleString("zh-CN", { hour12: false });
   log(`WebDAV Sync 立即同步: ${result.message}`);
@@ -1397,6 +1458,10 @@ const searchSuggestions = computed<SearchSuggestion[]>(() => {
   return results.sort((a, b) => b.score - a.score).slice(0, 20);
 });
 
+const runningTaskCount = computed(() => state.tasks.filter((task) => task.status === "running").length);
+const latestTask = computed(() => state.tasks[0]);
+const webdavPluginInstalled = computed(() => Boolean(state.data.plugins.find((plugin) => plugin.id === "webdav-sync" && plugin.installed && plugin.enabled)));
+
 async function executeSuggestion(suggestion: SearchSuggestion): Promise<void> {
   if (suggestion.kind === "scene" && suggestion.sceneId) {
     const scene = state.data.scenes.find((entry) => entry.id === suggestion.sceneId);
@@ -1610,6 +1675,11 @@ export function useOpenDockStore() {
     fetchMarketplaceIndex,
     installFromMarketplace,
     uninstallFromMarketplace,
+    runningTaskCount,
+    latestTask,
+    webdavPluginInstalled,
+    toggleTaskPanel,
+    clearFinishedTasks,
     testWebdav,
     syncWebdavNow,
     webdavOverwriteLocal,

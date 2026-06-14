@@ -284,6 +284,38 @@ describe("OpenDock store - CRUD operations", () => {
     expect(store.state.data.items.some((item) => item.id === "remote-added-item")).toBe(true);
     expect(store.state.data.settings.webdavSync.status).toBe("同步成功（已增量合并）");
   });
+  it("tracks WebDAV sync as a background task", async () => {
+    invokeMock.mockImplementation(async (...args: unknown[]) => {
+      const command = args[0] as string;
+      if (command === "webdav_get_credential") return "secret";
+      if (command === "sync_webdav_now") return { ok: true, message: "同步成功（本地与远程一致）" };
+      return { ok: true, message: "stub" };
+    });
+    const { useOpenDockStore } = await import("../store");
+    const store = useOpenDockStore();
+    await store.syncWebdavNow();
+    expect(store.latestTask.value?.id).toBe("webdav-sync");
+    expect(store.latestTask.value?.status).toBe("success");
+    expect(store.latestTask.value?.progress).toBe(100);
+    expect(store.runningTaskCount.value).toBe(0);
+  });
+  it("does not start duplicate WebDAV sync tasks while one is running", async () => {
+    const { useOpenDockStore } = await import("../store");
+    const store = useOpenDockStore();
+    store.state.tasks.unshift({
+      id: "webdav-sync",
+      type: "webdav-sync",
+      title: "WebDAV 同步",
+      message: "正在同步...",
+      status: "running",
+      progress: 40,
+      startedAt: "2026-06-14T00:00:00.000Z",
+      updatedAt: "2026-06-14T00:00:00.000Z"
+    });
+    await store.syncWebdavNow();
+    expect(store.state.taskPanelOpen).toBe(true);
+    expect(invokeMock).not.toHaveBeenCalledWith("sync_webdav_now", expect.anything());
+  });
   it("normalizes invalid appearance settings during init", async () => {
     const { createSeedData } = await import("../seed");
     const data = createSeedData();

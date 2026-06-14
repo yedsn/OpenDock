@@ -924,7 +924,13 @@ fn run_command(command: String, working_directory: Option<String>) -> OpenAction
 }
 
 #[tauri::command]
-fn test_webdav_connection(server_url: String, username: String, password: String, remote_path: Option<String>) -> OpenActionResult {
+async fn test_webdav_connection(server_url: String, username: String, password: String, remote_path: Option<String>) -> OpenActionResult {
+    tauri::async_runtime::spawn_blocking(move || test_webdav_connection_blocking(server_url, username, password, remote_path))
+        .await
+        .unwrap_or_else(|e| failure(format!("WebDAV 测试连接后台任务失败: {e}")))
+}
+
+fn test_webdav_connection_blocking(server_url: String, username: String, password: String, remote_path: Option<String>) -> OpenActionResult {
     if server_url.trim().is_empty() { return failure("WebDAV 地址不能为空"); }
     if username.trim().is_empty() { return failure("用户名不能为空"); }
     let test_path = remote_path.as_deref().filter(|value| !value.trim().is_empty()).unwrap_or("/");
@@ -1184,8 +1190,22 @@ fn download_webdav_sync_payload(server_url: &str, username: &str, password: &str
 }
 
 #[tauri::command]
-fn sync_webdav_now(
-    _state: tauri::State<AppState>,
+async fn sync_webdav_now(
+    server_url: String,
+    username: String,
+    password: String,
+    remote_path: String,
+    conflict_policy: String,
+    local_data: String,
+) -> OpenActionResult {
+    tauri::async_runtime::spawn_blocking(move || {
+        sync_webdav_now_blocking(server_url, username, password, remote_path, conflict_policy, local_data)
+    })
+        .await
+        .unwrap_or_else(|e| failure(format!("WebDAV 同步后台任务失败: {e}")))
+}
+
+fn sync_webdav_now_blocking(
     server_url: String,
     username: String,
     password: String,

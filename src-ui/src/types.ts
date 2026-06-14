@@ -218,6 +218,20 @@ export interface WebDavPendingConflict {
   remoteSummary: string;
 }
 
+export type TaskStatus = "running" | "success" | "error" | "warning";
+
+export interface TaskEntry {
+  id: string;
+  type: "webdav-sync" | "system";
+  title: string;
+  message: string;
+  status: TaskStatus;
+  progress: number;
+  startedAt: string;
+  updatedAt: string;
+  finishedAt?: string;
+}
+
 export interface GeneralSettings {
   defaultView: string;
   recentLimit: number;
