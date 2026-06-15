@@ -46,6 +46,7 @@ export async function loadAppData(): Promise<AppData> {
     pluginStore: parseJsonRows(await dbListTable("plugin_store")),
     settings: JSON.parse((await dbGetValue("settings")) || "{}"),
     activity: parseJsonRows(await dbListTable("activity")),
+    tombstones: JSON.parse((await dbGetValue("tombstones")) || "[]"),
   };
 }
 
@@ -72,6 +73,7 @@ export async function saveAppData(data: AppData): Promise<void> {
   await upsert("plugins", data.plugins);
   await upsert("plugin_store", data.pluginStore);
   await upsert("activity", data.activity);
+  await dbSetValue("tombstones", JSON.stringify(data.tombstones));
 }
 
 /** Persist lightweight navigation state without rewriting entity tables. */
@@ -122,6 +124,7 @@ export function normalizeAppData(input: unknown): AppData {
     pluginStore: Array.isArray(raw.pluginStore) ? raw.pluginStore : seed.pluginStore,
     settings: mergeSettings(raw.settings as Partial<AppData["settings"]> | undefined, seed.settings),
     activity: Array.isArray(raw.activity) ? raw.activity : seed.activity,
+    tombstones: Array.isArray((raw as Record<string, unknown>).tombstones) ? (raw as Record<string, unknown>).tombstones as AppData["tombstones"] : seed.tombstones,
   };
   // Always migrate the schemaVersion forward; downstream UI works against the current shape only.
   merged.schemaVersion = schemaVersion;
@@ -181,6 +184,7 @@ async function seedDb(data: AppData): Promise<void> {
   await insert("plugins", data.plugins);
   await insert("plugin_store", data.pluginStore);
   await insert("activity", data.activity);
+  await dbSetValue("tombstones", JSON.stringify(data.tombstones));
 }
 
 // ---- Snapshots ----

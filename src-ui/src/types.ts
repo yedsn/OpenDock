@@ -282,6 +282,15 @@ export interface ActivityEntry {
   createdAt: string;
 }
 
+export interface Tombstone {
+  /** Collection name within AppData (e.g., "items", "collections", "scenes", "workspaces") */
+  collection: string;
+  /** ID of the deleted entity */
+  id: string;
+  /** ISO timestamp when the entity was deleted */
+  deletedAt: string;
+}
+
 export interface AppData {
   schemaVersion: number;
   activeWorkspaceId: string;
@@ -296,6 +305,7 @@ export interface AppData {
   pluginStore: PluginStoreEntry[];
   settings: AppSettings;
   activity: ActivityEntry[];
+  tombstones: Tombstone[];
 }
 
 export type SnapshotKind = "manual" | "auto" | "pre-import";

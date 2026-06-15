@@ -457,6 +457,12 @@ function log(text: string): void {
   state.data.activity = state.data.activity.slice(0, 80);
 }
 
+function addTombstone(collection: string, id: string): void {
+  // Replace any existing tombstone for the same entity to keep the latest deletedAt
+  state.data.tombstones = state.data.tombstones.filter((t) => !(t.collection === collection && t.id === id));
+  state.data.tombstones.push({ collection, id, deletedAt: nowIso() });
+}
+
 function upsertTask(task: Omit<TaskEntry, "startedAt" | "updatedAt"> & Partial<Pick<TaskEntry, "startedAt" | "updatedAt">>): TaskEntry {
   const existing = state.tasks.find((entry) => entry.id === task.id);
   const now = nowIso();
@@ -1040,7 +1046,7 @@ async function syncWebdavNow(): Promise<void> {
       const remoteJson = result.message.slice(isMergedData ? "SYNC_MERGED_DATA:".length : "SYNC_REMOTE_DATA:".length);
       try {
         const remoteData = parseWebdavRemoteData(remoteJson);
-        await replaceLocalDataFromWebdav(remoteData, isMergedData ? "WebDAV 增量合并前快照" : "WebDAV 远程覆盖前快照");
+        await replaceLocalDataFromWebdav(remoteData, isMergedData ? "WebDAV 增量合并前快照" : "WebDAV 远程覆盖前快照", { preserveLocalSettings: isMergedData });
         state.data.settings.webdavSync.status = isMergedData ? "同步成功（已增量合并）" : "同步成功（远程优先）";
         state.data.settings.webdavSync.lastError = "";
         finishTask(taskId, "success", state.data.settings.webdavSync.status);
@@ -1112,26 +1118,50 @@ function createWebdavPendingConflict(localData: string, remoteData: string): Web
   };
 }
 
-async function replaceLocalDataFromWebdav(remoteData: AppData, snapshotLabel: string): Promise<void> {
+async function replaceLocalDataFromWebdav(remoteData: AppData, snapshotLabel: string, options: { preserveLocalSettings?: boolean } = {}): Promise<void> {
   try {
     await createSnapshot(state.data, "pre-import", `${snapshotLabel} ${new Date().toLocaleString()}`);
   } catch (e) {
     console.error("WebDAV pre-overwrite snapshot failed:", e);
   }
-  const localWebdavConfig = { ...state.data.settings.webdavSync };
+  const localSettings = state.data.settings;
+  const localWebdavConfig = { ...localSettings.webdavSync };
   const credentialRef = localWebdavConfig.credentialRef;
-  state.data = remoteData;
-  state.data.settings.webdavSync = {
-    ...remoteData.settings.webdavSync,
-    serverUrl: localWebdavConfig.serverUrl,
-    username: localWebdavConfig.username,
-    credentialRef,
-    remotePath: localWebdavConfig.remotePath,
-    autoSync: localWebdavConfig.autoSync,
-    syncInterval: localWebdavConfig.syncInterval,
-    syncScope: localWebdavConfig.syncScope,
-    conflictPolicy: localWebdavConfig.conflictPolicy
+  // Preserve local active state (machine-local navigation context)
+  const localActive = {
+    activeWorkspaceId: state.data.activeWorkspaceId,
+    activeSceneId: state.data.activeSceneId,
+    activeCollectionId: state.data.activeCollectionId,
   };
+  state.data = remoteData;
+  // Restore local active state
+  state.data.activeWorkspaceId = localActive.activeWorkspaceId;
+  state.data.activeSceneId = localActive.activeSceneId;
+  state.data.activeCollectionId = localActive.activeCollectionId;
+  if (options.preserveLocalSettings) {
+    // Incremental merge: keep ALL local settings (general + webdav credentials)
+    const remoteSettings = remoteData.settings ?? ({} as typeof localSettings);
+    state.data.settings = {
+      ...localSettings,
+      ...Object.fromEntries(
+        Object.entries(remoteSettings).filter(([key]) => !(key in localSettings))
+      ),
+      webdavSync: localWebdavConfig,
+    } as typeof localSettings;
+  } else {
+    // Full replacement: restore only WebDAV connection credentials
+    state.data.settings.webdavSync = {
+      ...remoteData.settings.webdavSync,
+      serverUrl: localWebdavConfig.serverUrl,
+      username: localWebdavConfig.username,
+      credentialRef,
+      remotePath: localWebdavConfig.remotePath,
+      autoSync: localWebdavConfig.autoSync,
+      syncInterval: localWebdavConfig.syncInterval,
+      syncScope: localWebdavConfig.syncScope,
+      conflictPolicy: localWebdavConfig.conflictPolicy
+    };
+  }
   await refreshSnapshots();
   startAutoSnapshotTimer();
 }
@@ -1315,6 +1345,7 @@ function deleteScene(id: string): void {
     if (c.sceneId === id) { c.sceneId = null; c.unbound = true; }
   });
   state.data.scenes = state.data.scenes.filter((s) => s.id !== id);
+  addTombstone("scenes", id);
   if (state.data.activeSceneId === id) {
     const fallback = state.data.scenes.find((s) => s.workspaceId === state.data.activeWorkspaceId);
     state.data.activeSceneId = fallback?.id || "";
@@ -1340,8 +1371,11 @@ function deleteCollection(id: string): void {
   const collection = findCollectionById(id);
   if (!collection) return;
   // Cascade-delete its items.
+  const cascadingItems = state.data.items.filter((i) => i.collectionId === id);
+  cascadingItems.forEach((item) => addTombstone("items", item.id));
   state.data.items = state.data.items.filter((i) => i.collectionId !== id);
   state.data.collections = state.data.collections.filter((c) => c.id !== id);
+  addTombstone("collections", id);
   if (state.data.activeCollectionId === id) state.data.activeCollectionId = "";
   log(`删除集合: ${collection.name}`);
 }
@@ -1363,6 +1397,7 @@ function deleteItem(id: string): void {
   const item = state.data.items.find((i) => i.id === id);
   if (!item) return;
   state.data.items = state.data.items.filter((i) => i.id !== id);
+  addTombstone("items", id);
   log(`删除资源: ${item.name}`);
 }
 
@@ -1381,10 +1416,17 @@ function deleteWorkspace(id: string): void {
   const workspace = state.data.workspaces.find((w) => w.id === id);
   if (!workspace) return;
   // Cascade: drop scenes / collections / items that belong to this workspace.
+  const wsItems = state.data.items.filter((i) => i.workspaceId === id);
+  wsItems.forEach((e) => addTombstone("items", e.id));
   state.data.items = state.data.items.filter((i) => i.workspaceId !== id);
+  const wsCollections = state.data.collections.filter((c) => c.workspaceId === id);
+  wsCollections.forEach((e) => addTombstone("collections", e.id));
   state.data.collections = state.data.collections.filter((c) => c.workspaceId !== id);
+  const wsScenes = state.data.scenes.filter((s) => s.workspaceId === id);
+  wsScenes.forEach((e) => addTombstone("scenes", e.id));
   state.data.scenes = state.data.scenes.filter((s) => s.workspaceId !== id);
   state.data.workspaces = state.data.workspaces.filter((w) => w.id !== id);
+  addTombstone("workspaces", id);
   if (state.data.activeWorkspaceId === id) {
     const next = state.data.workspaces[0];
     state.data.activeWorkspaceId = next.id;

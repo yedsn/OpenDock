@@ -189,7 +189,8 @@ export function createSeedData(): AppData {
     },
     activity: [
       { id: "activity-1", text: "OpenDock 已加载本地工作区", createdAt: now }
-    ]
+    ],
+    tombstones: []
   };
 }
 

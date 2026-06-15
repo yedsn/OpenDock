@@ -12,6 +12,7 @@ use tauri::menu::{Menu, MenuItem};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
 use tauri_plugin_global_shortcut::{GlobalShortcutExt, Shortcut, ShortcutState};
 use tauri_plugin_updater::UpdaterExt;
+use sha2::{Digest, Sha256};
 
 mod app_icon_rgba;
 mod app_icon_light_rgba;
@@ -940,7 +941,7 @@ fn test_webdav_connection_blocking(server_url: String, username: String, passwor
 
 const WEBDAV_SPLIT_FORMAT: &str = "opendock-webdav-split-v1";
 const WEBDAV_SPLIT_DIR: &str = "opendock-sync";
-const WEBDAV_SPLIT_FILES: [(&str, &str); 10] = [
+const WEBDAV_SPLIT_FILES: [(&str, &str); 11] = [
     ("activeState", "active-state.json"),
     ("workspaces", "workspaces.json"),
     ("scenes", "scenes.json"),
@@ -951,7 +952,14 @@ const WEBDAV_SPLIT_FILES: [(&str, &str); 10] = [
     ("plugins", "plugins.json"),
     ("pluginStore", "plugin-store.json"),
     ("activity", "activity.json"),
+    ("tombstones", "tombstones.json"),
 ];
+
+fn sha256_hex(contents: &str) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(contents.as_bytes());
+    format!("{:x}", hasher.finalize())
+}
 
 fn webdav_join_path(base: &str, child: &str) -> String {
     if child.starts_with('/') { return child.to_string(); }
@@ -985,13 +993,6 @@ fn normalized_webdav_comparable_value(raw: &str) -> Result<serde_json::Value, se
     Ok(value)
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
-enum WebDavMergeOutcome {
-    Same,
-    Merged(String),
-    Conflict,
-}
-
 fn stable_entity_key(collection: &str, value: &serde_json::Value) -> Option<String> {
     let object = value.as_object()?;
     object.get("id").and_then(|id| id.as_str()).map(|id| id.to_string()).or_else(|| {
@@ -1003,53 +1004,29 @@ fn stable_entity_key(collection: &str, value: &serde_json::Value) -> Option<Stri
 }
 
 fn entity_updated_at_millis(value: &serde_json::Value) -> Option<i64> {
-    let updated_at = value.as_object()?.get("updatedAt")?.as_str()?;
-    chrono::DateTime::parse_from_rfc3339(updated_at).ok().map(|time| time.timestamp_millis())
+    let object = value.as_object()?;
+    // Prefer updatedAt; fall back to createdAt for entities like activity entries
+    let ts = object.get("updatedAt").or_else(|| object.get("createdAt"))?.as_str()?;
+    chrono::DateTime::parse_from_rfc3339(ts).ok().map(|time| time.timestamp_millis())
 }
 
-fn merge_same_key_entity(local_item: &serde_json::Value, remote_item: &serde_json::Value) -> Result<serde_json::Value, ()> {
-    if normalized_webdav_value(local_item.clone()) == normalized_webdav_value(remote_item.clone()) {
-        return Ok(local_item.clone());
-    }
-    let Some(local_updated_at) = entity_updated_at_millis(local_item) else { return Err(()); };
-    let Some(remote_updated_at) = entity_updated_at_millis(remote_item) else { return Err(()); };
-    if local_updated_at > remote_updated_at {
-        Ok(local_item.clone())
-    } else if remote_updated_at > local_updated_at {
-        Ok(remote_item.clone())
-    } else {
-        Err(())
-    }
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum WebDavMergeOutcome {
+    Same,
+    Merged(String),
+    Conflict,
 }
 
-fn merge_entity_array(collection: &str, local: &serde_json::Value, remote: &serde_json::Value) -> Result<serde_json::Value, ()> {
-    let local_items = local.as_array().ok_or(())?;
-    let remote_items = remote.as_array().ok_or(())?;
-    let mut merged = Vec::new();
-    let mut seen: std::collections::HashSet<String> = std::collections::HashSet::new();
+/// Fields to strip when comparing two entity objects for business-equality.
+/// Sort order is machine-local, runtime-only fields should not cause conflict.
+const ENTITY_IGNORE_FIELDS: &[&str] = &["sort", "recent", "recentAt", "favorite"];
 
-    for local_item in local_items {
-        let Some(key) = stable_entity_key(collection, local_item) else { return Err(()); };
-        if let Some(remote_item) = remote_items.iter().find(|item| stable_entity_key(collection, item).as_deref() == Some(key.as_str())) {
-            merged.push(merge_same_key_entity(local_item, remote_item)?);
-        } else {
-            merged.push(local_item.clone());
-        }
-        seen.insert(key);
-    }
-
-    for remote_item in remote_items {
-        let Some(key) = stable_entity_key(collection, remote_item) else { return Err(()); };
-        if !seen.contains(&key) {
-            merged.push(remote_item.clone());
-        }
-    }
-
-    Ok(serde_json::Value::Array(merged))
-}
-
-fn normalized_webdav_value(mut value: serde_json::Value) -> serde_json::Value {
+/// Normalize an entity value for comparison: strip order/runtime-only fields.
+fn normalized_entity_value(mut value: serde_json::Value) -> serde_json::Value {
     if let Some(object) = value.as_object_mut() {
+        for field in ENTITY_IGNORE_FIELDS {
+            object.remove(*field);
+        }
         if let Some(webdav_sync) = object
             .get_mut("webdavSync")
             .and_then(|webdav_sync| webdav_sync.as_object_mut())
@@ -1062,6 +1039,148 @@ fn normalized_webdav_value(mut value: serde_json::Value) -> serde_json::Value {
     value
 }
 
+/// For entity collections without updatedAt (tools, plugins, pluginStore),
+/// merge by key: same key & same business content => keep local;
+/// same key & different content => pick newer (has updatedAt) or conflict.
+fn merge_same_key_entity(local_item: &serde_json::Value, remote_item: &serde_json::Value) -> Result<serde_json::Value, ()> {
+    // If business content is equal (ignoring sort/recent/favorite), accept local copy
+    if normalized_entity_value(local_item.clone()) == normalized_entity_value(remote_item.clone()) {
+        return Ok(local_item.clone());
+    }
+    // Try updatedAt-based resolution
+    let local_updated = entity_updated_at_millis(local_item);
+    let remote_updated = entity_updated_at_millis(remote_item);
+    match (local_updated, remote_updated) {
+        (Some(lu), Some(ru)) if lu > ru => Ok(local_item.clone()),
+        (Some(lu), Some(ru)) if ru > lu => Ok(remote_item.clone()),
+        (Some(_), None) => Ok(local_item.clone()),  // local has timestamp, remote doesn't
+        (None, Some(_)) => Ok(remote_item.clone()),  // remote has timestamp, local doesn't
+        _ => Err(()),  // no usable timestamp and content differs
+    }
+}
+
+/// Check if an entity ID is in a tombstone list and the deletion is newer than the entity.
+fn is_tombstoned(collection: &str, entity_id: &str, entity_updated_ms: Option<i64>, tombstones: &[serde_json::Value]) -> bool {
+    for ts in tombstones {
+        let ts_coll = ts.get("collection").and_then(|v| v.as_str()).unwrap_or("");
+        let ts_id = ts.get("id").and_then(|v| v.as_str()).unwrap_or("");
+        if ts_coll == collection && ts_id == entity_id {
+            // If the entity has an updatedAt and the tombstone has a deletedAt,
+            // only honor the tombstone if it's newer (deletion happened after last entity update).
+            let ts_deleted_ms = ts.get("deletedAt")
+                .and_then(|v| v.as_str())
+                .and_then(|s| chrono::DateTime::parse_from_rfc3339(s).ok())
+                .map(|t| t.timestamp_millis());
+            return match (entity_updated_ms, ts_deleted_ms) {
+                (Some(eu), Some(td)) => td >= eu,
+                _ => true, // No entity timestamp or no tombstone timestamp: honor the tombstone
+            };
+        }
+    }
+    false
+}
+
+/// Merge two tombstone arrays. For same (collection, id), keep the newer deletedAt.
+fn merge_tombstones(local: &[serde_json::Value], remote: &[serde_json::Value]) -> Vec<serde_json::Value> {
+    let mut result: Vec<serde_json::Value> = local.to_vec();
+    for rts in remote {
+        let r_coll = rts.get("collection").and_then(|v| v.as_str()).unwrap_or("");
+        let r_id = rts.get("id").and_then(|v| v.as_str()).unwrap_or("");
+        let r_deleted_ms = rts.get("deletedAt")
+            .and_then(|v| v.as_str())
+            .and_then(|s| chrono::DateTime::parse_from_rfc3339(s).ok())
+            .map(|t| t.timestamp_millis());
+        if let Some(existing) = result.iter_mut().find(|lts| {
+            lts.get("collection").and_then(|v| v.as_str()) == Some(r_coll)
+            && lts.get("id").and_then(|v| v.as_str()) == Some(r_id)
+        }) {
+            // Keep the newer deletedAt
+            let l_deleted_ms = existing.get("deletedAt")
+                .and_then(|v| v.as_str())
+                .and_then(|s| chrono::DateTime::parse_from_rfc3339(s).ok())
+                .map(|t| t.timestamp_millis());
+            if let (Some(lm), Some(rm)) = (l_deleted_ms, r_deleted_ms) {
+                if rm > lm { *existing = rts.clone(); }
+            }
+        } else {
+            result.push(rts.clone());
+        }
+    }
+    result
+}
+
+fn merge_entity_array(collection: &str, local: &serde_json::Value, remote: &serde_json::Value, tombstones: &[serde_json::Value]) -> Result<serde_json::Value, ()> {
+    let local_items = local.as_array().ok_or(())?;
+    let remote_items = remote.as_array().ok_or(())?;
+    let mut merged = Vec::new();
+    let mut seen: std::collections::HashSet<String> = std::collections::HashSet::new();
+
+    for local_item in local_items {
+        let Some(key) = stable_entity_key(collection, local_item) else { return Err(()); };
+        let entity_ms = entity_updated_at_millis(local_item);
+        // Skip if tombstoned on remote side
+        if is_tombstoned(collection, &key, entity_ms, tombstones) { continue; }
+        if let Some(remote_item) = remote_items.iter().find(|item| stable_entity_key(collection, item).as_deref() == Some(key.as_str())) {
+            merged.push(merge_same_key_entity(local_item, remote_item)?);
+        } else {
+            // Local-only entity: keep unless tombstoned
+            merged.push(local_item.clone());
+        }
+        seen.insert(key);
+    }
+
+    for remote_item in remote_items {
+        let Some(key) = stable_entity_key(collection, remote_item) else { return Err(()); };
+        if seen.contains(&key) { continue; }
+        let entity_ms = entity_updated_at_millis(remote_item);
+        // Skip if tombstoned on local side
+        if is_tombstoned(collection, &key, entity_ms, tombstones) { continue; }
+        // Remote-only entity: include
+        merged.push(remote_item.clone());
+    }
+
+    Ok(serde_json::Value::Array(merged))
+}
+
+/// Fields within settings that are machine-local and should not cause sync conflict.
+/// These are preserved from local during merge.
+const SETTINGS_LOCAL_FIELDS: &[&str] = &[
+    "webdavSync",
+    "defaultView",
+    "recentLimit",
+    "confirmBeforeOpen",
+    "logOpenFailures",
+    "openWebInNewWindow",
+    "globalHotkey",
+    "appIconStyle",
+];
+
+/// Merge settings objects field-by-field. Local-only config fields are kept from local;
+/// shared business fields are kept if equal, otherwise conflict.
+fn merge_settings(local: &serde_json::Value, remote: &serde_json::Value) -> Result<serde_json::Value, ()> {
+    let local_obj = local.as_object().ok_or(())?;
+    let remote_obj = remote.as_object().ok_or(())?;
+    let mut merged = local_obj.clone();
+
+    for (key, remote_val) in remote_obj {
+        if SETTINGS_LOCAL_FIELDS.contains(&key.as_str()) {
+            // Keep local value for machine-local fields (already in merged from local_obj)
+            continue;
+        }
+        let local_val = merged.get(key).cloned().unwrap_or(serde_json::Value::Null);
+        if local_val == serde_json::Value::Null && remote_val != &serde_json::Value::Null {
+            // Remote has a field that local doesn't: include it
+            merged.insert(key.clone(), remote_val.clone());
+        } else if local_val != *remote_val {
+            // Both have different values for a shared field => conflict
+            return Err(());
+        }
+        // Otherwise equal: already correct in merged
+    }
+
+    Ok(serde_json::Value::Object(merged))
+}
+
 fn merge_webdav_payload_without_conflict(local: &str, remote: &str) -> WebDavMergeOutcome {
     if json_values_equal(local, remote) { return WebDavMergeOutcome::Same; }
 
@@ -1071,25 +1190,51 @@ fn merge_webdav_payload_without_conflict(local: &str, remote: &str) -> WebDavMer
     let Some(remote_object) = remote_value.as_object() else { return WebDavMergeOutcome::Conflict; };
 
     let mut merged = local_object.clone();
+
+    // Merge tombstones first - the union list determines which entities should be excluded.
+    let empty_arr = serde_json::Value::Array(Vec::new());
+    let local_tombstones_val = local_object.get("tombstones").cloned().unwrap_or_else(|| empty_arr.clone());
+    let remote_tombstones_val = remote_object.get("tombstones").cloned().unwrap_or_else(|| empty_arr.clone());
+    let local_tombstones = local_tombstones_val.as_array().cloned().unwrap_or_default();
+    let remote_tombstones = remote_tombstones_val.as_array().cloned().unwrap_or_default();
+    let merged_tombstones = merge_tombstones(&local_tombstones, &remote_tombstones);
+
+    // Merge entity arrays - tombstones cause matching entities to be excluded.
     for collection in ["workspaces", "scenes", "collections", "items", "tools", "plugins", "pluginStore", "activity"] {
         let empty_local = serde_json::Value::Array(Vec::new());
         let empty_remote = serde_json::Value::Array(Vec::new());
         let local_collection = local_object.get(collection).unwrap_or(&empty_local);
         let remote_collection = remote_object.get(collection).unwrap_or(&empty_remote);
-        let Ok(merged_collection) = merge_entity_array(collection, local_collection, remote_collection) else {
+        let Ok(merged_collection) = merge_entity_array(collection, local_collection, remote_collection, &merged_tombstones) else {
             return WebDavMergeOutcome::Conflict;
         };
         merged.insert(collection.to_string(), merged_collection);
     }
-
-    for key in ["schemaVersion", "settings"] {
-        let local_field = local_object.get(key).cloned().unwrap_or(serde_json::Value::Null);
-        let remote_field = remote_object.get(key).cloned().unwrap_or(serde_json::Value::Null);
-        if normalized_webdav_value(local_field) != normalized_webdav_value(remote_field) {
-            return WebDavMergeOutcome::Conflict;
-        }
+    // Persist the merged tombstone list so it propagates to the other side.
+    // Only write the field if there is something to track or if local already had it,
+    // to avoid spurious diffs against payloads from older clients.
+    if !merged_tombstones.is_empty() || local_object.contains_key("tombstones") {
+        merged.insert("tombstones".to_string(), serde_json::Value::Array(merged_tombstones));
     }
 
+    // Merge schemaVersion (keep local if equal, conflict if different)
+    {
+        let local_sv = local_object.get("schemaVersion").cloned().unwrap_or(serde_json::Value::Null);
+        let remote_sv = remote_object.get("schemaVersion").cloned().unwrap_or(serde_json::Value::Null);
+        if local_sv != remote_sv { return WebDavMergeOutcome::Conflict; }
+    }
+
+    // Merge settings field-by-field
+    {
+        let local_settings = local_object.get("settings").cloned().unwrap_or(serde_json::Value::Object(serde_json::Map::new()));
+        let remote_settings = remote_object.get("settings").cloned().unwrap_or(serde_json::Value::Object(serde_json::Map::new()));
+        let Ok(merged_settings) = merge_settings(&local_settings, &remote_settings) else {
+            return WebDavMergeOutcome::Conflict;
+        };
+        merged.insert("settings".to_string(), merged_settings);
+    }
+
+    // Keep local active state (machine-local)
     for key in ["activeWorkspaceId", "activeSceneId", "activeCollectionId"] {
         merged.insert(key.to_string(), local_object.get(key).cloned().unwrap_or(serde_json::Value::String(String::new())));
     }
@@ -1102,6 +1247,7 @@ fn merge_webdav_payload_without_conflict(local: &str, remote: &str) -> WebDavMer
     }
 }
 
+
 fn split_webdav_sync_payload(local_data: &str) -> Result<(Vec<(String, String)>, String), String> {
     let data = serde_json::from_str::<serde_json::Value>(local_data)
         .map_err(|e| format!("本地同步数据不是合法 JSON: {e}"))?;
@@ -1109,6 +1255,7 @@ fn split_webdav_sync_payload(local_data: &str) -> Result<(Vec<(String, String)>,
 
     let mut files: Vec<(String, String)> = Vec::new();
     let mut manifest_files = serde_json::Map::new();
+    let mut manifest_file_meta = serde_json::Map::new();
 
     let active_state = serde_json::json!({
         "schemaVersion": object.get("schemaVersion").cloned().unwrap_or(serde_json::Value::Null),
@@ -1121,23 +1268,47 @@ fn split_webdav_sync_payload(local_data: &str) -> Result<(Vec<(String, String)>,
         let relative_path = format!("{WEBDAV_SPLIT_DIR}/{filename}");
         let value = if key == "activeState" {
             active_state.clone()
+        } else if key == "tombstones" {
+            // Tombstones is a new field; use empty array as default for older payloads.
+            object.get(key).cloned().unwrap_or_else(|| serde_json::Value::Array(Vec::new()))
         } else {
             object.get(key).cloned().unwrap_or(serde_json::Value::Null)
         };
-        files.push((relative_path.clone(), serde_json::to_string_pretty(&value).map_err(|e| e.to_string())?));
+        let contents = serde_json::to_string_pretty(&value).map_err(|e| e.to_string())?;
+        manifest_file_meta.insert(key.to_string(), serde_json::json!({
+            "path": relative_path.clone(),
+            "sha256": sha256_hex(&contents),
+            "size": contents.as_bytes().len(),
+        }));
+        files.push((relative_path.clone(), contents));
         manifest_files.insert(key.to_string(), serde_json::Value::String(relative_path));
     }
 
     let manifest = serde_json::json!({
         "format": WEBDAV_SPLIT_FORMAT,
-        "version": 1,
+        "version": 2,
         "files": manifest_files,
+        "fileMeta": manifest_file_meta,
     });
     let manifest_json = serde_json::to_string_pretty(&manifest).map_err(|e| e.to_string())?;
     Ok((files, manifest_json))
 }
 
-fn assemble_webdav_split_payload(manifest_json: &str, mut load_file: impl FnMut(&str) -> Result<String, String>) -> Result<String, String> {
+fn manifest_file_hash(manifest: &serde_json::Value, key: &str) -> Option<String> {
+    manifest
+        .get("fileMeta")
+        .and_then(|meta| meta.as_object())
+        .and_then(|meta| meta.get(key))
+        .and_then(|entry| entry.get("sha256"))
+        .and_then(|hash| hash.as_str())
+        .map(|hash| hash.to_string())
+}
+
+fn assemble_webdav_split_payload_with_cache(
+    manifest_json: &str,
+    mut load_file: impl FnMut(&str) -> Result<String, String>,
+    local_files: Option<&std::collections::HashMap<String, String>>,
+) -> Result<String, String> {
     let manifest = serde_json::from_str::<serde_json::Value>(manifest_json)
         .map_err(|e| format!("远程主清单 JSON 解析失败: {e}"))?;
     if manifest.get("format").and_then(|value| value.as_str()) != Some(WEBDAV_SPLIT_FORMAT) {
@@ -1149,7 +1320,19 @@ fn assemble_webdav_split_payload(manifest_json: &str, mut load_file: impl FnMut(
     let mut output = serde_json::Map::new();
     let active_path = files.get("activeState").and_then(|value| value.as_str())
         .ok_or_else(|| "远程主清单缺少 activeState".to_string())?;
-    let active_raw = load_file(active_path)?;
+    let active_raw = if let (Some(local_files), Some(remote_hash)) = (local_files, manifest_file_hash(&manifest, "activeState")) {
+        if let Some(local_raw) = local_files.get(active_path) {
+            if sha256_hex(local_raw) == remote_hash {
+                local_raw.clone()
+            } else {
+                load_file(active_path)?
+            }
+        } else {
+            load_file(active_path)?
+        }
+    } else {
+        load_file(active_path)?
+    };
     let active_state = serde_json::from_str::<serde_json::Value>(&active_raw)
         .map_err(|e| format!("远程 active-state.json 解析失败: {e}"))?;
     let active_object = active_state.as_object().ok_or_else(|| "远程 active-state.json 不是 JSON 对象".to_string())?;
@@ -1159,20 +1342,61 @@ fn assemble_webdav_split_payload(manifest_json: &str, mut load_file: impl FnMut(
 
     for (key, _) in WEBDAV_SPLIT_FILES {
         if key == "activeState" { continue; }
-        let path = files.get(key).and_then(|value| value.as_str())
-            .ok_or_else(|| format!("远程主清单缺少 {key}"))?;
-        let raw = load_file(path)?;
+        // tombstones is optional for backward compatibility with older sync payloads
+        let path_opt = files.get(key).and_then(|value| value.as_str());
+        let path = match path_opt {
+            Some(p) => p,
+            None => {
+                if key == "tombstones" { continue; }
+                return Err(format!("远程主清单缺少 {key}"));
+            }
+        };
+        let raw = if let (Some(local_files), Some(remote_hash)) = (local_files, manifest_file_hash(&manifest, key)) {
+            if let Some(local_raw) = local_files.get(path) {
+                if sha256_hex(local_raw) == remote_hash {
+                    local_raw.clone()
+                } else {
+                    load_file(path)?
+                }
+            } else {
+                load_file(path)?
+            }
+        } else {
+            load_file(path)?
+        };
         let value = serde_json::from_str::<serde_json::Value>(&raw)
             .map_err(|e| format!("远程 {path} 解析失败: {e}"))?;
+        // Skip writing tombstones field when it would be empty/null - keeps payloads clean for legacy data
+        if key == "tombstones" {
+            let is_empty = value.as_array().map(|a| a.is_empty()).unwrap_or(true);
+            if is_empty { continue; }
+        }
         output.insert(key.to_string(), value);
     }
 
     serde_json::to_string(&serde_json::Value::Object(output)).map_err(|e| e.to_string())
 }
 
+fn assemble_webdav_split_payload(manifest_json: &str, load_file: impl FnMut(&str) -> Result<String, String>) -> Result<String, String> {
+    assemble_webdav_split_payload_with_cache(manifest_json, load_file, None)
+}
+
 fn upload_webdav_sync_payload(server_url: &str, username: &str, password: &str, remote_dir: &str, manifest_path: &str, local_data: &str) -> Result<(), String> {
     let (files, manifest_json) = split_webdav_sync_payload(local_data)?;
+    let remote_manifest = webdav::download(server_url, username, password, manifest_path)
+        .ok()
+        .and_then(|raw| serde_json::from_str::<serde_json::Value>(&raw).ok())
+        .filter(|manifest| manifest.get("format").and_then(|value| value.as_str()) == Some(WEBDAV_SPLIT_FORMAT));
     for (relative_path, contents) in files {
+        let key = WEBDAV_SPLIT_FILES
+            .iter()
+            .find(|(_, filename)| relative_path == format!("{WEBDAV_SPLIT_DIR}/{filename}"))
+            .map(|(key, _)| *key);
+        if let (Some(manifest), Some(key)) = (&remote_manifest, key) {
+            if manifest_file_hash(manifest, key).as_deref() == Some(sha256_hex(&contents).as_str()) {
+                continue;
+            }
+        }
         let remote_file_path = webdav_join_path(remote_dir, &relative_path);
         let result = webdav::upload(server_url, username, password, &remote_file_path, &contents);
         if !result.ok { return Err(format!("上传子文件 {relative_path} 失败: {}", result.message)); }
@@ -1181,12 +1405,15 @@ fn upload_webdav_sync_payload(server_url: &str, username: &str, password: &str, 
     if result.ok { Ok(()) } else { Err(format!("上传主清单失败: {}", result.message)) }
 }
 
-fn download_webdav_sync_payload(server_url: &str, username: &str, password: &str, remote_dir: &str, manifest_path: &str) -> Result<String, String> {
+fn download_webdav_sync_payload(server_url: &str, username: &str, password: &str, remote_dir: &str, manifest_path: &str, local_data: Option<&str>) -> Result<String, String> {
     let manifest_or_legacy = webdav::download(server_url, username, password, manifest_path)?;
-    assemble_webdav_split_payload(&manifest_or_legacy, |relative_path| {
+    let local_files = local_data
+        .and_then(|data| split_webdav_sync_payload(data).ok())
+        .map(|(files, _)| files.into_iter().collect::<std::collections::HashMap<String, String>>());
+    assemble_webdav_split_payload_with_cache(&manifest_or_legacy, |relative_path| {
         let remote_file_path = webdav_join_path(remote_dir, relative_path);
         webdav::download(server_url, username, password, &remote_file_path)
-    })
+    }, local_files.as_ref())
 }
 
 #[tauri::command]
@@ -1224,7 +1451,7 @@ fn sync_webdav_now_blocking(
     let remote_exists = webdav::remote_exists(&server_url, &username, &password, &remote_file_path).unwrap_or(false);
 
     if remote_exists {
-        let remote_data = match download_webdav_sync_payload(&server_url, &username, &password, remote_dir, &remote_file_path) {
+        let remote_data = match download_webdav_sync_payload(&server_url, &username, &password, remote_dir, &remote_file_path, Some(&local_data)) {
             Ok(data) => data,
             Err(e) => return failure(format!("下载远程数据失败: {e}")),
         };
@@ -2080,8 +2307,16 @@ mod tests {
         let (files, manifest) = split_webdav_sync_payload(&local_data).expect("split payload");
         let manifest_value: serde_json::Value = serde_json::from_str(&manifest).expect("manifest json");
         assert_eq!(manifest_value.get("format").and_then(|value| value.as_str()), Some(WEBDAV_SPLIT_FORMAT));
+        assert_eq!(manifest_value.get("version").and_then(|value| value.as_i64()), Some(2));
         assert!(files.iter().any(|(path, _)| path == "opendock-sync/items.json"));
         assert!(files.iter().any(|(path, _)| path == "opendock-sync/settings.json"));
+        let item_meta = manifest_value
+            .get("fileMeta")
+            .and_then(|meta| meta.get("items"))
+            .expect("items file meta");
+        assert_eq!(item_meta.get("path").and_then(|path| path.as_str()), Some("opendock-sync/items.json"));
+        assert_eq!(item_meta.get("sha256").and_then(|hash| hash.as_str()).unwrap().len(), 64);
+        assert!(item_meta.get("size").and_then(|size| size.as_u64()).unwrap() > 0);
 
         let file_map: HashMap<String, String> = files.into_iter().collect();
         let assembled = assemble_webdav_split_payload(&manifest, |path| {
@@ -2091,6 +2326,24 @@ mod tests {
         let original: serde_json::Value = serde_json::from_str(&local_data).expect("original json");
         let restored: serde_json::Value = serde_json::from_str(&assembled).expect("restored json");
         assert_eq!(restored, original);
+    }
+
+    #[test]
+    fn webdav_split_payload_uses_local_cache_when_hash_matches() {
+        let local_data = sample_app_data();
+        let (files, manifest) = split_webdav_sync_payload(&local_data).expect("split payload");
+        let file_map: HashMap<String, String> = files.into_iter().collect();
+        let mut download_count = 0;
+
+        let assembled = assemble_webdav_split_payload_with_cache(&manifest, |_path| {
+            download_count += 1;
+            Err("unexpected download".to_string())
+        }, Some(&file_map)).expect("assemble from cache");
+
+        let original: serde_json::Value = serde_json::from_str(&local_data).expect("original json");
+        let restored: serde_json::Value = serde_json::from_str(&assembled).expect("restored json");
+        assert_eq!(restored, original);
+        assert_eq!(download_count, 0);
     }
 
     #[test]
@@ -2238,9 +2491,123 @@ mod tests {
     }
 
     #[test]
+    #[test]
+    fn webdav_merge_ignores_sort_order_difference() {
+        let local = sample_app_data();
+        let mut remote_value = serde_json::from_str::<serde_json::Value>(&local).unwrap();
+        // Change sort on an item - should NOT cause conflict
+        remote_value
+            .get_mut("items")
+            .and_then(|items| items.as_array_mut())
+            .and_then(|items| items.first_mut())
+            .and_then(|item| item.as_object_mut())
+            .unwrap()
+            .insert("sort".to_string(), serde_json::Value::Number(42.into()));
+
+        match merge_webdav_payload_without_conflict(&local, &remote_value.to_string()) {
+            WebDavMergeOutcome::Same => {},
+            other => panic!("expected Same when only sort differs, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn webdav_merge_merges_new_tool_from_remote() {
+        let local = sample_app_data();
+        let mut remote_value = serde_json::from_str::<serde_json::Value>(&local).unwrap();
+        remote_value
+            .get_mut("tools")
+            .and_then(|tools| tools.as_array_mut())
+            .unwrap()
+            .push(serde_json::json!({ "id": "tool-new", "name": "New Tool", "type": "local", "path": "/bin/echo", "args": "", "default": false }));
+
+        match merge_webdav_payload_without_conflict(&local, &remote_value.to_string()) {
+            WebDavMergeOutcome::Merged(merged) => {
+                let merged_value: serde_json::Value = serde_json::from_str(&merged).unwrap();
+                assert!(merged_value
+                    .get("tools")
+                    .and_then(|tools| tools.as_array())
+                    .unwrap()
+                    .iter()
+                    .any(|tool| tool.get("id").and_then(|id| id.as_str()) == Some("tool-new")));
+            }
+            other => panic!("expected merged with new tool, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn webdav_merge_preserves_local_webdav_settings() {
+        let local = sample_app_data();
+        let mut remote_value = serde_json::from_str::<serde_json::Value>(&local).unwrap();
+        // Remote has different webdavSync config - local should be preserved
+        remote_value
+            .get_mut("settings")
+            .and_then(|settings| settings.as_object_mut())
+            .and_then(|settings| settings.get_mut("webdavSync"))
+            .and_then(|webdav_sync| webdav_sync.as_object_mut())
+            .unwrap()
+            .insert("remotePath".to_string(), serde_json::Value::String("/different/path".to_string()));
+
+        match merge_webdav_payload_without_conflict(&local, &remote_value.to_string()) {
+            WebDavMergeOutcome::Same => {},
+            other => panic!("expected Same when only local settings differ, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn webdav_merge_entity_with_sort_change_no_conflict() {
+        let local = sample_app_data();
+        let mut local_value = serde_json::from_str::<serde_json::Value>(&local).unwrap();
+        let mut remote_value = serde_json::from_str::<serde_json::Value>(&local).unwrap();
+
+        // A changes sort on the item
+        local_value
+            .get_mut("items")
+            .and_then(|items| items.as_array_mut())
+            .and_then(|items| items.first_mut())
+            .and_then(|item| item.as_object_mut())
+            .unwrap()
+            .insert("sort".to_string(), serde_json::Value::Number(1.into()));
+
+        // B changes sort differently on same item
+        remote_value
+            .get_mut("items")
+            .and_then(|items| items.as_array_mut())
+            .and_then(|items| items.first_mut())
+            .and_then(|item| item.as_object_mut())
+            .unwrap()
+            .insert("sort".to_string(), serde_json::Value::Number(5.into()));
+
+        // Should NOT conflict: sort is machine-local
+        match merge_webdav_payload_without_conflict(&local_value.to_string(), &remote_value.to_string()) {
+            WebDavMergeOutcome::Same => {},
+            other => panic!("expected Same when only sort differs on both sides, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn webdav_merge_entity_with_favorite_change_no_conflict() {
+        let local = sample_app_data();
+        let mut remote_value = serde_json::from_str::<serde_json::Value>(&local).unwrap();
+        // Change favorite on a collection - should NOT conflict
+        remote_value
+            .get_mut("collections")
+            .and_then(|cols| cols.as_array_mut())
+            .and_then(|cols| cols.first_mut())
+            .and_then(|col| col.as_object_mut())
+            .unwrap()
+            .insert("favorite".to_string(), serde_json::Value::Bool(true));
+
+        match merge_webdav_payload_without_conflict(&local, &remote_value.to_string()) {
+            WebDavMergeOutcome::Same => {},
+            other => panic!("expected Same when only favorite differs, got {other:?}"),
+        }
+    }
+
+    #[test]
     fn webdav_merge_conflicts_on_same_id_different_business_data_without_newer_timestamp() {
         let local = sample_app_data();
         let mut remote_value = serde_json::from_str::<serde_json::Value>(&local).unwrap();
+        // Change business data (name) without a newer updatedAt - still conflicts
         remote_value
             .get_mut("items")
             .and_then(|items| items.as_array_mut())
@@ -2248,8 +2615,95 @@ mod tests {
             .and_then(|item| item.as_object_mut())
             .unwrap()
             .insert("name".to_string(), serde_json::Value::String("remote changed".to_string()));
-
+        // Both sides have the same updatedAt but different business data => Conflict
         assert_eq!(merge_webdav_payload_without_conflict(&local, &remote_value.to_string()), WebDavMergeOutcome::Conflict);
     }
-}
 
+    #[test]
+    fn webdav_tombstone_prevents_deleted_entity_from_coming_back() {
+        let local = sample_app_data();
+        // Simulate: A deleted item-1, so local has a tombstone
+        let mut local_value = serde_json::from_str::<serde_json::Value>(&local).unwrap();
+        local_value
+            .get_mut("items")
+            .and_then(|items| items.as_array_mut())
+            .unwrap()
+            .clear();
+        local_value.as_object_mut().unwrap().insert(
+            "tombstones".to_string(),
+            serde_json::json!([{ "collection": "items", "id": "item-1", "deletedAt": "2026-06-14T02:00:00.000Z" }]),
+        );
+
+        // Remote still has item-1 (B hasn't synced yet)
+        let remote = sample_app_data();
+
+        match merge_webdav_payload_without_conflict(&local_value.to_string(), &remote) {
+            WebDavMergeOutcome::Same => {},
+            other => panic!("expected Same when tombstone prevents entity from coming back, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn webdav_tombstone_does_not_delete_newer_entity() {
+        let local = sample_app_data();
+        // Remote has a tombstone for item-1, but the entity was updated after the deletion
+        let mut remote_value = serde_json::from_str::<serde_json::Value>(&local).unwrap();
+        remote_value.as_object_mut().unwrap().insert(
+            "tombstones".to_string(),
+            serde_json::json!([{ "collection": "items", "id": "item-1", "deletedAt": "2026-06-14T00:00:00.000Z" }]),
+        );
+        // But item-1 in local was updated AFTER the deletion timestamp
+        let mut local_value = serde_json::from_str::<serde_json::Value>(&local).unwrap();
+        local_value
+            .get_mut("items")
+            .and_then(|items| items.as_array_mut())
+            .and_then(|items| items.first_mut())
+            .and_then(|item| item.as_object_mut())
+            .unwrap()
+            .insert("updatedAt".to_string(), serde_json::Value::String("2026-06-14T03:00:00.000Z".to_string()));
+
+        match merge_webdav_payload_without_conflict(&local_value.to_string(), &remote_value.to_string()) {
+            WebDavMergeOutcome::Merged(merged) => {
+                let merged_value: serde_json::Value = serde_json::from_str(&merged).unwrap();
+                // The entity must still be present (not deleted by the older tombstone)
+                let items = merged_value.get("items").and_then(|i| i.as_array()).unwrap();
+                assert!(items.iter().any(|item| item.get("id").and_then(|id| id.as_str()) == Some("item-1")),
+                    "item-1 should remain because it was updated after the tombstone");
+            }
+            other => panic!("expected Merged when entity is newer than tombstone, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn webdav_tombstones_merge_across_sides() {
+        let local = sample_app_data();
+        let mut local_value = serde_json::from_str::<serde_json::Value>(&local).unwrap();
+        local_value.as_object_mut().unwrap().insert(
+            "tombstones".to_string(),
+            serde_json::json!([{ "collection": "items", "id": "item-1", "deletedAt": "2026-06-14T01:00:00.000Z" }]),
+        );
+        // Remote has a different tombstone
+        let mut remote_value = serde_json::from_str::<serde_json::Value>(&local).unwrap();
+        remote_value.as_object_mut().unwrap().insert(
+            "tombstones".to_string(),
+            serde_json::json!([{ "collection": "scenes", "id": "scene-1", "deletedAt": "2026-06-14T01:00:00.000Z" }]),
+        );
+        remote_value
+            .get_mut("scenes")
+            .and_then(|s| s.as_array_mut())
+            .unwrap()
+            .clear();
+
+        match merge_webdav_payload_without_conflict(&local_value.to_string(), &remote_value.to_string()) {
+            WebDavMergeOutcome::Merged(merged) => {
+                let merged_value: serde_json::Value = serde_json::from_str(&merged).unwrap();
+                let tombstones = merged_value.get("tombstones").and_then(|t| t.as_array()).unwrap();
+                assert_eq!(tombstones.len(), 2);
+            }
+            other => panic!("expected Merged with combined tombstones, got {other:?}"),
+        }
+    }
+
+
+
+}
