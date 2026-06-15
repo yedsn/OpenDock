@@ -285,6 +285,28 @@ describe("OpenDock store - CRUD operations", () => {
     expect(store.state.data.settings.webdavSync.status).toContain("同步成功（已增量合并：资源新增 1");
     expect(store.latestTask.value?.message).toContain("资源新增 1");
   });
+  it("applies WebDAV merged collection title changes", async () => {
+    const { createSeedData } = await import("../seed");
+    const mergedData = createSeedData();
+    const target = mergedData.collections.find((collection) => collection.id === "code");
+    expect(target).toBeTruthy();
+    if (target) {
+      target.name = "远端集合标题";
+      target.updatedAt = "2026-06-14T01:00:00.000Z";
+    }
+    invokeMock.mockImplementation(async (...args: unknown[]) => {
+      const command = args[0] as string;
+      if (command === "webdav_get_credential") return "secret";
+      if (command === "sync_webdav_now") return { ok: true, message: `SYNC_MERGED_DATA:${JSON.stringify(mergedData)}` };
+      if (command === "snapshot_list") return [];
+      return { ok: true, message: "stub" };
+    });
+    const { useOpenDockStore } = await import("../store");
+    const store = useOpenDockStore();
+    await store.syncWebdavNow();
+    expect(store.state.data.collections.find((collection) => collection.id === "code")?.name).toBe("远端集合标题");
+    expect(store.state.data.settings.webdavSync.status).toContain("集合更新 1");
+  });
   it("tracks WebDAV sync as a background task", async () => {
     invokeMock.mockImplementation(async (...args: unknown[]) => {
       const command = args[0] as string;

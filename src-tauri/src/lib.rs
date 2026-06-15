@@ -967,6 +967,12 @@ fn json_values_equal(left: &str, right: &str) -> bool {
     left_value == right_value
 }
 
+fn webdav_business_values_equal(left: &str, right: &str) -> bool {
+    let Ok(left_value) = normalized_webdav_business_value(left) else { return json_values_equal(left, right); };
+    let Ok(right_value) = normalized_webdav_business_value(right) else { return json_values_equal(left, right); };
+    left_value == right_value
+}
+
 fn normalized_webdav_comparable_value(raw: &str) -> Result<serde_json::Value, serde_json::Error> {
     let mut value = serde_json::from_str::<serde_json::Value>(raw)?;
     if let Some(object) = value.as_object_mut() {
@@ -986,6 +992,39 @@ fn normalized_webdav_comparable_value(raw: &str) -> Result<serde_json::Value, se
         }
     }
     Ok(value)
+}
+
+fn normalized_webdav_business_value(raw: &str) -> Result<serde_json::Value, serde_json::Error> {
+    let value = serde_json::from_str::<serde_json::Value>(raw)?;
+    let Some(object) = value.as_object() else { return Ok(value); };
+    let mut output = serde_json::Map::new();
+    output.insert("schemaVersion".to_string(), object.get("schemaVersion").cloned().unwrap_or(serde_json::Value::Null));
+    for collection in ["workspaces", "scenes", "collections", "items"] {
+        let mut values = object
+            .get(collection)
+            .and_then(|items| items.as_array())
+            .cloned()
+            .unwrap_or_default()
+            .into_iter()
+            .map(normalized_entity_value)
+            .collect::<Vec<_>>();
+        values.sort_by(|a, b| stable_entity_key(collection, a).cmp(&stable_entity_key(collection, b)));
+        output.insert(collection.to_string(), serde_json::Value::Array(values));
+    }
+    let mut tombstones = object
+        .get("tombstones")
+        .and_then(|items| items.as_array())
+        .cloned()
+        .unwrap_or_default();
+    tombstones.sort_by(|a, b| {
+        let ac = a.get("collection").and_then(|v| v.as_str()).unwrap_or("");
+        let bc = b.get("collection").and_then(|v| v.as_str()).unwrap_or("");
+        let ai = a.get("id").and_then(|v| v.as_str()).unwrap_or("");
+        let bi = b.get("id").and_then(|v| v.as_str()).unwrap_or("");
+        ac.cmp(bc).then(ai.cmp(bi))
+    });
+    output.insert("tombstones".to_string(), serde_json::Value::Array(tombstones));
+    Ok(serde_json::Value::Object(output))
 }
 
 fn stable_entity_key(collection: &str, value: &serde_json::Value) -> Option<String> {
@@ -1192,7 +1231,13 @@ fn merge_webdav_payload_without_conflict(local: &str, remote: &str) -> WebDavMer
 
     match serde_json::to_string(&serde_json::Value::Object(merged)) {
         Ok(merged_json) => {
-            if json_values_equal(&merged_json, local) { WebDavMergeOutcome::Same } else { WebDavMergeOutcome::Merged(merged_json) }
+            if webdav_business_values_equal(local, remote) {
+                WebDavMergeOutcome::Same
+            } else {
+                // At this point local and remote differ in business data. If the merged
+                // result equals local, local still needs to be uploaded so remote catches up.
+                WebDavMergeOutcome::Merged(merged_json)
+            }
         }
         Err(_) => WebDavMergeOutcome::Conflict,
     }
@@ -2372,8 +2417,12 @@ mod tests {
             .clear();
 
         match merge_webdav_payload_without_conflict(&local, &remote_value.to_string()) {
-            WebDavMergeOutcome::Same => {}
-            other => panic!("expected same after local-only merge, got {other:?}"),
+            WebDavMergeOutcome::Merged(merged) => {
+                let merged_value: serde_json::Value = serde_json::from_str(&merged).unwrap();
+                assert!(merged_value.get("items").and_then(|items| items.as_array()).unwrap().iter()
+                    .any(|item| item.get("id").and_then(|id| id.as_str()) == Some("item-1")));
+            }
+            other => panic!("expected merged local-only entity so remote can catch up, got {other:?}"),
         }
     }
 
@@ -2421,8 +2470,15 @@ mod tests {
             .insert("updatedAt".to_string(), serde_json::Value::String("2026-06-14T01:00:00.000Z".to_string()));
 
         match merge_webdav_payload_without_conflict(&local_value.to_string(), &local) {
-            WebDavMergeOutcome::Same => {}
-            other => panic!("expected local newer version to be accepted, got {other:?}"),
+            WebDavMergeOutcome::Merged(merged) => {
+                let merged_value: serde_json::Value = serde_json::from_str(&merged).unwrap();
+                assert_eq!(merged_value.get("items")
+                    .and_then(|items| items.as_array())
+                    .and_then(|items| items.first())
+                    .and_then(|item| item.get("name"))
+                    .and_then(|name| name.as_str()), Some("local changed"));
+            }
+            other => panic!("expected merged local newer version so remote can catch up, got {other:?}"),
         }
     }
 
@@ -2450,6 +2506,60 @@ mod tests {
                     .and_then(|name| name.as_str()), Some("remote changed"));
             }
             other => panic!("expected remote newer version to be merged, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn webdav_merge_uses_newer_remote_collection_title() {
+        let local = sample_app_data();
+        let mut remote_value = serde_json::from_str::<serde_json::Value>(&local).unwrap();
+        let collection = remote_value
+            .get_mut("collections")
+            .and_then(|collections| collections.as_array_mut())
+            .and_then(|collections| collections.first_mut())
+            .and_then(|collection| collection.as_object_mut())
+            .unwrap();
+        collection.insert("name".to_string(), serde_json::Value::String("remote title".to_string()));
+        collection.insert("updatedAt".to_string(), serde_json::Value::String("2026-06-14T01:00:00.000Z".to_string()));
+
+        match merge_webdav_payload_without_conflict(&local, &remote_value.to_string()) {
+            WebDavMergeOutcome::Merged(merged) => {
+                let merged_value: serde_json::Value = serde_json::from_str(&merged).unwrap();
+                assert_eq!(merged_value
+                    .get("collections")
+                    .and_then(|collections| collections.as_array())
+                    .and_then(|collections| collections.first())
+                    .and_then(|collection| collection.get("name"))
+                    .and_then(|name| name.as_str()), Some("remote title"));
+            }
+            other => panic!("expected remote collection title to be merged, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn webdav_merge_uses_newer_local_collection_title_and_uploads() {
+        let local = sample_app_data();
+        let mut local_value = serde_json::from_str::<serde_json::Value>(&local).unwrap();
+        let collection = local_value
+            .get_mut("collections")
+            .and_then(|collections| collections.as_array_mut())
+            .and_then(|collections| collections.first_mut())
+            .and_then(|collection| collection.as_object_mut())
+            .unwrap();
+        collection.insert("name".to_string(), serde_json::Value::String("local title".to_string()));
+        collection.insert("updatedAt".to_string(), serde_json::Value::String("2026-06-14T01:00:00.000Z".to_string()));
+
+        match merge_webdav_payload_without_conflict(&local_value.to_string(), &local) {
+            WebDavMergeOutcome::Merged(merged) => {
+                let merged_value: serde_json::Value = serde_json::from_str(&merged).unwrap();
+                assert_eq!(merged_value
+                    .get("collections")
+                    .and_then(|collections| collections.as_array())
+                    .and_then(|collections| collections.first())
+                    .and_then(|collection| collection.get("name"))
+                    .and_then(|name| name.as_str()), Some("local title"));
+            }
+            other => panic!("expected local collection title to be merged and uploaded, got {other:?}"),
         }
     }
 
@@ -2592,8 +2702,11 @@ mod tests {
         let remote = sample_app_data();
 
         match merge_webdav_payload_without_conflict(&local_value.to_string(), &remote) {
-            WebDavMergeOutcome::Same => {},
-            other => panic!("expected Same when tombstone prevents entity from coming back, got {other:?}"),
+            WebDavMergeOutcome::Merged(merged) => {
+                let merged_value: serde_json::Value = serde_json::from_str(&merged).unwrap();
+                assert!(merged_value.get("items").and_then(|items| items.as_array()).unwrap().is_empty());
+            },
+            other => panic!("expected merged tombstone result so remote can catch up, got {other:?}"),
         }
     }
 
