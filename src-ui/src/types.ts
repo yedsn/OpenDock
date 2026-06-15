@@ -218,7 +218,7 @@ export interface WebDavPendingConflict {
   remoteSummary: string;
 }
 
-export type TaskStatus = "running" | "success" | "error" | "warning";
+export type TaskStatus = "pending" | "running" | "success" | "error" | "warning";
 
 export interface TaskEntry {
   id: string;

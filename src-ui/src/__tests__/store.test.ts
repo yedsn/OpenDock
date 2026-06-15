@@ -339,6 +339,42 @@ describe("OpenDock store - CRUD operations", () => {
     expect(store.state.taskPanelOpen).toBe(true);
     expect(invokeMock).not.toHaveBeenCalledWith("sync_webdav_now", expect.anything());
   });
+  it("starts a quick WebDAV sync after synced data changes", async () => {
+    vi.useFakeTimers();
+    invokeMock.mockImplementation(async (...args: unknown[]) => {
+      const command = args[0] as string;
+      if (command === "webdav_get_credential") return "secret";
+      if (command === "sync_webdav_now") return { ok: true, message: "同步成功（增量上传）" };
+      return { ok: true, message: "stub" };
+    });
+    try {
+      const { useOpenDockStore } = await import("../store");
+      const store = useOpenDockStore();
+      const config = store.state.data.settings.webdavSync;
+      config.autoSync = true;
+      config.syncInterval = "关闭";
+      config.serverUrl = "https://dav.example.test";
+      config.username = "user";
+      config.remotePath = "/OpenDock/workspaces";
+      invokeMock.mockClear();
+
+      store.updateCollection("code", { name: "本机快速同步集合" });
+
+      expect(store.latestTask.value?.status).toBe("pending");
+      expect(store.runningTaskCount.value).toBe(0);
+      expect(invokeMock).not.toHaveBeenCalledWith("sync_webdav_now", expect.anything());
+
+      await vi.advanceTimersByTimeAsync(900);
+
+      expect(invokeMock).toHaveBeenCalledWith("sync_webdav_now", expect.objectContaining({
+        remotePath: "/OpenDock/workspaces",
+        localData: expect.stringContaining("本机快速同步集合")
+      }));
+      expect(store.latestTask.value?.status).toBe("success");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
   it("normalizes invalid appearance settings during init", async () => {
     const { createSeedData } = await import("../seed");
     const data = createSeedData();

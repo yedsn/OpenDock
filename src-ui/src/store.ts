@@ -487,7 +487,7 @@ function updateTask(id: string, patch: Partial<Pick<TaskEntry, "message" | "stat
   Object.assign(task, patch, { updatedAt: nowIso() });
 }
 
-function finishTask(id: string, status: Exclude<TaskStatus, "running">, message: string): void {
+function finishTask(id: string, status: Exclude<TaskStatus, "pending" | "running">, message: string): void {
   updateTask(id, { status, message, progress: 100, finishedAt: nowIso() });
 }
 
@@ -554,6 +554,7 @@ function createScene(name: string, type: SceneType, description = ""): void {
   const first = state.data.collections.find((c) => c.sceneId === scene.id);
   state.data.activeCollectionId = first?.id || "";
   log(`创建场景: ${name}`);
+  scheduleWebdavQuickSync("场景变更");
 }
 
 function createCollection(name: string, type: CollectionType, sceneId: string | null, description = ""): void {
@@ -569,6 +570,7 @@ function createCollection(name: string, type: CollectionType, sceneId: string | 
   state.data.collections.push(collection);
   setActiveCollection(collection);
   log(`创建集合: ${name}`);
+  scheduleWebdavQuickSync("集合变更");
 }
 
 function createItem(collectionId: string, name: string, type: ItemType, value: string, workingDirectory = "", toolId?: string, pluginData?: Record<string, unknown>): void {
@@ -582,6 +584,7 @@ function createItem(collectionId: string, name: string, type: ItemType, value: s
   };
   state.data.items.push(item);
   log(`添加资源: ${name}`);
+  scheduleWebdavQuickSync("资源变更");
 }
 
 function toggleFavorite(collection: Collection): void {
@@ -847,6 +850,7 @@ function createWorkspace(name: string, storage: string, remark: string): void {
   state.data.workspaces.push(workspace);
   state.data.activeWorkspaceId = workspace.id;
   log(`创建工作区: ${name}`);
+  scheduleWebdavQuickSync("工作区变更");
 }
 
 function switchWorkspace(id: string): void {
@@ -1073,6 +1077,34 @@ async function syncWebdavNow(): Promise<void> {
   }
   state.data.settings.webdavSync.lastSyncAt = new Date().toLocaleString("zh-CN", { hour12: false });
   log(`WebDAV Sync 立即同步: ${result.message}`);
+}
+
+let webdavQuickSyncTimer: ReturnType<typeof setTimeout> | null = null;
+
+function scheduleWebdavQuickSync(reason: string): void {
+  const config = state.data.settings.webdavSync;
+  if (!config.autoSync) return;
+  if (!webdavPluginInstalled.value) return;
+  if (!config.serverUrl.trim() || !config.username.trim() || !config.remotePath.trim()) return;
+  if (webdavQuickSyncTimer) clearTimeout(webdavQuickSyncTimer);
+  upsertTask({
+    id: "webdav-sync",
+    type: "webdav-sync",
+    title: "WebDAV 同步",
+    message: `等待同步${reason}...`,
+    status: "pending",
+    progress: 5
+  });
+  webdavQuickSyncTimer = setTimeout(() => {
+    webdavQuickSyncTimer = null;
+    syncWebdavNow().catch((error) => {
+      const message = error instanceof Error ? error.message : String(error);
+      state.data.settings.webdavSync.status = "同步失败";
+      state.data.settings.webdavSync.lastError = message;
+      finishTask("webdav-sync", "error", message);
+    });
+  }, 900);
+  (webdavQuickSyncTimer as unknown as { unref?: () => void }).unref?.();
 }
 
 function formatWebdavError(message: string): string {
@@ -1402,6 +1434,7 @@ function updateScene(id: string, patch: Partial<Scene>): void {
   if (!scene) return;
   Object.assign(scene, patch, { updatedAt: nowIso() });
   log(`编辑场景: ${scene.name}`);
+  scheduleWebdavQuickSync("场景变更");
 }
 
 function deleteScene(id: string): void {
@@ -1418,6 +1451,7 @@ function deleteScene(id: string): void {
     state.data.activeSceneId = fallback?.id || "";
   }
   log(`删除场景: ${scene.name}`);
+  scheduleWebdavQuickSync("场景变更");
 }
 
 function updateCollection(id: string, patch: Partial<Collection>): void {
@@ -1432,6 +1466,7 @@ function updateCollection(id: string, patch: Partial<Collection>): void {
     collection.tool = tool?.name || "";
   }
   log(`编辑集合: ${collection.name}`);
+  scheduleWebdavQuickSync("集合变更");
 }
 
 function deleteCollection(id: string): void {
@@ -1445,6 +1480,7 @@ function deleteCollection(id: string): void {
   addTombstone("collections", id);
   if (state.data.activeCollectionId === id) state.data.activeCollectionId = "";
   log(`删除集合: ${collection.name}`);
+  scheduleWebdavQuickSync("集合变更");
 }
 
 function updateItem(id: string, patch: Partial<CollectionItem>): void {
@@ -1458,6 +1494,7 @@ function updateItem(id: string, patch: Partial<CollectionItem>): void {
     item.tool = tool?.name || itemMeta[item.type].tool;
   }
   log(`编辑资源: ${item.name}`);
+  scheduleWebdavQuickSync("资源变更");
 }
 
 function deleteItem(id: string): void {
@@ -1466,6 +1503,7 @@ function deleteItem(id: string): void {
   state.data.items = state.data.items.filter((i) => i.id !== id);
   addTombstone("items", id);
   log(`删除资源: ${item.name}`);
+  scheduleWebdavQuickSync("资源变更");
 }
 
 function updateWorkspace(id: string, patch: Partial<Workspace>): void {
@@ -1473,6 +1511,7 @@ function updateWorkspace(id: string, patch: Partial<Workspace>): void {
   if (!workspace) return;
   Object.assign(workspace, patch, { updatedAt: nowIso() });
   log(`编辑工作区: ${workspace.name}`);
+  scheduleWebdavQuickSync("工作区变更");
 }
 
 function deleteWorkspace(id: string): void {
@@ -1501,6 +1540,7 @@ function deleteWorkspace(id: string): void {
     state.data.activeSceneId = firstScene?.id || "";
   }
   log(`删除工作区: ${workspace.name}`);
+  scheduleWebdavQuickSync("工作区变更");
 }
 
 // ---- Public composable ----
