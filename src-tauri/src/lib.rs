@@ -1,4 +1,4 @@
-﻿use std::env;
+use std::env;
 use std::fs;
 use std::path::PathBuf;
 use std::process::Command;
@@ -924,18 +924,13 @@ fn run_command(command: String, working_directory: Option<String>) -> OpenAction
     match process.spawn() { Ok(_) => success(format!("Started command: {command}")), Err(e) => failure(format!("Failed to run command: {e}")) }
 }
 
+
 #[tauri::command]
 async fn test_webdav_connection(server_url: String, username: String, password: String, remote_path: Option<String>) -> OpenActionResult {
-    tauri::async_runtime::spawn_blocking(move || test_webdav_connection_blocking(server_url, username, password, remote_path))
-        .await
-        .unwrap_or_else(|e| failure(format!("WebDAV 测试连接后台任务失败: {e}")))
-}
-
-fn test_webdav_connection_blocking(server_url: String, username: String, password: String, remote_path: Option<String>) -> OpenActionResult {
     if server_url.trim().is_empty() { return failure("WebDAV 地址不能为空"); }
     if username.trim().is_empty() { return failure("用户名不能为空"); }
     let test_path = remote_path.as_deref().filter(|value| !value.trim().is_empty()).unwrap_or("/");
-    let r = webdav::test_connection(&server_url, &username, &password, test_path);
+    let r = webdav::test_connection(&server_url, &username, &password, test_path).await;
     OpenActionResult { ok: r.ok, message: r.message }
 }
 
@@ -1300,6 +1295,7 @@ fn manifest_file_hash(manifest: &serde_json::Value, key: &str) -> Option<String>
         .map(|hash| hash.to_string())
 }
 
+#[cfg(test)]
 fn assemble_webdav_split_payload_with_cache(
     manifest_json: &str,
     mut load_file: impl FnMut(&str) -> Result<String, String>,
@@ -1378,9 +1374,9 @@ fn assemble_webdav_split_payload(manifest_json: &str, load_file: impl FnMut(&str
     assemble_webdav_split_payload_with_cache(manifest_json, load_file, None)
 }
 
-fn upload_webdav_sync_payload(server_url: &str, username: &str, password: &str, remote_dir: &str, manifest_path: &str, local_data: &str) -> Result<(), String> {
+async fn upload_webdav_sync_payload(server_url: &str, username: &str, password: &str, remote_dir: &str, manifest_path: &str, local_data: &str) -> Result<(), String> {
     let (files, manifest_json) = split_webdav_sync_payload(local_data)?;
-    let remote_manifest = webdav::download(server_url, username, password, manifest_path)
+    let remote_manifest = webdav::download(server_url, username, password, manifest_path).await
         .ok()
         .and_then(|raw| serde_json::from_str::<serde_json::Value>(&raw).ok())
         .filter(|manifest| manifest.get("format").and_then(|value| value.as_str()) == Some(WEBDAV_SPLIT_FORMAT));
@@ -1395,22 +1391,73 @@ fn upload_webdav_sync_payload(server_url: &str, username: &str, password: &str, 
             }
         }
         let remote_file_path = webdav_join_path(remote_dir, &relative_path);
-        let result = webdav::upload(server_url, username, password, &remote_file_path, &contents);
+        let result = webdav::upload(server_url, username, password, &remote_file_path, &contents).await;
         if !result.ok { return Err(format!("上传子文件 {relative_path} 失败: {}", result.message)); }
     }
-    let result = webdav::upload(server_url, username, password, manifest_path, &manifest_json);
+    let result = webdav::upload(server_url, username, password, manifest_path, &manifest_json).await;
     if result.ok { Ok(()) } else { Err(format!("上传主清单失败: {}", result.message)) }
 }
 
-fn download_webdav_sync_payload(server_url: &str, username: &str, password: &str, remote_dir: &str, manifest_path: &str, local_data: Option<&str>) -> Result<String, String> {
-    let manifest_or_legacy = webdav::download(server_url, username, password, manifest_path)?;
+async fn download_webdav_sync_payload(server_url: &str, username: &str, password: &str, remote_dir: &str, manifest_path: &str, local_data: Option<&str>) -> Result<String, String> {
+    let manifest_or_legacy = webdav::download(server_url, username, password, manifest_path).await?;
     let local_files = local_data
         .and_then(|data| split_webdav_sync_payload(data).ok())
         .map(|(files, _)| files.into_iter().collect::<std::collections::HashMap<String, String>>());
-    assemble_webdav_split_payload_with_cache(&manifest_or_legacy, |relative_path| {
-        let remote_file_path = webdav_join_path(remote_dir, relative_path);
-        webdav::download(server_url, username, password, &remote_file_path)
-    }, local_files.as_ref())
+    download_and_assemble_split_payload(&manifest_or_legacy, server_url, username, password, remote_dir, local_files.as_ref()).await
+}
+
+async fn download_and_assemble_split_payload(
+    manifest_json: &str,
+    server_url: &str,
+    username: &str,
+    password: &str,
+    remote_dir: &str,
+    local_files: Option<&std::collections::HashMap<String, String>>,
+) -> Result<String, String> {
+    let manifest = serde_json::from_str::<serde_json::Value>(manifest_json)
+        .map_err(|e| format!("远程主清单 JSON 解析失败: {e}"))?;
+    if manifest.get("format").and_then(|value| value.as_str()) != Some(WEBDAV_SPLIT_FORMAT) {
+        return Ok(manifest_json.to_string());
+    }
+    let files = manifest.get("files").and_then(|value| value.as_object())
+        .ok_or_else(|| "远程主清单缺少 files".to_string())?;
+    let mut output = serde_json::Map::new();
+    let active_path = files.get("activeState").and_then(|value| value.as_str())
+        .ok_or_else(|| "远程主清单缺少 activeState".to_string())?;
+    let active_raw = if let (Some(lf), Some(remote_hash)) = (local_files, manifest_file_hash(&manifest, "activeState")) {
+        if let Some(local_raw) = lf.get(active_path) {
+            if sha256_hex(local_raw) == remote_hash { local_raw.clone() }
+            else { webdav::download(server_url, username, password, &webdav_join_path(remote_dir, active_path)).await? }
+        } else { webdav::download(server_url, username, password, &webdav_join_path(remote_dir, active_path)).await? }
+    } else { webdav::download(server_url, username, password, &webdav_join_path(remote_dir, active_path)).await? };
+    let active_state = serde_json::from_str::<serde_json::Value>(&active_raw)
+        .map_err(|e| format!("远程 active-state.json 解析失败: {e}"))?;
+    let active_object = active_state.as_object().ok_or_else(|| "远程 active-state.json 不是 JSON 对象".to_string())?;
+    for key in ["schemaVersion", "activeWorkspaceId", "activeSceneId", "activeCollectionId"] {
+        output.insert(key.to_string(), active_object.get(key).cloned().unwrap_or(serde_json::Value::Null));
+    }
+    for (key, _) in WEBDAV_SPLIT_FILES {
+        if key == "activeState" { continue; }
+        let path_opt = files.get(key).and_then(|value| value.as_str());
+        let path = match path_opt {
+            Some(p) => p,
+            None => { if key == "tombstones" { continue; } return Err(format!("远程主清单缺少 {key}")); }
+        };
+        let raw = if let (Some(lf), Some(remote_hash)) = (local_files, manifest_file_hash(&manifest, key)) {
+            if let Some(local_raw) = lf.get(path) {
+                if sha256_hex(local_raw) == remote_hash { local_raw.clone() }
+                else { webdav::download(server_url, username, password, &webdav_join_path(remote_dir, path)).await? }
+            } else { webdav::download(server_url, username, password, &webdav_join_path(remote_dir, path)).await? }
+        } else { webdav::download(server_url, username, password, &webdav_join_path(remote_dir, path)).await? };
+        let value = serde_json::from_str::<serde_json::Value>(&raw)
+            .map_err(|e| format!("远程 {path} 解析失败: {e}"))?;
+        if key == "tombstones" {
+            let is_empty = value.as_array().map(|a| a.is_empty()).unwrap_or(true);
+            if is_empty { continue; }
+        }
+        output.insert(key.to_string(), value);
+    }
+    serde_json::to_string(&serde_json::Value::Object(output)).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -1422,78 +1469,73 @@ async fn sync_webdav_now(
     conflict_policy: String,
     local_data: String,
 ) -> OpenActionResult {
-    tauri::async_runtime::spawn_blocking(move || {
-        sync_webdav_now_blocking(server_url, username, password, remote_path, conflict_policy, local_data)
-    })
-        .await
-        .unwrap_or_else(|e| failure(format!("WebDAV 同步后台任务失败: {e}")))
+    match sync_webdav_now_impl(&server_url, &username, &password, &remote_path, &conflict_policy, &local_data).await {
+        Ok(result) => result,
+        Err(e) => failure(format!("WebDAV 同步后台任务失败: {e}")),
+    }
 }
 
-fn sync_webdav_now_blocking(
-    server_url: String,
-    username: String,
-    password: String,
-    remote_path: String,
-    conflict_policy: String,
-    local_data: String,
-) -> OpenActionResult {
-    if server_url.trim().is_empty() { return failure("WebDAV 地址未配置"); }
-    if username.trim().is_empty() { return failure("WebDAV 用户名未配置"); }
-    if remote_path.trim().is_empty() { return failure("远程目录未配置"); }
+async fn sync_webdav_now_impl(
+    server_url: &str,
+    username: &str,
+    password: &str,
+    remote_path: &str,
+    conflict_policy: &str,
+    local_data: &str,
+) -> Result<OpenActionResult, String> {
+    if server_url.trim().is_empty() { return Ok(failure("WebDAV 地址未配置")); }
+    if username.trim().is_empty() { return Ok(failure("WebDAV 用户名未配置")); }
+    if remote_path.trim().is_empty() { return Ok(failure("远程目录未配置")); }
 
     let remote_dir = remote_path.trim_end_matches('/');
     let remote_file_path = format!("{remote_dir}/opendock-sync.json");
 
-    // Check if remote data exists
-    let remote_exists = webdav::remote_exists(&server_url, &username, &password, &remote_file_path).unwrap_or(false);
+    let remote_exists = webdav::remote_exists(server_url, username, password, &remote_file_path).await.unwrap_or(false);
 
     if remote_exists {
-        let remote_data = match download_webdav_sync_payload(&server_url, &username, &password, remote_dir, &remote_file_path, Some(&local_data)) {
+        let remote_data = match download_webdav_sync_payload(server_url, username, password, remote_dir, &remote_file_path, Some(local_data)).await {
             Ok(data) => data,
-            Err(e) => return failure(format!("下载远程数据失败: {e}")),
+            Err(e) => return Ok(failure(format!("下载远程数据失败: {e}"))),
         };
 
         if json_values_equal(&remote_data, &local_data) {
-            return success("同步成功（本地与远程一致）");
+            return Ok(success("同步成功（本地与远程一致）"));
         }
 
-        match merge_webdav_payload_without_conflict(&local_data, &remote_data) {
-            WebDavMergeOutcome::Same => return success("同步成功（本地与远程一致）"),
+        match merge_webdav_payload_without_conflict(local_data, &remote_data) {
+            WebDavMergeOutcome::Same => return Ok(success("同步成功（本地与远程一致）")),
             WebDavMergeOutcome::Merged(merged_data) => {
-                if conflict_policy.as_str() != "覆盖远程" && conflict_policy.as_str() != "覆盖本地" {
-                    if let Err(e) = upload_webdav_sync_payload(&server_url, &username, &password, remote_dir, &remote_file_path, &merged_data) {
-                        return failure(format!("上传合并数据失败: {e}"));
+                if conflict_policy != "覆盖远程" && conflict_policy != "覆盖本地" {
+                    if let Err(e) = upload_webdav_sync_payload(server_url, username, password, remote_dir, &remote_file_path, &merged_data).await {
+                        return Ok(failure(format!("上传合并数据失败: {e}")));
                     }
                     if json_values_equal(&merged_data, &local_data) {
-                        return success("同步成功（已增量同步到远程）");
+                        return Ok(success("同步成功（已增量同步到远程）"));
                     }
-                    return success(format!("SYNC_MERGED_DATA:{merged_data}"));
+                    return Ok(success(format!("SYNC_MERGED_DATA:{merged_data}")));
                 }
             }
             WebDavMergeOutcome::Conflict => {}
         }
 
-        match conflict_policy.as_str() {
+        match conflict_policy {
             "覆盖远程" => {
-                match upload_webdav_sync_payload(&server_url, &username, &password, remote_dir, &remote_file_path, &local_data) {
-                    Ok(()) => success("同步成功（已覆盖远程数据）"),
-                    Err(e) => failure(format!("上传失败: {e}")),
+                match upload_webdav_sync_payload(server_url, username, password, remote_dir, &remote_file_path, local_data).await {
+                    Ok(()) => Ok(success("同步成功（已覆盖远程数据）")),
+                    Err(e) => Ok(failure(format!("上传失败: {e}"))),
                 }
             }
             "覆盖本地" => {
-                // Return remote data to the frontend; it will replace local
-                success(format!("SYNC_REMOTE_DATA:{remote_data}"))
+                Ok(success(format!("SYNC_REMOTE_DATA:{remote_data}")))
             }
             _ => {
-                // Any normal sync against different remote data requires an explicit user choice.
-                success(format!("SYNC_CONFLICT:{remote_data}"))
+                Ok(success(format!("SYNC_CONFLICT:{remote_data}")))
             }
         }
     } else {
-        // No remote data: just upload local
-        match upload_webdav_sync_payload(&server_url, &username, &password, remote_dir, &remote_file_path, &local_data) {
-            Ok(()) => success("同步成功（首次上传本地数据到远程）"),
-            Err(e) => failure(format!("上传失败: {e}")),
+        match upload_webdav_sync_payload(server_url, username, password, remote_dir, &remote_file_path, local_data).await {
+            Ok(()) => Ok(success("同步成功（首次上传本地数据到远程）")),
+            Err(e) => Ok(failure(format!("上传失败: {e}"))),
         }
     }
 }
