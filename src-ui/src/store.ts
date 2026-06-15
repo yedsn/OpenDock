@@ -1046,8 +1046,9 @@ async function syncWebdavNow(): Promise<void> {
       const remoteJson = result.message.slice(isMergedData ? "SYNC_MERGED_DATA:".length : "SYNC_REMOTE_DATA:".length);
       try {
         const remoteData = parseWebdavRemoteData(remoteJson);
+        const changeSummary = summarizeSyncChanges(state.data, remoteData);
         await replaceLocalDataFromWebdav(remoteData, isMergedData ? "WebDAV 增量合并前快照" : "WebDAV 远程覆盖前快照", { preserveLocalSettings: isMergedData });
-        state.data.settings.webdavSync.status = isMergedData ? "同步成功（已增量合并）" : "同步成功（远程优先）";
+        state.data.settings.webdavSync.status = isMergedData ? `同步成功（已增量合并：${changeSummary}）` : `同步成功（远程优先：${changeSummary}）`;
         state.data.settings.webdavSync.lastError = "";
         finishTask(taskId, "success", state.data.settings.webdavSync.status);
       } catch {
@@ -1098,6 +1099,77 @@ function countData(data: AppData): { workspaces: number; scenes: number; collect
   };
 }
 
+type SyncDiffCollection = "workspaces" | "scenes" | "collections" | "items" | "tombstones";
+
+const syncDiffLabels: Record<SyncDiffCollection, string> = {
+  workspaces: "工作区",
+  scenes: "场景",
+  collections: "集合",
+  items: "资源",
+  tombstones: "删除记录",
+};
+
+function syncEntityKey(collection: SyncDiffCollection, value: unknown): string | null {
+  if (!value || typeof value !== "object") return null;
+  const object = value as Record<string, unknown>;
+  if (collection === "tombstones") {
+    const scope = typeof object.collection === "string" ? object.collection : "";
+    const id = typeof object.id === "string" ? object.id : "";
+    return scope && id ? `${scope}:${id}` : null;
+  }
+  return typeof object.id === "string" ? object.id : null;
+}
+
+function comparableSyncEntity(value: unknown): string {
+  if (!value || typeof value !== "object") return JSON.stringify(value);
+  const copy = JSON.parse(JSON.stringify(value)) as Record<string, unknown>;
+  delete copy.sort;
+  delete copy.recent;
+  delete copy.recentAt;
+  delete copy.favorite;
+  return JSON.stringify(copy);
+}
+
+function summarizeSyncChanges(before: AppData, after: AppData): string {
+  const collections: SyncDiffCollection[] = ["workspaces", "scenes", "collections", "items", "tombstones"];
+  const parts: string[] = [];
+  for (const collection of collections) {
+    const beforeItems = (before[collection] as unknown[]) || [];
+    const afterItems = (after[collection] as unknown[]) || [];
+    const beforeMap = new Map<string, unknown>();
+    const afterMap = new Map<string, unknown>();
+    beforeItems.forEach((item) => {
+      const key = syncEntityKey(collection, item);
+      if (key) beforeMap.set(key, item);
+    });
+    afterItems.forEach((item) => {
+      const key = syncEntityKey(collection, item);
+      if (key) afterMap.set(key, item);
+    });
+    let added = 0;
+    let removed = 0;
+    let updated = 0;
+    afterMap.forEach((item, key) => {
+      const beforeItem = beforeMap.get(key);
+      if (!beforeItem) added += 1;
+      else if (comparableSyncEntity(beforeItem) !== comparableSyncEntity(item)) updated += 1;
+    });
+    beforeMap.forEach((_item, key) => {
+      if (!afterMap.has(key)) removed += 1;
+    });
+    const label = syncDiffLabels[collection];
+    const details: string[] = [];
+    if (added) details.push(`新增 ${added}`);
+    if (updated) details.push(`更新 ${updated}`);
+    if (removed) details.push(`删除 ${removed}`);
+    if (details.length) parts.push(`${label}${details.join("、")}`);
+  }
+  if (!parts.length) return "无数据变化";
+  const visible = parts.slice(0, 3);
+  const extraCount = parts.length - visible.length;
+  return extraCount > 0 ? `${visible.join("；")}；另 ${extraCount} 项变化` : visible.join("；");
+}
+
 function summarizeWebdavData(raw: string): string {
   try {
     const data = normalizeWebdavData(JSON.parse(raw));
@@ -1126,6 +1198,13 @@ async function replaceLocalDataFromWebdav(remoteData: AppData, snapshotLabel: st
   }
   const localSettings = state.data.settings;
   const localWebdavConfig = { ...localSettings.webdavSync };
+  const localMachineData = {
+    settings: localSettings,
+    tools: state.data.tools,
+    plugins: state.data.plugins,
+    pluginStore: state.data.pluginStore,
+    activity: state.data.activity,
+  };
   const credentialRef = localWebdavConfig.credentialRef;
   // Preserve local active state (machine-local navigation context)
   const localActive = {
@@ -1138,29 +1217,17 @@ async function replaceLocalDataFromWebdav(remoteData: AppData, snapshotLabel: st
   state.data.activeWorkspaceId = localActive.activeWorkspaceId;
   state.data.activeSceneId = localActive.activeSceneId;
   state.data.activeCollectionId = localActive.activeCollectionId;
+  state.data.tools = localMachineData.tools;
+  state.data.plugins = localMachineData.plugins;
+  state.data.pluginStore = localMachineData.pluginStore;
+  state.data.activity = localMachineData.activity;
+  state.data.settings = localMachineData.settings;
   if (options.preserveLocalSettings) {
-    // Incremental merge: keep ALL local settings (general + webdav credentials)
-    const remoteSettings = remoteData.settings ?? ({} as typeof localSettings);
-    state.data.settings = {
-      ...localSettings,
-      ...Object.fromEntries(
-        Object.entries(remoteSettings).filter(([key]) => !(key in localSettings))
-      ),
-      webdavSync: localWebdavConfig,
-    } as typeof localSettings;
+    // Incremental merge: settings are not synced, keep local settings untouched.
+    state.data.settings = localMachineData.settings;
   } else {
-    // Full replacement: restore only WebDAV connection credentials
-    state.data.settings.webdavSync = {
-      ...remoteData.settings.webdavSync,
-      serverUrl: localWebdavConfig.serverUrl,
-      username: localWebdavConfig.username,
-      credentialRef,
-      remotePath: localWebdavConfig.remotePath,
-      autoSync: localWebdavConfig.autoSync,
-      syncInterval: localWebdavConfig.syncInterval,
-      syncScope: localWebdavConfig.syncScope,
-      conflictPolicy: localWebdavConfig.conflictPolicy
-    };
+    // Remote-priority data replacement still keeps local settings and plugin/runtime data.
+    state.data.settings.webdavSync = { ...localWebdavConfig, credentialRef };
   }
   await refreshSnapshots();
   startAutoSnapshotTimer();

@@ -941,17 +941,12 @@ fn test_webdav_connection_blocking(server_url: String, username: String, passwor
 
 const WEBDAV_SPLIT_FORMAT: &str = "opendock-webdav-split-v1";
 const WEBDAV_SPLIT_DIR: &str = "opendock-sync";
-const WEBDAV_SPLIT_FILES: [(&str, &str); 11] = [
+const WEBDAV_SPLIT_FILES: [(&str, &str); 6] = [
     ("activeState", "active-state.json"),
     ("workspaces", "workspaces.json"),
     ("scenes", "scenes.json"),
     ("collections", "collections.json"),
     ("items", "items.json"),
-    ("tools", "tools.json"),
-    ("settings", "settings.json"),
-    ("plugins", "plugins.json"),
-    ("pluginStore", "plugin-store.json"),
-    ("activity", "activity.json"),
     ("tombstones", "tombstones.json"),
 ];
 
@@ -1142,45 +1137,6 @@ fn merge_entity_array(collection: &str, local: &serde_json::Value, remote: &serd
     Ok(serde_json::Value::Array(merged))
 }
 
-/// Fields within settings that are machine-local and should not cause sync conflict.
-/// These are preserved from local during merge.
-const SETTINGS_LOCAL_FIELDS: &[&str] = &[
-    "webdavSync",
-    "defaultView",
-    "recentLimit",
-    "confirmBeforeOpen",
-    "logOpenFailures",
-    "openWebInNewWindow",
-    "globalHotkey",
-    "appIconStyle",
-];
-
-/// Merge settings objects field-by-field. Local-only config fields are kept from local;
-/// shared business fields are kept if equal, otherwise conflict.
-fn merge_settings(local: &serde_json::Value, remote: &serde_json::Value) -> Result<serde_json::Value, ()> {
-    let local_obj = local.as_object().ok_or(())?;
-    let remote_obj = remote.as_object().ok_or(())?;
-    let mut merged = local_obj.clone();
-
-    for (key, remote_val) in remote_obj {
-        if SETTINGS_LOCAL_FIELDS.contains(&key.as_str()) {
-            // Keep local value for machine-local fields (already in merged from local_obj)
-            continue;
-        }
-        let local_val = merged.get(key).cloned().unwrap_or(serde_json::Value::Null);
-        if local_val == serde_json::Value::Null && remote_val != &serde_json::Value::Null {
-            // Remote has a field that local doesn't: include it
-            merged.insert(key.clone(), remote_val.clone());
-        } else if local_val != *remote_val {
-            // Both have different values for a shared field => conflict
-            return Err(());
-        }
-        // Otherwise equal: already correct in merged
-    }
-
-    Ok(serde_json::Value::Object(merged))
-}
-
 fn merge_webdav_payload_without_conflict(local: &str, remote: &str) -> WebDavMergeOutcome {
     if json_values_equal(local, remote) { return WebDavMergeOutcome::Same; }
 
@@ -1199,8 +1155,8 @@ fn merge_webdav_payload_without_conflict(local: &str, remote: &str) -> WebDavMer
     let remote_tombstones = remote_tombstones_val.as_array().cloned().unwrap_or_default();
     let merged_tombstones = merge_tombstones(&local_tombstones, &remote_tombstones);
 
-    // Merge entity arrays - tombstones cause matching entities to be excluded.
-    for collection in ["workspaces", "scenes", "collections", "items", "tools", "plugins", "pluginStore", "activity"] {
+    // Merge only business data. Settings, tools, plugins, plugin store and activity are machine-local.
+    for collection in ["workspaces", "scenes", "collections", "items"] {
         let empty_local = serde_json::Value::Array(Vec::new());
         let empty_remote = serde_json::Value::Array(Vec::new());
         let local_collection = local_object.get(collection).unwrap_or(&empty_local);
@@ -1224,14 +1180,9 @@ fn merge_webdav_payload_without_conflict(local: &str, remote: &str) -> WebDavMer
         if local_sv != remote_sv { return WebDavMergeOutcome::Conflict; }
     }
 
-    // Merge settings field-by-field
-    {
-        let local_settings = local_object.get("settings").cloned().unwrap_or(serde_json::Value::Object(serde_json::Map::new()));
-        let remote_settings = remote_object.get("settings").cloned().unwrap_or(serde_json::Value::Object(serde_json::Map::new()));
-        let Ok(merged_settings) = merge_settings(&local_settings, &remote_settings) else {
-            return WebDavMergeOutcome::Conflict;
-        };
-        merged.insert("settings".to_string(), merged_settings);
+    // Settings are intentionally not synced; keep local settings untouched.
+    if let Some(local_settings) = local_object.get("settings") {
+        merged.insert("settings".to_string(), local_settings.clone());
     }
 
     // Keep local active state (machine-local)
@@ -1377,6 +1328,7 @@ fn assemble_webdav_split_payload_with_cache(
     serde_json::to_string(&serde_json::Value::Object(output)).map_err(|e| e.to_string())
 }
 
+#[cfg(test)]
 fn assemble_webdav_split_payload(manifest_json: &str, load_file: impl FnMut(&str) -> Result<String, String>) -> Result<String, String> {
     assemble_webdav_split_payload_with_cache(manifest_json, load_file, None)
 }
@@ -2301,6 +2253,17 @@ mod tests {
         }).to_string()
     }
 
+    fn assert_sync_payload_scope(restored: &serde_json::Value, original: &serde_json::Value) {
+        for key in ["schemaVersion", "activeWorkspaceId", "activeSceneId", "activeCollectionId", "workspaces", "scenes", "collections", "items"] {
+            assert_eq!(restored.get(key), original.get(key), "sync payload field {key} should match");
+        }
+        assert!(restored.get("settings").is_none(), "settings should not be synced");
+        assert!(restored.get("tools").is_none(), "tools should not be synced");
+        assert!(restored.get("plugins").is_none(), "plugins should not be synced");
+        assert!(restored.get("pluginStore").is_none(), "pluginStore should not be synced");
+        assert!(restored.get("activity").is_none(), "activity should not be synced");
+    }
+
     #[test]
     fn webdav_split_payload_can_be_assembled_back() {
         let local_data = sample_app_data();
@@ -2309,7 +2272,7 @@ mod tests {
         assert_eq!(manifest_value.get("format").and_then(|value| value.as_str()), Some(WEBDAV_SPLIT_FORMAT));
         assert_eq!(manifest_value.get("version").and_then(|value| value.as_i64()), Some(2));
         assert!(files.iter().any(|(path, _)| path == "opendock-sync/items.json"));
-        assert!(files.iter().any(|(path, _)| path == "opendock-sync/settings.json"));
+        assert!(!files.iter().any(|(path, _)| path == "opendock-sync/settings.json"));
         let item_meta = manifest_value
             .get("fileMeta")
             .and_then(|meta| meta.get("items"))
@@ -2325,7 +2288,7 @@ mod tests {
 
         let original: serde_json::Value = serde_json::from_str(&local_data).expect("original json");
         let restored: serde_json::Value = serde_json::from_str(&assembled).expect("restored json");
-        assert_eq!(restored, original);
+        assert_sync_payload_scope(&restored, &original);
     }
 
     #[test]
@@ -2342,7 +2305,7 @@ mod tests {
 
         let original: serde_json::Value = serde_json::from_str(&local_data).expect("original json");
         let restored: serde_json::Value = serde_json::from_str(&assembled).expect("restored json");
-        assert_eq!(restored, original);
+        assert_sync_payload_scope(&restored, &original);
         assert_eq!(download_count, 0);
     }
 
@@ -2491,7 +2454,6 @@ mod tests {
     }
 
     #[test]
-    #[test]
     fn webdav_merge_ignores_sort_order_difference() {
         let local = sample_app_data();
         let mut remote_value = serde_json::from_str::<serde_json::Value>(&local).unwrap();
@@ -2511,7 +2473,7 @@ mod tests {
     }
 
     #[test]
-    fn webdav_merge_merges_new_tool_from_remote() {
+    fn webdav_merge_ignores_remote_tool_changes() {
         let local = sample_app_data();
         let mut remote_value = serde_json::from_str::<serde_json::Value>(&local).unwrap();
         remote_value
@@ -2521,16 +2483,8 @@ mod tests {
             .push(serde_json::json!({ "id": "tool-new", "name": "New Tool", "type": "local", "path": "/bin/echo", "args": "", "default": false }));
 
         match merge_webdav_payload_without_conflict(&local, &remote_value.to_string()) {
-            WebDavMergeOutcome::Merged(merged) => {
-                let merged_value: serde_json::Value = serde_json::from_str(&merged).unwrap();
-                assert!(merged_value
-                    .get("tools")
-                    .and_then(|tools| tools.as_array())
-                    .unwrap()
-                    .iter()
-                    .any(|tool| tool.get("id").and_then(|id| id.as_str()) == Some("tool-new")));
-            }
-            other => panic!("expected merged with new tool, got {other:?}"),
+            WebDavMergeOutcome::Same => {},
+            other => panic!("expected Same because tools are not synced, got {other:?}"),
         }
     }
 

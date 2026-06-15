@@ -282,7 +282,8 @@ describe("OpenDock store - CRUD operations", () => {
     await store.syncWebdavNow();
     expect(store.state.webdavPendingConflict).toBeNull();
     expect(store.state.data.items.some((item) => item.id === "remote-added-item")).toBe(true);
-    expect(store.state.data.settings.webdavSync.status).toBe("同步成功（已增量合并）");
+    expect(store.state.data.settings.webdavSync.status).toContain("同步成功（已增量合并：资源新增 1");
+    expect(store.latestTask.value?.message).toContain("资源新增 1");
   });
   it("tracks WebDAV sync as a background task", async () => {
     invokeMock.mockImplementation(async (...args: unknown[]) => {
