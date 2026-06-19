@@ -25,7 +25,9 @@ use std::io::Write;
 #[cfg(target_os = "windows")]
 use windows_sys::Win32::UI::Shell::ShellExecuteW;
 #[cfg(target_os = "windows")]
-use windows_sys::Win32::UI::WindowsAndMessaging::SW_SHOWNORMAL;
+use windows_sys::Win32::UI::WindowsAndMessaging::{
+    SetForegroundWindow, ShowWindow, SW_RESTORE, SW_SHOWNORMAL,
+};
 
 // ---- OpenActionResult ----
 
@@ -1985,10 +1987,33 @@ const TRAY_MENU_QUIT: &str = "quit";
 
 fn show_main_window(app: &AppHandle) {
     if let Some(window) = app.get_webview_window("main") {
-        let _ = window.unminimize();
-        let _ = window.show();
-        let _ = window.set_focus();
+        show_webview_window(&window);
     }
+}
+
+fn show_webview_window(window: &tauri::WebviewWindow) {
+    let _ = window.unminimize();
+    let _ = window.show();
+    let _ = window.set_focus();
+    #[cfg(target_os = "windows")]
+    activate_window_for_virtual_desktop(window);
+}
+
+#[cfg(target_os = "windows")]
+fn activate_window_for_virtual_desktop(window: &tauri::WebviewWindow) {
+    if let Ok(hwnd) = window.hwnd() {
+        let raw_hwnd = hwnd.0 as _;
+        unsafe {
+            ShowWindow(raw_hwnd, SW_RESTORE);
+            SetForegroundWindow(raw_hwnd);
+        }
+    }
+
+    // Dexpot can keep a restored hidden window behind the current desktop stack.
+    // A short topmost pulse asks the shell/desktop manager to refresh the window z-order.
+    let _ = window.set_always_on_top(true);
+    let _ = window.set_always_on_top(false);
+    let _ = window.set_focus();
 }
 
 fn hide_main_window(app: &AppHandle) {
@@ -2004,9 +2029,7 @@ fn toggle_main_window(app: &AppHandle) {
         if visible && focused {
             let _ = window.hide();
         } else {
-            let _ = window.unminimize();
-            let _ = window.show();
-            let _ = window.set_focus();
+            show_webview_window(&window);
         }
     } else {
         show_main_window(app);
