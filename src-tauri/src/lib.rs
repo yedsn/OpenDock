@@ -109,22 +109,34 @@ struct UpdaterPluginRuntimeConfig {
 }
 
 fn open_with_system(target: &str) -> Result<(), String> {
-    let mut command = if cfg!(target_os = "windows") {
-        let mut cmd = Command::new("cmd"); cmd.args(["/C", "start", "", target]); cmd
-    } else if cfg!(target_os = "macos") {
-        let mut cmd = Command::new("open"); cmd.arg(target); cmd
-    } else {
-        let mut cmd = Command::new("xdg-open"); cmd.arg(target); cmd
-    };
-    command.spawn().map(|_| ()).map_err(|e| e.to_string())
-}
+    #[cfg(target_os = "windows")]
+    {
+        open_target_with_shell(target)
+    }
 
+    #[cfg(target_os = "macos")]
+    {
+        let mut cmd = Command::new("open");
+        cmd.arg(target);
+        cmd.spawn().map(|_| ()).map_err(|e| e.to_string())
+    }
+
+    #[cfg(all(not(target_os = "windows"), not(target_os = "macos")))]
+    {
+        let mut cmd = Command::new("xdg-open");
+        cmd.arg(target);
+        cmd.spawn().map(|_| ()).map_err(|e| e.to_string())
+    }
+}
 fn open_url_with_system(url: &str, new_window: bool) -> Result<(), String> {
-    let mut command = if cfg!(target_os = "windows") {
-        let mut cmd = Command::new("cmd");
-        cmd.args(["/C", "start", "", url]);
-        cmd
-    } else if cfg!(target_os = "macos") {
+    #[cfg(target_os = "windows")]
+    {
+        let _ = new_window;
+        open_target_with_shell(url)
+    }
+
+    #[cfg(target_os = "macos")]
+    {
         if new_window {
             if let Some(app_name) = macos_default_browser_name() {
                 return macos_open_url_new_window(&app_name, url).map(|_| ());
@@ -132,15 +144,17 @@ fn open_url_with_system(url: &str, new_window: bool) -> Result<(), String> {
         }
         let mut cmd = Command::new("open");
         cmd.arg(url);
-        cmd
-    } else {
+        cmd.spawn().map(|_| ()).map_err(|e| e.to_string())
+    }
+
+    #[cfg(all(not(target_os = "windows"), not(target_os = "macos")))]
+    {
+        let _ = new_window;
         let mut cmd = Command::new("xdg-open");
         cmd.arg(url);
-        cmd
-    };
-    command.spawn().map(|_| ()).map_err(|e| e.to_string())
+        cmd.spawn().map(|_| ()).map_err(|e| e.to_string())
+    }
 }
-
 fn expand_env_path(input: &str) -> String {
     let mut output = String::new();
     let chars: Vec<char> = input.chars().collect();
@@ -278,6 +292,7 @@ fn is_macos_app_bundle(path: &str) -> bool {
     cfg!(target_os = "macos") && path.to_lowercase().ends_with(".app")
 }
 
+#[cfg(target_os = "macos")]
 fn macos_browser_app_name_from_bundle_id(bundle_id: &str) -> Option<String> {
     let output = Command::new("mdfind")
         .arg(format!("kMDItemCFBundleIdentifier == '{}'", bundle_id))
@@ -293,6 +308,7 @@ fn macos_browser_app_name_from_bundle_id(bundle_id: &str) -> Option<String> {
         .map(|n| n.to_string_lossy().to_string())
 }
 
+#[cfg(target_os = "macos")]
 fn macos_default_browser_name() -> Option<String> {
     let output = Command::new("plutil")
         .args([
@@ -490,6 +506,23 @@ fn to_wide_null(value: &str) -> Vec<u16> {
     value.encode_utf16().chain(std::iter::once(0)).collect()
 }
 
+#[cfg(target_os = "windows")]
+fn open_target_with_shell(target: &str) -> Result<(), String> {
+    let operation = to_wide_null("open");
+    let file = to_wide_null(target);
+    let result = unsafe {
+        ShellExecuteW(
+            std::ptr::null_mut(),
+            operation.as_ptr(),
+            file.as_ptr(),
+            std::ptr::null(),
+            std::ptr::null(),
+            SW_SHOWNORMAL,
+        )
+    } as isize;
+
+    if result > 32 { Ok(()) } else { Err(format!("ShellExecuteW failed with code {result}")) }
+}
 #[cfg(target_os = "windows")]
 fn open_application_with_shell(path: &str, args: &[String]) -> Result<(), String> {
     let operation = to_wide_null("open");

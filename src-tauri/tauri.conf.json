@@ -5,7 +5,7 @@
     "identifier":  "com.opendock.app",
     "build":  {
                   "beforeDevCommand":  "npm run dev",
-                  "devUrl":  "http://127.0.0.1:5180",
+                  "devUrl":  "http://127.0.0.1:6250",
                   "beforeBuildCommand":  "npm run build",
                   "frontendDist":  "../dist"
               },

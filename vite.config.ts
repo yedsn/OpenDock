@@ -7,7 +7,7 @@ export default defineConfig({
   clearScreen: false,
   server: {
     host: "127.0.0.1",
-    port: 5180,
+    port: 6250,
     strictPort: true
   },
   build: {

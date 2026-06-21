@@ -774,10 +774,8 @@ async function openItemWithTool(item: CollectionItem, tool: OpenTool | undefined
     return callOpenCommand("open_path", { path: item.value });
   }
 
-  // For browser tools opening URLs, pre-start the browser to avoid Edge/Chrome
-  // session restore on cold start, then open the URL.
+  // Single URL opens should launch directly; collection batches handle browser warm-up separately.
   if (tool.type === "浏览器" && (item.type === "URL" || item.value.startsWith("http://") || item.value.startsWith("https://"))) {
-    callOpenCommand("prestart_browser", { browserPath: tool.path });
     return callOpenCommand("open_url_in_browser", {
       browserPath: tool.path,
       url: item.value,
