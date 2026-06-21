@@ -22,7 +22,7 @@ export async function confirmDelete(message: string): Promise<boolean> {
  */
 export async function confirmAction(message: string): Promise<boolean> {
   try {
-    return await ask(message, { title: useI18n().t("confirm.title"), kind: "info", okLabel: useI18n().t("confirm.ok"), cancelLabel: useI18n().t("confirm.cancel") });
+    return await ask(message, { title: useI18n().t("confirm.actionTitle"), kind: "info", okLabel: useI18n().t("confirm.actionOk"), cancelLabel: useI18n().t("confirm.cancel") });
   } catch {
     // Not running inside Tauri (tests / browser dev)
     return window.confirm(message);
