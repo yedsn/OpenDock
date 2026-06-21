@@ -380,7 +380,9 @@
   // Confirm delete dialog
   confirm: {
     title: "确认删除",
+    actionTitle: "确认打开",
     ok: "删除",
+    actionOk: "打开",
     cancel: "取消"
   },
   // Type names (used as display labels, data values stay in Chinese)

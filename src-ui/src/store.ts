@@ -12,6 +12,7 @@ import type { AppData, Collection, CollectionItem, CollectionMode, CollectionTyp
 import type { SearchSuggestion } from "./types";
 import { matchesSearchText, scoreSearchText, createSearchText } from "./pinyin";
 import { useI18n } from "./i18n";
+import { confirmAction } from "./dialog";
 
 // ---- Tauri command bridge ----
 
@@ -21,6 +22,54 @@ const TOGGLE_WINDOW_SHORTCUT_ACTION = "显示/隐藏窗口";
 const DEFAULT_TOGGLE_WINDOW_HOTKEY = "Alt+O";
 
 type DetectedOpenTool = OpenTool;
+
+function desktopPlatform(): "windows" | "macos" | "linux" {
+  const platform = navigator.platform.toLowerCase();
+  const userAgent = navigator.userAgent.toLowerCase();
+  if (platform.includes("win") || userAgent.includes("windows")) return "windows";
+  if (platform.includes("mac") || userAgent.includes("mac os")) return "macos";
+  return "linux";
+}
+
+function isToolPathFromAnotherPlatform(path: string): boolean {
+  const value = path.trim();
+  if (!value || value === "shell:open") return false;
+  const platform = desktopPlatform();
+  const isWindowsPath = /^%[^%]+%[\\/]/.test(value) || /^[A-Za-z]:[\\/]/.test(value) || value.includes("\\");
+  const isMacAppPath = value.startsWith("/Applications/") || value.startsWith("~/Applications/") || value.startsWith("/System/Applications/");
+
+  if (platform === "windows") return isMacAppPath || value.startsWith("/usr/") || value.startsWith("/opt/");
+  if (platform === "macos") return isWindowsPath;
+  return isWindowsPath || isMacAppPath;
+}
+
+function mergeDetectedOpenTools(detectedTools: DetectedOpenTool[]): void {
+  const detectedById = new Map(detectedTools.map((tool) => [tool.id, tool]));
+
+  for (const detected of detectedTools) {
+    const existing = state.data.tools.find((tool) => tool.id === detected.id);
+    if (!existing) {
+      state.data.tools.push(detected);
+      continue;
+    }
+
+    if (!existing.path.trim() || isToolPathFromAnotherPlatform(existing.path)) {
+      existing.name = detected.name;
+      existing.type = detected.type;
+      existing.path = detected.path;
+      existing.args = detected.args;
+      existing.default = existing.default || detected.default;
+    }
+  }
+
+  for (const tool of state.data.tools) {
+    if (!isToolPathFromAnotherPlatform(tool.path) || detectedById.has(tool.id)) continue;
+    if (["浏览器", "编辑器", "Office", "CAD", "系统"].includes(tool.type)) {
+      tool.path = "shell:open";
+      tool.args = tool.type === "浏览器" ? "{url}" : "{path}";
+    }
+  }
+}
 
 async function callOpenCommand(command: string, payload: Record<string, unknown>): Promise<OpenActionResult> {
   try {
@@ -135,6 +184,16 @@ async function init() {
     state.data.activeCollectionId = data.activeCollectionId;
   } catch (e) {
     console.error("DB load failed, using seed data:", e);
+  }
+
+  try {
+    const detectedTools = await invoke<DetectedOpenTool[]>("scan_open_tools");
+    mergeDetectedOpenTools(detectedTools);
+    if (detectedTools.length) {
+      log(`已更新本机打开工具: ${detectedTools.map((tool) => tool.name).join(", ")}`);
+    }
+  } catch (e) {
+    console.warn("Open tool scan failed:", e);
   }
 
   if (state.data.settings.general.openWebInNewWindow === undefined) {
@@ -788,7 +847,7 @@ async function openItemWithTool(item: CollectionItem, tool: OpenTool | undefined
 }
 
 async function openItem(item: CollectionItem): Promise<void> {
-  if (item.type === "命令" && state.data.settings.general.confirmBeforeOpen && !window.confirm(`确认执行命令？\n${item.value}`)) return;
+  if (item.type === "命令" && state.data.settings.general.confirmBeforeOpen && !(await confirmAction(`确认执行命令？\n${item.value}`))) return;
   const tool = resolveToolForItem(item);
   const result = await openItemWithTool(item, tool);
   const collection = findCollectionById(item.collectionId);
@@ -799,7 +858,7 @@ async function openItem(item: CollectionItem): Promise<void> {
 async function openCollection(collection: Collection): Promise<void> {
   const items = collectionItems(collection.id);
   if (!items.length) return log(`集合为空: ${collection.name}`);
-  if (state.data.settings.general.confirmBeforeOpen && items.length > 1 && !window.confirm(`确认打开集合「${collection.name}」中的 ${items.length} 个资源？`)) return;
+  if (state.data.settings.general.confirmBeforeOpen && items.length > 1 && !(await confirmAction(`确认打开集合「${collection.name}」中的 ${items.length} 个资源？`))) return;
   markCollectionRecent(collection);
 
   const openedInBatch = new Set<string>();
@@ -837,7 +896,7 @@ async function openCollection(collection: Collection): Promise<void> {
 async function openScene(scene: Scene): Promise<void> {
   const collections = state.data.collections.filter((c) => c.sceneId === scene.id);
   const count = collections.reduce((sum, c) => sum + collectionItems(c.id).length, 0);
-  if (state.data.settings.general.confirmBeforeOpen && !window.confirm(`确认打开场景「${scene.name}」中的 ${count} 个资源？`)) return;
+  if (state.data.settings.general.confirmBeforeOpen && !(await confirmAction(`确认打开场景「${scene.name}」中的 ${count} 个资源？`))) return;
   for (const collection of collections) await openCollection(collection);
 }
 

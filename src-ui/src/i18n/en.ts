@@ -363,7 +363,9 @@
   },
   confirm: {
     title: "Confirm delete",
+    actionTitle: "Confirm open",
     ok: "Delete",
+    actionOk: "Open",
     cancel: "Cancel"
   },
   types: {
