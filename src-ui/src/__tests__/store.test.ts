@@ -790,6 +790,23 @@ describe("OpenDock store - search suggestions", () => {
       url: "https://example.test/a"
     }));
   });
+  it("hides the window after opening a non-URL item when closeWindowAfterOpen is enabled", async () => {
+    const { useOpenDockStore } = await import("../store");
+    const store = useOpenDockStore();
+    store.state.data.settings.general.closeWindowAfterOpen = true;
+    store.createCollection("Commands", COMMAND_COLLECTION, null, "");
+    const collection = store.state.data.collections.find((entry) => entry.name === "Commands")!;
+    store.createItem(collection.id, "Run Build", "\u547d\u4ee4", "echo build");
+    invokeMock.mockClear();
+    hideWindowMock.mockClear();
+    store.state.search = "Run Build";
+    const itemSuggestion = store.searchSuggestions.value.find((entry) => entry.kind === "item" && entry.title === "Run Build")!;
+    await store.executeSuggestionAndMaybeHide(itemSuggestion);
+    expect(invokeMock).toHaveBeenCalledWith("open_application", expect.objectContaining({
+      args: expect.arrayContaining([expect.stringContaining("echo build")])
+    }));
+    expect(hideWindowMock).toHaveBeenCalledTimes(1);
+  });
   it("can use search Enter to navigate to scene and collection tabs when configured", async () => {
     const { useOpenDockStore } = await import("../store");
     const store = useOpenDockStore();

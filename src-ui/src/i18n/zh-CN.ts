@@ -233,7 +233,7 @@
     navigateToCollection: "定位到集合标签",
     itemResult: "资源结果",
     directlyOpenItem: "直接打开资源",
-    hideWindowAfterOpenLink: "打开链接后隐藏窗口",
+    hideWindowAfterOpenLink: "打开后隐藏窗口",
     // Data panel
     dataOverview: "数据概览",
     recentActivity: "最近活动",

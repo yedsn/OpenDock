@@ -220,7 +220,7 @@
     navigateToCollection: "Navigate to collection tab",
     itemResult: "Resource result",
     directlyOpenItem: "Open resource directly",
-    hideWindowAfterOpenLink: "Hide window after opening a link",
+    hideWindowAfterOpenLink: "Hide window after opening",
     dataOverview: "Data overview",
     recentActivity: "Recent activity",
     dataOverviewDesc: "Review data size and schema version before backing up.",

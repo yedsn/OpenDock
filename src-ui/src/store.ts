@@ -1668,40 +1668,41 @@ const runningTaskCount = computed(() => state.tasks.filter((task) => task.status
 const latestTask = computed(() => state.tasks[0]);
 const webdavPluginInstalled = computed(() => Boolean(state.data.plugins.find((plugin) => plugin.id === "webdav-sync" && plugin.installed && plugin.enabled)));
 
-async function executeSuggestion(suggestion: SearchSuggestion): Promise<void> {
+async function executeSuggestion(suggestion: SearchSuggestion): Promise<boolean> {
   if (suggestion.kind === "scene" && suggestion.sceneId) {
     const scene = state.data.scenes.find((entry) => entry.id === suggestion.sceneId);
-    if (!scene) return;
+    if (!scene) return false;
     if (state.data.settings.search.sceneEnterBehavior === "open") {
       await openScene(scene);
-      return;
+      return true;
     }
     openTab({ id: 'scene-' + suggestion.sceneId, kind: "scene", title: suggestion.title, sceneId: suggestion.sceneId });
   } else if (suggestion.kind === "collection" && suggestion.collectionId) {
     const collection = findCollectionById(suggestion.collectionId);
-    if (!collection) return;
+    if (!collection) return false;
     if (state.data.settings.search.collectionEnterBehavior === "open") {
       await openCollection(collection);
-      return;
+      return true;
     }
     openTab({ id: 'collection-' + suggestion.collectionId, kind: "collection", title: suggestion.title, collectionId: suggestion.collectionId, sceneId: suggestion.sceneId });
   } else if (suggestion.kind === "item" && suggestion.itemId) {
     const item = state.data.items.find((i) => i.id === suggestion.itemId);
-    if (!item) return;
+    if (!item) return false;
     if (state.data.settings.search.itemEnterBehavior === "open") {
       await openItem(item);
-      return;
+      return true;
     }
       const collection = findCollectionById(item.collectionId);
     if (collection) {
       openTab({ id: 'collection-' + collection.id, kind: "collection", title: collection.name, collectionId: collection.id, sceneId: collection.sceneId || undefined });
     }
   }
+  return false;
 }
 
 async function executeSuggestionAndMaybeHide(suggestion: SearchSuggestion): Promise<void> {
-  await executeSuggestion(suggestion);
-  if (suggestion.isUrl && state.data.settings.general.closeWindowAfterOpen) {
+  const opened = await executeSuggestion(suggestion);
+  if (opened && state.data.settings.general.closeWindowAfterOpen) {
     const { getCurrentWindow } = await import("@tauri-apps/api/window");
     await getCurrentWindow().hide();
   }
