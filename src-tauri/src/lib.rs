@@ -1994,9 +1994,19 @@ fn show_main_window(app: &AppHandle) {
 fn show_webview_window(window: &tauri::WebviewWindow) {
     let _ = window.unminimize();
     let _ = window.show();
+    #[cfg(target_os = "macos")]
+    activate_window_for_macos(window);
     let _ = window.set_focus();
     #[cfg(target_os = "windows")]
     activate_window_for_virtual_desktop(window);
+}
+
+#[cfg(target_os = "macos")]
+fn activate_window_for_macos(window: &tauri::WebviewWindow) {
+    // A frameless window restored from the Dock or another Space can remain behind
+    // other apps unless we briefly raise it above the normal window level.
+    let _ = window.set_always_on_top(true);
+    let _ = window.set_always_on_top(false);
 }
 
 #[cfg(target_os = "windows")]
@@ -2336,8 +2346,14 @@ pub fn run() {
             snapshot_create, snapshot_update_meta, snapshot_list, snapshot_get, snapshot_delete, snapshot_prune,
             marketplace_fetch_text, marketplace_install_plugin_files, marketplace_get_installed_dir, marketplace_delete_plugin_dir
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running OpenDock");
+        .build(tauri::generate_context!())
+        .expect("error while building OpenDock")
+        .run(|app, event| {
+            #[cfg(target_os = "macos")]
+            if let tauri::RunEvent::Reopen { .. } = event {
+                show_main_window(app);
+            }
+        });
 }
 
 #[cfg(test)]
