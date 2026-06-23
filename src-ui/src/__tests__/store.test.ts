@@ -586,12 +586,7 @@ describe("OpenDock store - open tool configuration", () => {
     store.createItem(collection.id, "Batch URL A", "URL", "https://a.example.com");
     store.createItem(collection.id, "Batch URL B", "URL", "https://b.example.com");
     await store.openCollection(collection);
-    // Pre-start browser then batch-open all URLs via open_urls_in_browser
-    const prestartCalls = invokeMock.mock.calls.filter(([cmd]) => cmd === "prestart_browser");
-    expect(prestartCalls).toHaveLength(1);
-    expect(prestartCalls[0]).toEqual(["prestart_browser", {
-      browserPath: "C:/Browser/browser.exe"
-    }]);
+    // Batch-open all URLs via open_urls_in_browser
     const batchCalls = invokeMock.mock.calls.filter(([cmd]) => cmd === "open_urls_in_browser");
     expect(batchCalls).toHaveLength(1);
     expect(batchCalls[0]).toEqual(["open_urls_in_browser", {
@@ -770,10 +765,7 @@ describe("OpenDock store - search suggestions", () => {
     store.state.search = "khmh";
     const collectionSuggestion = store.searchSuggestions.value.find((entry) => entry.kind === "collection" && entry.title === "客户门户网页")!;
     await store.executeSuggestionAndMaybeHide(collectionSuggestion);
-    // Collection open: pre-start browser then batch-open all URLs
-    expect(invokeMock).toHaveBeenCalledWith("prestart_browser", {
-      browserPath: "C:/Browser/browser.exe"
-    });
+    // Collection open: batch-open all URLs
     expect(invokeMock).toHaveBeenCalledWith("open_urls_in_browser", {
       browserPath: "C:/Browser/browser.exe",
       urls: ["https://example.test/a", "https://example.test/b"],

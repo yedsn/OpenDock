@@ -1,7 +1,9 @@
-use std::env;
+﻿use std::env;
 use std::fs;
 use std::path::PathBuf;
 use std::process::Command;
+#[cfg(target_os = "windows")]
+use std::os::windows::process::CommandExt;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
 use serde::{Deserialize, Serialize};
@@ -28,6 +30,20 @@ use windows_sys::Win32::UI::Shell::ShellExecuteW;
 use windows_sys::Win32::UI::WindowsAndMessaging::{
     SetForegroundWindow, ShowWindow, SW_RESTORE, SW_SHOWNORMAL,
 };
+
+/// Windows creation flag that prevents a console window from being created
+/// for the child process. Applied to all Command spawns so that launching
+/// programs (cmd, powershell, browsers, etc.) never flashes a terminal.
+#[cfg(target_os = "windows")]
+const CREATE_NO_WINDOW: u32 = 0x08000000;
+
+/// Apply platform-specific flags to prevent console window pop-ups.
+#[cfg(target_os = "windows")]
+fn no_console(cmd: &mut Command) -> &mut Command {
+    cmd.creation_flags(CREATE_NO_WINDOW)
+}
+#[cfg(not(target_os = "windows"))]
+fn no_console(cmd: &mut Command) -> &mut Command { cmd }
 
 // ---- OpenActionResult ----
 
@@ -118,6 +134,7 @@ fn open_with_system(target: &str) -> Result<(), String> {
     {
         let mut cmd = Command::new("open");
         cmd.arg(target);
+        no_console(&mut cmd);
         cmd.spawn().map(|_| ()).map_err(|e| e.to_string())
     }
 
@@ -125,6 +142,7 @@ fn open_with_system(target: &str) -> Result<(), String> {
     {
         let mut cmd = Command::new("xdg-open");
         cmd.arg(target);
+        no_console(&mut cmd);
         cmd.spawn().map(|_| ()).map_err(|e| e.to_string())
     }
 }
@@ -144,6 +162,7 @@ fn open_url_with_system(url: &str, new_window: bool) -> Result<(), String> {
         }
         let mut cmd = Command::new("open");
         cmd.arg(url);
+        no_console(&mut cmd);
         cmd.spawn().map(|_| ()).map_err(|e| e.to_string())
     }
 
@@ -152,6 +171,7 @@ fn open_url_with_system(url: &str, new_window: bool) -> Result<(), String> {
         let _ = new_window;
         let mut cmd = Command::new("xdg-open");
         cmd.arg(url);
+        no_console(&mut cmd);
         cmd.spawn().map(|_| ()).map_err(|e| e.to_string())
     }
 }
@@ -410,6 +430,7 @@ fn macos_open_urls_new_window_with_binary(app_path: &str, urls: &[String]) -> Re
     let mut cmd = Command::new(executable);
     cmd.arg("--new-window");
     cmd.args(urls);
+    no_console(&mut cmd);
     cmd.spawn()
         .map(|_| urls.len())
         .map_err(|e| format!("browser executable failed: {e}"))
@@ -483,6 +504,7 @@ fn open_macos_app_bundle(path: &str, args: &[String]) -> Result<(), String> {
         cmd.arg("--args");
         cmd.args(app_args);
     }
+    no_console(&mut cmd);
     cmd.spawn().map(|_| ()).map_err(|e| e.to_string())
 }
 
@@ -493,8 +515,10 @@ fn run_macos_terminal_command(path: &str, args: &[String]) -> Option<Result<(), 
 
     let command = args.join(" ");
     let script = format!("tell application \"Terminal\" to do script {:?}", command);
-    let result = Command::new("osascript")
-        .args(["-e", &script, "-e", "tell application \"Terminal\" to activate"])
+    let mut osa_cmd = Command::new("osascript");
+    osa_cmd.args(["-e", &script, "-e", "tell application \"Terminal\" to activate"]);
+    no_console(&mut osa_cmd);
+    let result = osa_cmd
         .spawn()
         .map(|_| ())
         .map_err(|e| e.to_string());
@@ -651,10 +675,13 @@ fn prestart_browser(browser_path: String) -> OpenActionResult {
 
     // Check if the browser process is already running.
     let running = if cfg!(target_os = "windows") {
-        Command::new("tasklist")
+        let mut tasklist_cmd = Command::new("tasklist");
+        tasklist_cmd
             .args(["/FI", &format!("IMAGENAME eq {exe_name}"), "/NH", "/FO", "CSV"])
             .stdout(std::process::Stdio::piped())
-            .stderr(std::process::Stdio::null())
+            .stderr(std::process::Stdio::null());
+        no_console(&mut tasklist_cmd);
+        tasklist_cmd
             .output()
             .map(|o| String::from_utf8_lossy(&o.stdout).to_lowercase().contains(&exe_name))
             .unwrap_or(false)
@@ -682,6 +709,7 @@ fn prestart_browser(browser_path: String) -> OpenActionResult {
     } else {
         let mut pre_cmd = Command::new(&resolved_path);
         pre_cmd.arg("about:blank");
+        no_console(&mut pre_cmd);
         pre_cmd.spawn().map(|_| ()).map_err(|e| e.to_string())
     };
     match result { Ok(_) => success("Browser pre-started"), Err(e) => failure(format!("Failed to pre-start browser: {e}")) }
@@ -706,6 +734,7 @@ fn open_url_in_browser(browser_path: String, url: String, new_window: bool) -> O
         let mut cmd = Command::new("open");
         cmd.args(["-a", &resolved_path]);
         cmd.arg(&url);
+        no_console(&mut cmd);
         return match cmd.spawn() {
             Ok(_) => success(format!("Opened URL in browser: {url}")),
             Err(e) => failure(format!("Failed to open URL in browser: {e}")),
@@ -718,6 +747,7 @@ fn open_url_in_browser(browser_path: String, url: String, new_window: bool) -> O
     }
     cmd.arg(&url);
 
+    no_console(&mut cmd);
     match cmd.spawn() {
         Ok(_) => success(format!("Opened URL in browser: {url}")),
         Err(e) => {
@@ -762,6 +792,7 @@ fn open_urls_in_browser(browser_path: String, urls: Vec<String>, new_window: boo
         let mut cmd = Command::new("open");
         cmd.args(["-a", &resolved_path]);
         cmd.args(&urls);
+        no_console(&mut cmd);
         return match cmd.spawn() {
             Ok(_) => success(format!("Opened {} URLs in browser: {app_name}", urls.len())),
             Err(e) => failure(format!("Failed to open URLs in browser: {e}")),
@@ -773,6 +804,7 @@ fn open_urls_in_browser(browser_path: String, urls: Vec<String>, new_window: boo
         cmd.arg("--new-window");
     }
     cmd.args(&urls);
+    no_console(&mut cmd);
     match cmd.spawn() {
         Ok(_) => success(format!("Opened {} URLs in browser: {resolved_path}", urls.len())),
         Err(e) => failure(format!("Failed to open URLs in browser: {e}")),
@@ -811,6 +843,7 @@ fn open_application(path: String, args: Vec<String>) -> OpenActionResult {
     }
 
     let mut cmd = Command::new(&resolved_path); cmd.args(&args);
+    no_console(&mut cmd);
     match cmd.spawn() {
         Ok(_) => success(format!("Started application: {resolved_path}")),
         Err(e) => {
@@ -956,6 +989,7 @@ fn run_command(command: String, working_directory: Option<String>) -> OpenAction
         let mut cmd = Command::new("sh"); cmd.args(["-c", &command]); cmd
     };
     if let Some(dir) = working_directory.filter(|d| !d.trim().is_empty()) { process.current_dir(dir); }
+    no_console(&mut process);
     match process.spawn() { Ok(_) => success(format!("Started command: {command}")), Err(e) => failure(format!("Failed to run command: {e}")) }
 }
 

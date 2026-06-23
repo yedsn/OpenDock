@@ -283,11 +283,8 @@ async function init() {
   if (state.data.settings.general.autoSnapshotKeepCount === undefined) {
     state.data.settings.general.autoSnapshotKeepCount = 7;
   }
-  try {
-    await refreshSnapshots();
-  } catch (e) {
-    console.error("Snapshot init failed:", e);
-  }
+  // Defer snapshot refresh and background sync to avoid blocking startup
+  refreshSnapshots().catch((e) => console.error("Snapshot init failed:", e));
   startWebdavAutoSync();
   startAutoSnapshotTimer();
 }
@@ -876,9 +873,7 @@ async function openCollection(collection: Collection): Promise<void> {
   for (const { tool, items: urlItems } of urlGroups.values()) {
     if (urlItems.length <= 1) continue;
     const urls = urlItems.map((item) => item.value);
-    // Pre-start browser to consume session restore on cold start,
-    // then open all URLs in one call so they land as tabs in a single window.
-    callOpenCommand("prestart_browser", { browserPath: tool.path });
+    // Open all URLs in one call so they land as tabs in a single window.
     const result = await callOpenCommand("open_urls_in_browser", {
       browserPath: tool.path,
       urls,

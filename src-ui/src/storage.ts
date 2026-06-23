@@ -32,21 +32,42 @@ export async function loadAppData(): Promise<AppData> {
     return seed;
   }
 
+  // Parallelize DB reads to reduce startup latency
+  const [
+    activeWorkspaceId, activeSceneId, activeCollectionId,
+    workspaces, scenes, collections, items,
+    tools, plugins, pluginStore, settings, activity, tombstones,
+  ] = await Promise.all([
+    dbGetValue(ACTIVE_WORKSPACE_KEY),
+    dbGetValue(ACTIVE_SCENE_KEY),
+    dbGetValue(ACTIVE_COLLECTION_KEY),
+    dbListTable("workspaces"),
+    dbListTable("scenes"),
+    dbListTable("collections"),
+    dbListTable("items"),
+    dbListTable("tools"),
+    dbListTable("plugins"),
+    dbListTable("plugin_store"),
+    dbGetValue("settings"),
+    dbListTable("activity"),
+    dbGetValue("tombstones"),
+  ]);
+
   return {
     schemaVersion,
-    activeWorkspaceId: (await dbGetValue(ACTIVE_WORKSPACE_KEY)) || "default",
-    activeSceneId: (await dbGetValue(ACTIVE_SCENE_KEY)) || "official",
-    activeCollectionId: (await dbGetValue(ACTIVE_COLLECTION_KEY)) || "dev-web",
-    workspaces: parseJsonRows(await dbListTable("workspaces")),
-    scenes: parseJsonRows(await dbListTable("scenes")),
-    collections: parseJsonRows(await dbListTable("collections")),
-    items: parseJsonRows(await dbListTable("items")),
-    tools: parseJsonRows(await dbListTable("tools")),
-    plugins: parseJsonRows(await dbListTable("plugins")),
-    pluginStore: parseJsonRows(await dbListTable("plugin_store")),
-    settings: JSON.parse((await dbGetValue("settings")) || "{}"),
-    activity: parseJsonRows(await dbListTable("activity")),
-    tombstones: JSON.parse((await dbGetValue("tombstones")) || "[]"),
+    activeWorkspaceId: activeWorkspaceId || "default",
+    activeSceneId: activeSceneId || "official",
+    activeCollectionId: activeCollectionId || "dev-web",
+    workspaces: parseJsonRows(workspaces),
+    scenes: parseJsonRows(scenes),
+    collections: parseJsonRows(collections),
+    items: parseJsonRows(items),
+    tools: parseJsonRows(tools),
+    plugins: parseJsonRows(plugins),
+    pluginStore: parseJsonRows(pluginStore),
+    settings: JSON.parse(settings || "{}"),
+    activity: parseJsonRows(activity),
+    tombstones: JSON.parse(tombstones || "[]"),
   };
 }
 
