@@ -184,7 +184,7 @@ export function createSeedData(): AppData {
       ...builtInPluginStoreEntries
     ]),
     settings: {
-      general: { defaultView: "全部资源", recentLimit: 12, confirmBeforeOpen: false, logOpenFailures: true, openWebInNewWindow: false, closeWindowAfterOpen: true, language: "简体中文", autoSnapshotIntervalMinutes: 60, autoSnapshotKeepCount: 7, autoStart: false, startMinimized: false },
+      general: { defaultView: "全部资源", recentLimit: 12, confirmBeforeOpen: false, logOpenFailures: true, openWebInNewWindow: true, closeWindowAfterOpen: true, language: "简体中文", autoSnapshotIntervalMinutes: 60, autoSnapshotKeepCount: 7, autoStart: false, startMinimized: false },
       search: { sceneEnterBehavior: "open", collectionEnterBehavior: "open", itemEnterBehavior: "open" },
       templates: ["代码目录", "本地网页", "开发环境网页", "线上环境网页", "常用命令"],
       shortcuts: [
