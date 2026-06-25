@@ -3,7 +3,6 @@ import { computed, reactive, watch } from "vue";
 import { X } from "lucide-vue-next";
 import { useOpenDockStore } from "../store";
 import { useI18n } from "../i18n";
-import { sceneTypeOptions, collectionTypeOptions } from "../helpers";
 import type { Collection, CollectionItem, CollectionType, ItemType, Scene, SceneType, Workspace } from "../types";
 
 const store = useOpenDockStore();
@@ -11,7 +10,7 @@ const { t } = useI18n();
 
 const form = reactive({
   sceneName: "",
-  sceneType: "项目" as SceneType,
+  sceneType: "通用" as SceneType,
   sceneDescription: "",
   collectionName: "",
   collectionType: "网页集合" as CollectionType,
@@ -140,22 +139,12 @@ function submitModal() {
       </div>
 
       <div v-if="store.state.modal.kind === 'scene'" class="settings-grid">
-        <label class="setting-field"><span>{{ $t("modal.sceneName") }}</span><input v-model="form.sceneName" required /></label>
-        <label class="setting-field"><span>{{ $t("modal.sceneType") }}</span>
-          <select v-model="form.sceneType">
-            <option v-for="type in sceneTypeOptions" :key="type">{{ type }}</option>
-          </select>
-        </label>
+        <label class="setting-field full"><span>{{ $t("modal.sceneName") }}</span><input v-model="form.sceneName" required /></label>
         <label class="setting-field full"><span>{{ $t("modal.description") }}</span><textarea v-model="form.sceneDescription"></textarea></label>
       </div>
 
       <div v-if="store.state.modal.kind === 'collection'" class="settings-grid">
         <label class="setting-field"><span>{{ $t("modal.collectionName") }}</span><input v-model="form.collectionName" required /></label>
-        <label class="setting-field"><span>{{ $t("modal.collectionType") }}</span>
-          <select v-model="form.collectionType">
-            <option v-for="type in collectionTypeOptions" :key="type">{{ type }}</option>
-          </select>
-        </label>
         <label class="setting-field"><span>{{ $t("modal.associatedScene") }}</span>
           <select v-model="form.collectionSceneId">
             <option value="">{{ $t("modal.noScene") }}</option>

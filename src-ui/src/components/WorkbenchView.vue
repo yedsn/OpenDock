@@ -67,7 +67,7 @@ const collectionRows = computed<CollectionRow[]>(() => {
       type: collection.type,
       sceneId: collection.sceneId,
       favorite: collection.favorite,
-      subtitle: `${collection.type} · ${sceneName}`,
+      subtitle: sceneName,
       source: collection
     };
   });
@@ -88,7 +88,7 @@ const itemRows = computed<ItemRow[]>(() =>
     name: item.name,
     type: item.type,
     value: item.value,
-    subtitle: `${item.type} · ${item.value}`,
+    subtitle: item.value,
     source: item
   }))
 );
@@ -115,7 +115,7 @@ const paneTitle = computed(() => isQuickViewTab.value ? quickViewLabels.value[st
 const paneDescription = computed(() => {
   const count = collectionRows.value.length;
   if (isQuickViewTab.value) return `${t("workbench.allScenes")} \u00b7 ${count} ${t("settings.collections")}`;
-  return `${t("types.scene" + store.activeScene().type.charAt(0).toUpperCase() + store.activeScene().type.slice(1)) || store.activeScene().type}${t("types.sceneSuffix")} \u00b7 ${count} ${t("settings.collections")}`;
+  return `${count} ${t("settings.collections")}`;
 });
 
 function editScene(sceneId: string) {
@@ -233,7 +233,6 @@ function selectCollection(collection: { id: string; name: string; sceneId: strin
     <section class="resource-pane">
       <div class="resource-header">
         <div>
-          <div class="type-label">{{ activeCollection ? $typeLabel(activeCollection.type) : 'Collection' }}</div>
           <h2>{{ activeCollection?.name || t("workbench.unselectedCollection") }}</h2>
           <p>{{ activeCollection?.description || t("workbench.selectCollectionHint") }}</p>
         </div>

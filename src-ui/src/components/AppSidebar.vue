@@ -199,7 +199,7 @@ onUnmounted(() => {
           :class="{ active: store.state.activeTabId === 'scene-' + scene.id }"
           @click="store.openTab({ id: 'scene-' + scene.id, kind: 'scene', title: scene.name, sceneId: scene.id })">
           <Code2 />
-          <span><span class="scene-name">{{ scene.name }}</span><small class="scene-detail">{{ scene.type }} · {{ scene.description }}</small></span>
+          <span><span class="scene-name">{{ scene.name }}</span><small class="scene-detail">{{ scene.description }}</small></span>
           <span class="scene-actions">
             <Pencil class="row-edit-icon" @click.stop="editScene(scene.id)" />
             <Trash2 class="row-edit-icon danger" @click.stop="deleteSceneConfirm(scene.id)" />
