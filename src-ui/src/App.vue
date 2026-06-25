@@ -9,6 +9,7 @@ import AppSidebar from "./components/AppSidebar.vue";
 import WorkbenchView from "./components/WorkbenchView.vue";
 import SettingsView from "./components/SettingsView.vue";
 import CreateEntityModal from "./components/CreateEntityModal.vue";
+import ToolSetupGuide from "./components/ToolSetupGuide.vue";
 import TaskDock from "./components/TaskDock.vue";
 import { invoke } from "@tauri-apps/api/core";
 import { themeCssVars } from "./themes";
@@ -218,8 +219,11 @@ onUnmounted(() => {
         <button role="menuitem" @click="closeAllTabs">{{ $t("app.closeAll") }}</button>
       </div>
 
-      <WorkbenchView v-if="store.state.mainView === 'workspace'" />
-      <SettingsView v-else />
+      <ToolSetupGuide v-if="!store.state.toolSetupDone" />
+      <template v-else>
+        <WorkbenchView v-if="store.state.mainView === 'workspace'" />
+        <SettingsView v-else />
+      </template>
 
       <footer class="status-bar">
         <span>{{ store.activeWorkspace().name }}</span>

@@ -146,7 +146,8 @@ const state = reactive({
   marketplaceInstalling: null as string | null,
   webdavPendingConflict: null as WebDavPendingConflict | null,
   taskPanelOpen: false,
-  tasks: [] as TaskEntry[]
+  tasks: [] as TaskEntry[],
+  toolSetupDone: false
 });
 
 let saveTimer: ReturnType<typeof setTimeout> | null = null;
@@ -218,6 +219,10 @@ async function init() {
   } catch (e) {
     console.warn("Open tool scan failed:", e);
   }
+
+  // Check if tool setup is needed (only system default tool exists = fresh install)
+  const nonSystemTools = state.data.tools.filter((t) => t.type !== "系统");
+  state.toolSetupDone = nonSystemTools.length > 0;
 
   if (state.data.settings.general.openWebInNewWindow === undefined) {
     state.data.settings.general.openWebInNewWindow = false;
@@ -529,7 +534,9 @@ function collectionItems(collectionId: string): CollectionItem[] {
 function defaultToolForCollection(type: CollectionType): string {
   const allowed = allowedToolTypesForCollection(type);
   const tools = visibleTools();
-  const tool = tools.find((t) => allowed.includes(t.type) && t.default)
+  const tool = tools.find((t) => allowed.includes(t.type) && t.default && t.type !== "系统")
+    || tools.find((t) => allowed.includes(t.type) && t.default)
+    || tools.find((t) => allowed.includes(t.type) && t.type !== "系统")
     || tools.find((t) => allowed.includes(t.type))
     || state.data.tools.find((t) => t.type === "系统")
     || state.data.tools[0];
@@ -539,7 +546,10 @@ function defaultToolForCollection(type: CollectionType): string {
 function defaultToolForItem(type: ItemType): string {
   const allowed = allowedToolTypesForItem(type);
   const tools = visibleTools();
-  const tool = tools.find((t) => allowed.includes(t.type) && t.default)
+  // Prefer specific (non-system) tool types over generic "系统" fallback
+  const tool = tools.find((t) => allowed.includes(t.type) && t.default && t.type !== "系统")
+    || tools.find((t) => allowed.includes(t.type) && t.default)
+    || tools.find((t) => allowed.includes(t.type) && t.type !== "系统")
     || tools.find((t) => allowed.includes(t.type))
     || state.data.tools.find((t) => t.type === "系统")
     || state.data.tools[0];
@@ -790,6 +800,11 @@ async function scanOpenTools(): Promise<{ detected: DetectedOpenTool[]; added: D
   }
 
   return result;
+}
+
+function completeToolSetup(): void {
+  state.toolSetupDone = true;
+  log("打开工具配置完成");
 }
 
 // ---- Open actions (call Tauri) ----
@@ -1487,6 +1502,7 @@ async function resetData(): Promise<void> {
     console.error("Pre-reset snapshot failed:", e);
   }
   state.data = await resetAppData();
+  state.toolSetupDone = false;
   await refreshSnapshots();
   startAutoSnapshotTimer();
   log("重置应用数据");
@@ -1905,6 +1921,7 @@ export function useOpenDockStore() {
     deleteTool,
     setDefaultTool,
     scanOpenTools,
+    completeToolSetup,
     updateToggleWindowHotkey,
     openItem,
     openCollection,

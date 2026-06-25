@@ -540,13 +540,13 @@ describe("OpenDock store - open tool configuration", () => {
   it("opens URL items through the configured default browser tool", async () => {
     const { useOpenDockStore } = await import("../store");
     const store = useOpenDockStore();
+    store.createTool("Chrome", "浏览器", "C:/Browser/browser.exe", "--new-window {url}");
     const collection = store.state.data.collections.find((c) => c.type === WEB_COLLECTION)!;
     const tool = store.state.data.tools.find((entry) => entry.type === "浏览器")!;
-    tool.path = "C:/Browser/browser.exe";
-    tool.args = "--new-window {url}";
     tool.default = true;
     store.createItem(collection.id, "Tool URL", "URL", "https://example.com");
     const item = store.state.data.items.find((entry) => entry.name === "Tool URL")!;
+
     await store.openItem(item);
     expect(invokeMock).toHaveBeenCalledWith("open_url_in_browser", {
       browserPath: "C:/Browser/browser.exe",
@@ -558,10 +558,9 @@ describe("OpenDock store - open tool configuration", () => {
     const { useOpenDockStore } = await import("../store");
     const store = useOpenDockStore();
     store.state.data.settings.general.openWebInNewWindow = false;
+    store.createTool("Chrome", "浏览器", "C:/Browser/browser.exe", "{url}");
     const collection = store.state.data.collections.find((c) => c.type === WEB_COLLECTION)!;
     const tool = store.state.data.tools.find((entry) => entry.type === "浏览器")!;
-    tool.path = "C:/Browser/browser.exe";
-    tool.args = "{url}";
     tool.default = true;
     store.createItem(collection.id, "Same Window URL", "URL", "https://example.com");
     const item = store.state.data.items.find((entry) => entry.name === "Same Window URL")!;
@@ -576,13 +575,12 @@ describe("OpenDock store - open tool configuration", () => {
     const { useOpenDockStore } = await import("../store");
     const store = useOpenDockStore();
     store.state.data.settings.general.confirmBeforeOpen = false;
+    store.createTool("Chrome", "浏览器", "C:/Browser/browser.exe", "{url}");
+    const chromeTool = store.state.data.tools.find((entry) => entry.name === "Chrome")!;
+    chromeTool.default = true;
     store.createCollection("Batch Web Collection", WEB_COLLECTION, null, "");
     const collection = store.state.data.collections.find((c) => c.name === "Batch Web Collection")!;
-    collection.defaultToolId = "chrome";
-    const tool = store.state.data.tools.find((entry) => entry.id === "chrome")!;
-    tool.path = "C:/Browser/browser.exe";
-    tool.args = "{url}";
-    tool.default = true;
+    collection.defaultToolId = chromeTool.id;
     store.createItem(collection.id, "Batch URL A", "URL", "https://a.example.com");
     store.createItem(collection.id, "Batch URL B", "URL", "https://b.example.com");
     await store.openCollection(collection);
@@ -598,6 +596,8 @@ describe("OpenDock store - open tool configuration", () => {
   it("deletes a tool and clears item references while preserving a default for that type", async () => {
     const { useOpenDockStore } = await import("../store");
     const store = useOpenDockStore();
+    store.createTool("Chrome", "浏览器", "C:/chrome.exe", "{url}");
+    store.state.data.tools.find((entry) => entry.name === "Chrome")!.default = true;
     store.createTool("Alt Browser", "浏览器", "C:/alt.exe", "{url}");
     const tool = store.state.data.tools.find((entry) => entry.name === "Alt Browser")!;
     const collection = store.state.data.collections.find((c) => c.type === WEB_COLLECTION)!;
@@ -611,6 +611,7 @@ describe("OpenDock store - open tool configuration", () => {
   it("only exposes plugin-contributed tool types when the plugin is enabled", async () => {
     const { useOpenDockStore } = await import("../store");
     const store = useOpenDockStore();
+    store.createTool("AutoCAD", "CAD", "C:/AutoCAD/acad.exe", "{path}");
     const cadPlugin = store.state.data.plugins.find((entry) => entry.id === "cad")!;
     expect(cadPlugin.enabled).toBe(false);
     expect(store.availableToolTypes()).not.toContain("CAD");
@@ -696,10 +697,9 @@ describe("OpenDock store - open tool configuration", () => {
     const { useOpenDockStore } = await import("../store");
     const store = useOpenDockStore();
     store.state.data.settings.general.confirmBeforeOpen = false;
+    store.createTool("VS Code", "编辑器", "C:/Editor/code.exe", "{path}");
     const collection = store.state.data.collections.find((c) => c.type === "目录集合")!;
     const editor = store.state.data.tools.find((entry) => entry.type === "编辑器")!;
-    editor.path = "C:/Editor/code.exe";
-    editor.args = "{path}";
     editor.default = true;
     // Remote URI should produce --folder-uri
     store.createItem(collection.id, "Remote Dir", "目录", "vscode-remote://ssh-remote+root@server/path/to/project");
@@ -751,10 +751,9 @@ describe("OpenDock store - search suggestions", () => {
     const { useOpenDockStore } = await import("../store");
     const store = useOpenDockStore();
     store.state.data.settings.general.confirmBeforeOpen = false;
-    const browser = store.state.data.tools.find((entry) => entry.type === "浏览器")!;
-    browser.path = "C:/Browser/browser.exe";
-    browser.args = "{url}";
-    browser.default = true;
+    store.state.data.settings.general.closeWindowAfterOpen = false;
+    store.createTool("Chrome", "浏览器", "C:/Browser/browser.exe", "{url}");
+    store.state.data.tools.find((entry) => entry.name === "Chrome")!.default = true;
     store.createScene("客户门户", OFFICE);
     const scene = store.state.data.scenes.find((entry) => entry.name === "客户门户")!;
     store.createCollection("客户门户网页", WEB_COLLECTION, scene.id, "站点入口");
@@ -786,6 +785,8 @@ describe("OpenDock store - search suggestions", () => {
     const { useOpenDockStore } = await import("../store");
     const store = useOpenDockStore();
     store.state.data.settings.general.closeWindowAfterOpen = true;
+    store.createTool("Terminal", "终端", "C:/terminal.exe", "{command}");
+    store.state.data.tools.find((entry) => entry.name === "Terminal")!.default = true;
     store.createCollection("Commands", COMMAND_COLLECTION, null, "");
     const collection = store.state.data.collections.find((entry) => entry.name === "Commands")!;
     store.createItem(collection.id, "Run Build", "\u547d\u4ee4", "echo build");

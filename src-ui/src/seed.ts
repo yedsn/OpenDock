@@ -50,13 +50,6 @@ const scenes: Scene[] = [
 ];
 
 const tools: OpenTool[] = [
-  { id: "cursor", name: "Cursor", type: "编辑器", path: "/Applications/Cursor.app", args: "{path}", default: true },
-  { id: "vscode", name: "VS Code", type: "编辑器", path: "/Applications/Visual Studio Code.app", args: "{path}", default: false },
-  { id: "chrome", name: "Chrome", type: "浏览器", path: "/Applications/Google Chrome.app", args: "{url}", default: true },
-  { id: "safari", name: "Safari", type: "浏览器", path: "/Applications/Safari.app", args: "{url}", default: false },
-  { id: "terminal", name: "Terminal", type: "终端", path: "/System/Applications/Utilities/Terminal.app", args: "{command}", default: true },
-  { id: "iterm", name: "iTerm", type: "终端", path: "/Applications/iTerm.app", args: "{command}", default: false },
-  { id: "excel", name: "Excel", type: "Office", path: "/Applications/Microsoft Excel.app", args: "{path}", default: true },
   { id: "system", name: "系统默认应用", type: "系统", path: "shell:open", args: "{path}", default: true }
 ];
 
