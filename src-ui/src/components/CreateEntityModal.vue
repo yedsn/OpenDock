@@ -195,7 +195,7 @@ function submitModal() {
 
       <div class="modal-actions">
         <button class="settings-action-button" type="button" @click="closeModal">{{ $t("modal.cancel") }}</button>
-        <button class="run-button" type="submit">isEdit ? ("modal.save") : ("modal.confirm")</button>
+        <button class="run-button" type="submit">{{ isEdit ? $t("modal.save") : $t("modal.confirm") }}</button>
       </div>
     </form>
   </div>

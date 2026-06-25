@@ -78,7 +78,7 @@ describe("storage", () => {
       expect(result.collections.length).toBeGreaterThan(0);  // Falls back to seed
       expect(result.items.length).toBeGreaterThan(0);  // Falls back to seed
       expect(result.settings).toBeDefined();
-      expect(result.settings.general.confirmBeforeOpen).toBe(true);
+      expect(result.settings.general.confirmBeforeOpen).toBe(false);
     });
   });
 

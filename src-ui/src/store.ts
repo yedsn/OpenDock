@@ -220,10 +220,10 @@ async function init() {
   }
 
   if (state.data.settings.general.openWebInNewWindow === undefined) {
-    state.data.settings.general.openWebInNewWindow = true;
+    state.data.settings.general.openWebInNewWindow = false;
   }
   if (state.data.settings.general.closeWindowAfterOpen === undefined) {
-    state.data.settings.general.closeWindowAfterOpen = false;
+    state.data.settings.general.closeWindowAfterOpen = true;
   }
   const legacySearchEnterBehavior = (state.data.settings.general as Partial<{ searchEnterBehavior: "open" | "navigate" }>).searchEnterBehavior;
   if (!state.data.settings.search) {
