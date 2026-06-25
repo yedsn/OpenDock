@@ -675,7 +675,7 @@ function createItem(collectionId: string, name: string, type: ItemType, value: s
   const tool = state.data.tools.find((entry) => entry.id === resolvedToolId);
   const item: CollectionItem = {
     id: makeId("item"), workspaceId: state.data.activeWorkspaceId, collectionId, name, type, value, workingDirectory,
-    toolId: resolvedToolId || undefined, tool: tool?.name || meta.tool, icon: meta.icon, color: meta.color, pluginData,
+    toolId: toolId || undefined, tool: tool?.name || meta.tool, icon: meta.icon, color: meta.color, pluginData,
     sort: collectionItems(collectionId).length + 1, createdAt: nowIso(), updatedAt: nowIso()
   };
   state.data.items.push(item);
@@ -853,9 +853,7 @@ function argsForUrlBatch(tool: OpenTool, urls: string[]): string[] {
   return args;
 }
 function resolveToolForItem(item: CollectionItem): OpenTool | undefined {
-  const collection = findCollectionById(item.collectionId);
   return state.data.tools.find((tool) => tool.id === item.toolId)
-    || state.data.tools.find((tool) => tool.id === collection?.defaultToolId)
     || state.data.tools.find((tool) => tool.id === defaultToolForItem(item.type));
 }
 

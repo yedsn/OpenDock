@@ -353,7 +353,7 @@
     resourceContent: "Resource content",
     resourceContentPlaceholder: "Path, URL, or command",
     openTool: "Open tool",
-    useCollectionDefault: "Use collection default",
+    useDefaultTool: "Use default tool",
     workingDirectory: "Working directory",
     workingDirectoryHint: "Optional for command resources",
     workspaceName: "Workspace name",

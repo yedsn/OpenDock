@@ -62,11 +62,10 @@ const tools: OpenTool[] = [
 
 function collection(data: Partial<Collection> & Pick<Collection, "id" | "sceneId" | "name" | "type" | "description">, sort: number): Collection {
   const meta = collectionMeta[data.type];
-  const tool = tools.find((item) => item.name === meta.tool) || tools[0];
   return {
     workspaceId: "default",
-    defaultToolId: tool.id,
-    tool: tool.name,
+    defaultToolId: "",
+    tool: "",
     icon: meta.icon,
     color: meta.color,
     openStrategy: "all",
@@ -96,11 +95,10 @@ const collections: Collection[] = [
 
 function item(data: Partial<CollectionItem> & Pick<CollectionItem, "id" | "collectionId" | "name" | "type" | "value">, sort: number): CollectionItem {
   const meta = itemMeta[data.type];
-  const tool = tools.find((entry) => entry.name === meta.tool) || tools[0];
   return {
     workspaceId: "default",
-    toolId: tool.id,
-    tool: tool.name,
+    toolId: undefined,
+    tool: "",
     icon: meta.icon,
     color: meta.color,
     sort,

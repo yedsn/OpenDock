@@ -369,7 +369,7 @@
     resourceContent: "资源内容",
     resourceContentPlaceholder: "路径、URL 或命令",
     openTool: "打开工具",
-    useCollectionDefault: "使用集合默认",
+    useDefaultTool: "使用默认工具",
     workingDirectory: "工作目录",
     workingDirectoryHint: "命令资源使用，可选",
     workspaceName: "工作区名称",

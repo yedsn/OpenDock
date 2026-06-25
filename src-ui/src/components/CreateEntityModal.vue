@@ -81,7 +81,7 @@ watch(
       form.itemType = item?.type || (activeColl?.type === "命令集合" ? "命令" : "URL");
       form.itemValue = item?.value || "";
       form.itemWorkingDirectory = item?.workingDirectory || "";
-      form.itemToolId = item?.toolId || activeColl?.defaultToolId || "";
+      form.itemToolId = item?.toolId || "";
       resetItemPluginData(item?.pluginData || {});
       ensureItemToolCompatible();
     } else if (kind === "workspace") {
@@ -169,7 +169,7 @@ function submitModal() {
         </label>
         <label class="setting-field"><span>{{ $t("modal.openTool") }}</span>
           <select v-model="form.itemToolId">
-            <option value="">{{ $t("modal.useCollectionDefault") }}</option>
+            <option value="">{{ $t("modal.useDefaultTool") }}</option>
             <option v-for="tool in itemToolOptions" :key="tool.id" :value="tool.id">{{ tool.name }} ({{ tool.type }})</option>
           </select>
         </label>
