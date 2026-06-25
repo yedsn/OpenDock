@@ -2248,6 +2248,128 @@ fn current_hotkey_matches(candidate: &Shortcut) -> bool {
         .unwrap_or(false)
 }
 
+// ---- Auto-start on login ----
+
+const AUTOSTART_APP_ID: &str = "com.opendock.app";
+
+fn app_exe_path() -> Result<String, String> {
+    let exe = std::env::current_exe().map_err(|e| e.to_string())?;
+    Ok(exe.to_string_lossy().to_string())
+}
+
+#[tauri::command]
+fn set_auto_start(enable: bool) -> OpenActionResult {
+    let exe_path = match app_exe_path() {
+        Ok(p) => p,
+        Err(e) => return failure(e),
+    };
+
+    #[cfg(target_os = "windows")]
+    {
+        let ps_script = if enable {
+            format!(
+                "Set-ItemProperty -Path 'HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Run' -Name 'OpenDock' -Value '\"{}\"'",
+                exe_path.replace("'", "''")
+            )
+        } else {
+            "Remove-ItemProperty -Path 'HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Run' -Name 'OpenDock' -ErrorAction SilentlyContinue".to_string()
+        };
+        let mut cmd = Command::new("powershell");
+        cmd.args(["-NoProfile", "-NonInteractive", "-Command", &ps_script]);
+        no_console(&mut cmd);
+        match cmd.status() {
+            Ok(s) if s.success() => success(if enable { "Auto-start enabled" } else { "Auto-start disabled" }),
+            Ok(s) => failure(format!("PowerShell exited with code {}", s.code().unwrap_or(-1))),
+            Err(e) => failure(format!("Failed to run PowerShell: {e}")),
+        }
+    }
+
+    #[cfg(target_os = "macos")]
+    {
+        let home = dirs::home_dir().unwrap_or_else(|| PathBuf::from("/tmp"));
+        let launch_dir = home.join("Library").join("LaunchAgents");
+        let _ = fs::create_dir_all(&launch_dir);
+        let plist_path = launch_dir.join(format!("{AUTOSTART_APP_ID}.plist"));
+
+        if enable {
+            let exe_escaped = exe_path.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace("'", "&apos;").replace("\"", "&quot;");
+            let plist_content = format!(r#"<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>{AUTOSTART_APP_ID}</string>
+    <key>ProgramArguments</key>
+    <array>
+        <string>{exe_escaped}</string>
+    </array>
+    <key>RunAtLoad</key>
+    <true/>
+    <key>KeepAlive</key>
+    <false/>
+</dict>
+</plist>
+"#);
+            match fs::write(&plist_path, plist_content) {
+                Ok(()) => success("Auto-start enabled"),
+                Err(e) => failure(format!("Failed to write LaunchAgent plist: {e}")),
+            }
+        } else {
+            match fs::remove_file(&plist_path) {
+                Ok(()) => success("Auto-start disabled"),
+                Err(e) if e.kind() == std::io::ErrorKind::NotFound => success("Auto-start disabled"),
+                Err(e) => failure(format!("Failed to remove LaunchAgent plist: {e}")),
+            }
+        }
+    }
+
+    #[cfg(not(any(target_os = "windows", target_os = "macos")))]
+    {
+        let _ = (exe_path, enable);
+        failure("Auto-start is not supported on this platform")
+    }
+}
+
+#[tauri::command]
+fn get_auto_start() -> bool {
+    #[cfg(target_os = "windows")]
+    {
+        let ps_script = "(Get-ItemProperty -Path 'HKCU:\\Software\\Microsoft\\Windows\\CurrentVersion\\Run' -Name 'OpenDock' -ErrorAction SilentlyContinue).OpenDock";
+        let mut cmd = Command::new("powershell");
+        cmd.args(["-NoProfile", "-NonInteractive", "-Command", ps_script]);
+        no_console(&mut cmd);
+        match cmd.output() {
+            Ok(output) => {
+                let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
+                !stdout.is_empty()
+            }
+            Err(_) => false,
+        }
+    }
+
+    #[cfg(target_os = "macos")]
+    {
+        let home = dirs::home_dir().unwrap_or_else(|| PathBuf::from("/tmp"));
+        let plist_path = home.join("Library").join("LaunchAgents").join(format!("{AUTOSTART_APP_ID}.plist"));
+        plist_path.exists()
+    }
+
+    #[cfg(not(any(target_os = "windows", target_os = "macos")))]
+    { false }
+}
+
+fn read_start_minimized_from_db(conn: &Connection) -> bool {
+    conn.query_row(
+        "SELECT value FROM app_state WHERE key = 'settings'",
+        [],
+        |row| row.get::<_, String>(0),
+    )
+    .ok()
+    .and_then(|json| serde_json::from_str::<serde_json::Value>(&json).ok())
+    .and_then(|v| v.get("general")?.get("startMinimized")?.as_bool())
+    .unwrap_or(false)
+}
+
 fn register_global_hotkey(app: &AppHandle) {
     if let Err(err) = apply_global_hotkey(app, DEFAULT_GLOBAL_HOTKEY) {
         eprintln!(
@@ -2391,6 +2513,18 @@ pub fn run() {
             let handle = app.handle().clone();
             setup_tray(&handle)?;
             register_global_hotkey(&handle);
+            // Start minimized: hide the window immediately if the setting is enabled.
+            {
+                let app_state: tauri::State<AppState> = app.state::<AppState>();
+                let db_guard = app_state.db.lock().ok();
+                if let Some(conn) = db_guard.as_ref() {
+                    if read_start_minimized_from_db(conn) {
+                        if let Some(w) = app.get_webview_window("main") {
+                            let _ = w.hide();
+                        }
+                    }
+                }
+            }
 
             // Intercept window close: hide to tray instead of exiting.
             if let Some(window) = app.get_webview_window("main") {
@@ -2407,6 +2541,7 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             open_path, open_url, open_file, open_application, open_url_in_browser, open_urls_in_browser, prestart_browser, scan_open_tools, run_command,
+            set_auto_start, get_auto_start,
             test_webdav_connection, sync_webdav_now, webdav_set_credential, webdav_get_credential, set_global_hotkey, set_app_icon_style, write_text_file,
             get_app_version, check_app_update, download_and_install_update, restart_app,
             db_init, db_execute, db_execute_params, db_get_value, db_set_value, db_list_table, db_bulk_insert,

@@ -107,6 +107,24 @@ async function updateToggleWindowHotkey(key: string): Promise<OpenActionResult> 
   return await applyToggleWindowHotkey(normalized);
 }
 
+
+async function syncAutoStartSetting(enable: boolean): Promise<void> {
+  try {
+    await callOpenCommand("set_auto_start", { enable });
+  } catch (e) {
+    console.error("Failed to sync auto-start setting:", e);
+  }
+}
+
+async function readAutoStartFromOS(): Promise<boolean> {
+  try {
+    const result = await invoke<boolean>("get_auto_start");
+    return result;
+  } catch (e) {
+    console.error("Failed to read auto-start state:", e);
+    return false;
+  }
+}
 // ---- Reactive state ----
 
 const state = reactive({
@@ -150,6 +168,11 @@ watch(() => ({
   }, 300);
 }, { deep: true });
 
+
+// Sync autoStart setting changes to the OS immediately.
+watch(() => state.data.settings.general.autoStart, (newVal) => {
+  syncAutoStartSetting(newVal);
+});
 let activeStateSaveTimer: ReturnType<typeof setTimeout> | null = null;
 let activeStateIdleHandle: number | null = null;
 watch(() => [state.data.activeWorkspaceId, state.data.activeSceneId, state.data.activeCollectionId] as const, () => {
@@ -275,6 +298,16 @@ async function init() {
   }
   state.mainView = 'workspace';
   await applyToggleWindowHotkey();
+  // Sync auto-start state from OS to UI on startup
+  try {
+    const osAutoStart = await readAutoStartFromOS();
+    if (state.data.settings.general.autoStart !== osAutoStart) {
+      state.data.settings.general.autoStart = osAutoStart;
+    }
+  } catch (e) {
+    console.error("Auto-start OS sync failed:", e);
+  }
+
 
   // Backfill defaults that older data may not have, then boot the snapshot pipeline.
   if (state.data.settings.general.autoSnapshotIntervalMinutes === undefined) {
@@ -282,6 +315,13 @@ async function init() {
   }
   if (state.data.settings.general.autoSnapshotKeepCount === undefined) {
     state.data.settings.general.autoSnapshotKeepCount = 7;
+  }
+
+  if (state.data.settings.general.autoStart === undefined) {
+    state.data.settings.general.autoStart = false;
+  }
+  if (state.data.settings.general.startMinimized === undefined) {
+    state.data.settings.general.startMinimized = false;
   }
   // Defer snapshot refresh and background sync to avoid blocking startup
   refreshSnapshots().catch((e) => console.error("Snapshot init failed:", e));

@@ -1,4 +1,4 @@
-[package]
+﻿[package]
 name = "opendock"
 version = "0.1.19"
 description = "OpenDock desktop resource launcher"

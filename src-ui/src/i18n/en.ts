@@ -105,6 +105,8 @@
     openWebInNewWindow: "Open web pages in a new window",
     closeWindowAfterOpen: "Close window after opening",
     logOpenFailures: "Log open failures",
+    autoStart: "Auto-start on login",
+    startMinimized: "Start minimized",
     appIcon: "App icon",
     appIconDark: "Dark",
     appIconDarkDesc: "Dark O + Dock icon for the default desktop style.",

@@ -47,6 +47,18 @@ const general = store.state.data.settings.general;
           <input v-model="general.logOpenFailures" type="checkbox" /><span></span>
         </span>
       </label>
+      <label class="setting-field">
+        <span>{{ $t("settings.autoStart") }}</span>
+        <span class="setting-switch">
+          <input v-model="general.autoStart" type="checkbox" /><span></span>
+        </span>
+      </label>
+      <label class="setting-field">
+        <span>{{ $t("settings.startMinimized") }}</span>
+        <span class="setting-switch">
+          <input v-model="general.startMinimized" type="checkbox" /><span></span>
+        </span>
+      </label>
     </div>
   </section>
 </template>

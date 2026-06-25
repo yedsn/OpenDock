@@ -242,6 +242,8 @@ export interface GeneralSettings {
   language: string;
   autoSnapshotIntervalMinutes: number;
   autoSnapshotKeepCount: number;
+  autoStart: boolean;
+  startMinimized: boolean;
 }
 
 export type SearchEnterBehavior = "open" | "navigate";
@@ -335,4 +337,3 @@ export interface ModalState {
   kind: "scene" | "collection" | "item" | "workspace" | "manageWorkspaces" | "confirmDelete" | null;
   editingId?: string;
 }
-

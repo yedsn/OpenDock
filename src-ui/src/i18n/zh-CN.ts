@@ -111,6 +111,8 @@
     openWebInNewWindow: "网页新窗口打开",
     closeWindowAfterOpen: "关闭窗口后打开",
     logOpenFailures: "记录打开失败",
+    autoStart: "开机自启动",
+    startMinimized: "启动时最小化窗口",
     // Appearance panel
     appIcon: "App icon",
     appIconDark: "Dark",
