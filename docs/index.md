@@ -38,6 +38,21 @@ features:
     details: 基于 Tauri 2 + Rust 构建，系统托盘、全局快捷键 Alt+O、单实例运行，面向桌面工作流优化。
 ---
 
+<div class="od-home-section od-showcase">
+
+## 界面预览
+
+<div class="od-showcase-media">
+  <img src="/assets/screenshot.png" alt="OpenDock 界面截图" />
+</div>
+
+<div class="od-showcase-video">
+  <p><strong>快速打开整个集合</strong></p>
+  <video src="/assets/open-collection-demo.mp4" controls muted loop playsinline>快速打开整个集合演示</video>
+</div>
+
+</div>
+
 <div class="od-home-section">
 
 ## 核心概念
