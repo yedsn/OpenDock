@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, reactive, ref } from "vue";
-import { AlertTriangle, CheckCircle2, Info, Plus, Radar, Star, Trash2, Wrench } from "lucide-vue-next";
+import { open as openFilePicker } from "@tauri-apps/plugin-dialog";
+import { AlertTriangle, CheckCircle2, FolderSearch, Info, Plus, Radar, Star, Trash2, Wrench, X } from "lucide-vue-next";
 import { useOpenDockStore } from "../../store";
 import { useI18n } from "../../i18n";
 import type { OpenTool, ToolType } from "../../types";
@@ -22,6 +23,7 @@ const isMac = typeof navigator !== "undefined" && /Mac/i.test(navigator.platform
 const terminalArgsPlaceholder = computed(() => isMac ? "{command}" : "-NoExit -Command {command}");
 const executablePathPlaceholder = computed(() => isMac ? "/Applications/App.app" : "C:\\Program Files\\App\\app.exe");
 
+const showAddModal = ref(false);
 const newTool = reactive({
   name: "",
   type: "应用" as ToolType,
@@ -46,13 +48,12 @@ function argsPlaceholder(type: ToolType) {
   return "{path}";
 }
 
-function addTool() {
-  const name = newTool.name.trim();
-  if (!name) return;
-  store.createTool(name, newTool.type, newTool.path.trim(), newTool.args.trim() || argsPlaceholder(newTool.type));
+function openAddModal() {
   newTool.name = "";
+  newTool.type = "应用" as ToolType;
   newTool.path = "";
   newTool.args = argsPlaceholder(newTool.type);
+  showAddModal.value = true;
 }
 
 function updateNewToolType(type: ToolType) {
@@ -60,6 +61,55 @@ function updateNewToolType(type: ToolType) {
   if (!newTool.args.trim() || ["{path}", "{url}", "-NoExit -Command {command}", "{command}"].includes(newTool.args.trim())) {
     newTool.args = argsPlaceholder(type);
   }
+}
+
+function addTool() {
+  const name = newTool.name.trim();
+  if (!name) return;
+  store.createTool(name, newTool.type, newTool.path.trim(), newTool.args.trim() || argsPlaceholder(newTool.type));
+  showAddModal.value = false;
+}
+
+async function pickNewToolPath() {
+  try {
+    const selected = await openFilePicker({
+      title: "选择应用程序",
+      directory: false,
+      multiple: false,
+      defaultPath: isMac ? "/Applications" : "C:\\Program Files",
+      filters: isMac
+        ? [{ name: "应用程序", extensions: ["app"] }]
+        : [{ name: "可执行文件", extensions: ["exe", "cmd", "bat"] }]
+    });
+    if (selected) {
+      const filePath = typeof selected === "string" ? selected : (selected as string[])[0];
+      if (filePath) {
+        newTool.path = filePath;
+        if (!newTool.name.trim()) {
+          const parts = filePath.replace(/\\/g, "/").split("/");
+          newTool.name = parts[parts.length - 1].replace(/\.(app|exe)$/i, "");
+        }
+      }
+    }
+  } catch { /* cancelled */ }
+}
+
+async function pickToolPath(tool: OpenTool) {
+  try {
+    const selected = await openFilePicker({
+      title: "选择应用程序",
+      directory: false,
+      multiple: false,
+      defaultPath: isMac ? "/Applications" : "C:\\Program Files",
+      filters: isMac
+        ? [{ name: "应用程序", extensions: ["app"] }]
+        : [{ name: "可执行文件", extensions: ["exe", "cmd", "bat"] }]
+    });
+    if (selected) {
+      const filePath = typeof selected === "string" ? selected : (selected as string[])[0];
+      if (filePath) tool.path = filePath;
+    }
+  } catch { /* cancelled */ }
 }
 
 async function scanTools() {
@@ -92,7 +142,7 @@ async function deleteTool(id: string) {
       <span>{{ $t("settings.openTools") }}</span>
       <div class="tools-title-actions">
         <button class="settings-action-button" type="button" :disabled="scanning" @click="scanTools"><Radar />{{ scanning ? $t("settings.scanning") : $t("settings.autoScan") }}</button>
-        <button class="settings-action-button" type="button" @click="addTool"><Plus />{{ $t("settings.addTool") }}</button>
+        <button class="settings-action-button" type="button" @click="openAddModal"><Plus />{{ $t("settings.addTool") }}</button>
       </div>
     </div>
     <div class="settings-card-description">{{ $t("settings.toolPathHelp") }}</div>
@@ -141,7 +191,10 @@ async function deleteTool(id: string) {
         <select v-model="tool.type">
           <option v-for="type in toolTypes" :key="type" :value="type">{{ type }}</option>
         </select>
-        <input v-model="tool.path" :placeholder="$t('settings.executablePath') + ': ' + executablePathPlaceholder" />
+        <div class="path-cell">
+          <input v-model="tool.path" :placeholder="$t('settings.executablePath') + ': ' + executablePathPlaceholder" />
+          <button class="btn-browse" type="button" title="选择程序" @click="pickToolPath(tool)"><FolderSearch :size="13" /></button>
+        </div>
         <input v-model="tool.args" :placeholder="argsPlaceholder(tool.type)" />
         <button class="default-tool-button" type="button" :class="{ active: tool.default }" :title="tool.default ? ('settings.currentTypeDefault') : ('settings.setAsTypeDefault')" @click="store.setDefaultTool(tool.id)">
           <CheckCircle2 v-if="tool.default" />
@@ -149,18 +202,37 @@ async function deleteTool(id: string) {
         </button>
         <button class="icon-button danger" type="button" :title="$t('settings.deleteTool')" @click="deleteTool(tool.id)"><Trash2 /></button>
       </div>
-      <div class="settings-row tools-row new-tool-row">
-        <input v-model="newTool.name" :placeholder="$t('settings.newToolName')" @keydown.enter.prevent="addTool" />
-        <select :value="newTool.type" @change="updateNewToolType(($event.target as HTMLSelectElement).value as ToolType)">
-          <option v-for="type in toolTypes" :key="type" :value="type">{{ type }}</option>
-        </select>
-        <input v-model="newTool.path" :placeholder="$t('settings.pathOrShellOpen')" @keydown.enter.prevent="addTool" />
-        <input v-model="newTool.args" :placeholder="$t('settings.argsTemplate')" @keydown.enter.prevent="addTool" />
-        <span></span>
-        <button class="icon-button" type="button" :title="$t('settings.addTool')" @click="addTool"><Plus /></button>
-      </div>
     </div>
   </section>
+
+  <!-- Add tool modal -->
+  <div v-if="showAddModal" class="modal-backdrop" @click.self="showAddModal = false">
+    <form class="modal add-tool-modal" @submit.prevent="addTool">
+      <div class="modal-header">
+        <div class="modal-title">{{ $t("settings.addTool") }}</div>
+        <button class="icon-button" type="button" @click="showAddModal = false"><X /></button>
+      </div>
+      <div class="modal-body">
+        <label class="setting-field"><span>{{ $t("settings.toolName") }}</span><input v-model="newTool.name" required :placeholder="$t('settings.newToolName')" /></label>
+        <label class="setting-field"><span>{{ $t("settings.type") }}</span>
+          <select :value="newTool.type" @change="updateNewToolType(($event.target as HTMLSelectElement).value as ToolType)">
+            <option v-for="type in toolTypes" :key="type" :value="type">{{ type }}</option>
+          </select>
+        </label>
+        <label class="setting-field"><span>{{ $t("settings.executablePath") }}</span>
+          <div class="path-input-row">
+            <input v-model="newTool.path" required :placeholder="$t('settings.pathOrShellOpen')" />
+            <button class="btn-browse" type="button" title="选择程序" @click="pickNewToolPath"><FolderSearch :size="14" /></button>
+          </div>
+        </label>
+        <label class="setting-field"><span>{{ $t("settings.argsTemplate") }}</span><input v-model="newTool.args" :placeholder="argsPlaceholder(newTool.type)" /></label>
+      </div>
+      <div class="modal-actions">
+        <button class="settings-action-button" type="button" @click="showAddModal = false">{{ $t("modal.cancel") }}</button>
+        <button class="run-button" type="submit" :disabled="!newTool.name.trim()">{{ $t("modal.confirm") }}</button>
+      </div>
+    </form>
+  </div>
 </template>
 
 <style scoped>
@@ -189,8 +261,27 @@ async function deleteTool(id: string) {
 .tools-row.missing-path input:nth-of-type(2) { border-color: rgba(215, 207, 137, 0.58); }
 .default-tool-button { width: 32px; height: 30px; display: inline-grid; place-items: center; color: var(--faint); background: var(--bg); border: 1px solid var(--line); border-radius: var(--radius); }
 .default-tool-button.active { color: var(--accent); background: var(--accent-soft); border-color: color-mix(in srgb, var(--accent) 42%, transparent); }
-.new-tool-row { background: rgba(138, 127, 240, 0.06); }
 .icon-button.danger { color: var(--red); }
+
+/* Path cell with browse button */
+.path-cell { display: flex; gap: 4px; min-width: 0; }
+.path-cell input { flex: 1; min-width: 0; }
+.btn-browse {
+  width: 30px; height: 30px; flex-shrink: 0;
+  display: grid; place-items: center;
+  color: var(--faint); background: var(--bg);
+  border: 1px solid var(--line); border-radius: var(--radius);
+  cursor: pointer; transition: color .12s, border-color .12s;
+}
+.btn-browse:hover { color: var(--accent); border-color: var(--accent); }
+
+/* Add tool modal */
+.add-tool-modal { width: 440px; }
+.modal-body { display: flex; flex-direction: column; gap: 12px; }
+.path-input-row { display: flex; gap: 6px; }
+.path-input-row input { flex: 1; min-width: 0; }
+.path-input-row .btn-browse { height: 32px; width: 32px; }
+
 @media (max-width: 1180px) {
   .tool-summary-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
