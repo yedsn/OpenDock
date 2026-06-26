@@ -458,17 +458,6 @@ const baseToolTypesByCollection: Partial<Record<CollectionType, string[]>> = {
   "插件集合": ["系统", "插件"]
 };
 
-const baseToolTypesByItem: Partial<Record<ItemType, string[]>> = {
-  "目录": ["编辑器", "系统"],
-  "URL": ["浏览器", "系统"],
-  "命令": ["终端"],
-  "文件": ["系统", "编辑器"],
-  "应用": ["应用", "系统"],
-  "插件资源": ["插件", "系统"]
-};
-
-const baseItemTypes = ["目录", "URL", "命令", "Excel", "CAD", "文件", "应用", "插件资源"];
-
 function normalizeToolTypeContribution(entry: PluginToolTypeEntry): PluginToolTypeContribution {
   return typeof entry === "string" ? { type: entry } : entry;
 }
@@ -487,8 +476,10 @@ function enabledItemTypeContributions(): PluginItemTypeContribution[] {
 }
 
 function availableItemTypes(): string[] {
+  // Tool types as the primary item types, plus any plugin-contributed item types
+  const toolBased = availableToolTypes();
   const contributed = enabledItemTypeContributions().map((entry) => entry.type);
-  return Array.from(new Set([...baseItemTypes, ...contributed]));
+  return Array.from(new Set([...toolBased, ...contributed]));
 }
 
 function pluginItemTypeConfig(type: string): PluginItemTypeContribution | undefined {
@@ -518,11 +509,13 @@ function allowedToolTypesForCollection(type: CollectionType): string[] {
 }
 
 function allowedToolTypesForItem(type: ItemType): string[] {
-  const base = baseToolTypesByItem[type] || ["系统"];
+  // item.type is now a tool type. Only allow types that are actually available.
+  const available = new Set(availableToolTypes());
+  const candidates = [type, "系统"];
   const contributed = enabledToolTypeContributions()
     .filter((entry) => entry.itemTypes?.includes(type))
     .map((entry) => entry.type);
-  return Array.from(new Set([...contributed, ...base]));
+  return Array.from(new Set([...candidates, ...contributed])).filter((t) => available.has(t));
 }
 
 function collectionItems(collectionId: string): CollectionItem[] {
@@ -681,11 +674,12 @@ function createCollection(name: string, type: CollectionType, sceneId: string | 
 
 function createItem(collectionId: string, name: string, type: ItemType, value: string, workingDirectory = "", toolId?: string, pluginData?: Record<string, unknown>): void {
   const meta = itemMeta[type] || { icon: "Blocks", color: "#8a7ff0", tool: "Plugin Runtime" };
-  const resolvedToolId = toolId || defaultToolForItem(type);
-  const tool = state.data.tools.find((entry) => entry.id === resolvedToolId);
+  // Keep toolId undefined when user chose "use default", so resolveToolForItem falls through to defaultToolForItem at open time
+  const effectiveToolId = toolId || undefined;
+  const tool = effectiveToolId ? state.data.tools.find((entry) => entry.id === effectiveToolId) : null;
   const item: CollectionItem = {
     id: makeId("item"), workspaceId: state.data.activeWorkspaceId, collectionId, name, type, value, workingDirectory,
-    toolId: toolId || undefined, tool: tool?.name || meta.tool, icon: meta.icon, color: meta.color, pluginData,
+    toolId: effectiveToolId, tool: tool?.name || "使用默认工具", icon: meta.icon, color: meta.color, pluginData,
     sort: collectionItems(collectionId).length + 1, createdAt: nowIso(), updatedAt: nowIso()
   };
   state.data.items.push(item);
@@ -821,7 +815,7 @@ function valuesForItem(item: CollectionItem): Record<string, string> {
 
 function argsForTool(item: CollectionItem, tool: OpenTool): string[] {
   const values = valuesForItem(item);
-  const argsTemplate = tool.args?.trim() || (item.type === "命令" ? "{command}" : item.type === "URL" ? "{url}" : "{path}");
+  const argsTemplate = tool.args?.trim() || (item.type === "终端" ? "{command}" : item.type === "浏览器" ? "{url}" : "{path}");
 
   // When the value is a remote URI (vscode-remote://, cursor-remote://, etc.) and the tool
   // is an editor, use --folder-uri instead of a positional argument so VS Code / Cursor
@@ -834,7 +828,7 @@ function argsForTool(item: CollectionItem, tool: OpenTool): string[] {
 
   const args = expandToolArgs(effectiveTemplate, values);
 
-  if (item.type === "URL" && state.data.settings.general.openWebInNewWindow && !args.some((arg) => arg === "--new-window" || arg === "-new-window")) {
+  if (item.type === "浏览器" && state.data.settings.general.openWebInNewWindow && !args.some((arg) => arg === "--new-window" || arg === "-new-window")) {
     return ["--new-window", ...args];
   }
   return args;
@@ -878,13 +872,13 @@ async function openItemWithTool(item: CollectionItem, tool: OpenTool | undefined
     return await pluginOpenHandler({ item, tool, callOpenCommand });
   }
   if (!tool || tool.type === "系统" || tool.path === "shell:open" || !tool.path.trim()) {
-    if (item.type === "URL") return callOpenCommand("open_url", { url: item.value, newWindow: state.data.settings.general.openWebInNewWindow });
-    if (item.type === "命令") return callOpenCommand("run_command", { command: item.value, workingDirectory: item.workingDirectory || null });
+    if (item.type === "浏览器") return callOpenCommand("open_url", { url: item.value, newWindow: state.data.settings.general.openWebInNewWindow });
+    if (item.type === "终端") return callOpenCommand("run_command", { command: item.value, workingDirectory: item.workingDirectory || null });
     return callOpenCommand("open_path", { path: item.value });
   }
 
   // Single URL opens should launch directly; collection batches handle browser warm-up separately.
-  if (tool.type === "浏览器" && (item.type === "URL" || item.value.startsWith("http://") || item.value.startsWith("https://"))) {
+  if (tool.type === "浏览器" && (item.type === "浏览器" || item.value.startsWith("http://") || item.value.startsWith("https://"))) {
     return callOpenCommand("open_url_in_browser", {
       browserPath: tool.path,
       url: item.value,
@@ -897,7 +891,7 @@ async function openItemWithTool(item: CollectionItem, tool: OpenTool | undefined
 }
 
 async function openItem(item: CollectionItem): Promise<void> {
-  if (item.type === "命令" && state.data.settings.general.confirmBeforeOpen && !(await confirmAction(`确认执行命令？\n${item.value}`))) return;
+  if (item.type === "终端" && state.data.settings.general.confirmBeforeOpen && !(await confirmAction(`确认执行命令？\n${item.value}`))) return;
   const tool = resolveToolForItem(item);
   const result = await openItemWithTool(item, tool);
   const collection = findCollectionById(item.collectionId);
@@ -914,7 +908,7 @@ async function openCollection(collection: Collection): Promise<void> {
   const openedInBatch = new Set<string>();
   const urlGroups = new Map<string, { tool: OpenTool; items: CollectionItem[] }>();
   for (const item of items) {
-    if (item.type !== "URL") continue;
+    if (item.type !== "浏览器") continue;
     const tool = resolveToolForItem(item);
     if (!tool || tool.type !== "浏览器" || tool.path === "shell:open" || !tool.path.trim()) continue;
     const key = JSON.stringify([tool.path, tool.args || ""]);
@@ -1594,10 +1588,16 @@ function updateItem(id: string, patch: Partial<CollectionItem>): void {
   if (!item) return;
   Object.assign(item, patch, { updatedAt: nowIso() });
   if (patch.type !== undefined || patch.toolId !== undefined) {
-    const toolId = item.toolId || defaultToolForItem(item.type);
-    const tool = state.data.tools.find((entry) => entry.id === toolId);
-    item.toolId = toolId || undefined;
-    item.tool = tool?.name || itemMeta[item.type].tool;
+    // When toolId is empty/undefined, keep it that way so resolveToolForItem uses defaultToolForItem at open time
+    const effectiveToolId = item.toolId || undefined;
+    if (effectiveToolId) {
+      const tool = state.data.tools.find((entry) => entry.id === effectiveToolId);
+      item.toolId = effectiveToolId;
+      item.tool = tool?.name || itemMeta[item.type]?.tool || "使用默认工具";
+    } else {
+      item.toolId = undefined;
+      item.tool = "使用默认工具";
+    }
   }
   log(`编辑资源: ${item.name}`);
   scheduleWebdavQuickSync("资源变更");
@@ -1704,7 +1704,7 @@ const searchSuggestions = computed<SearchSuggestion[]>(() => {
         subtitle: `${item.type} · ${item.value}`,
         collectionId: item.collectionId,
         itemId: item.id,
-        isUrl: item.type === "URL",
+        isUrl: item.type === "浏览器",
         score
       });
     }

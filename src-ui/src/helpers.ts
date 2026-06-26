@@ -14,16 +14,7 @@ export const collectionTypeOptions: CollectionType[] = [
   "插件集合"
 ];
 
-export const itemTypeOptions: string[] = [
-  "目录",
-  "URL",
-  "命令",
-  "Excel",
-  "CAD",
-  "文件",
-  "应用",
-  "插件资源"
-];
+
 
 export function nowIso(): string {
   return new Date().toISOString();

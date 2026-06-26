@@ -95,8 +95,8 @@ describe("OpenDock store - CRUD operations", () => {
     const store = useOpenDockStore();
     store.createCollection("Test Coll", WEB_COLLECTION, null, "");
     const coll = store.state.data.collections.find((c) => c.name === "Test Coll")!;
-    store.createItem(coll.id, "Item A", "URL", "https://a");
-    store.createItem(coll.id, "Item B", "URL", "https://b");
+    store.createItem(coll.id, "Item A", "浏览器", "https://a");
+    store.createItem(coll.id, "Item B", "浏览器", "https://b");
     expect(store.collectionItems(coll.id).length).toBe(2);
     store.updateCollection(coll.id, { name: "Renamed", description: "new desc" });
     const updated = store.state.data.collections.find((c) => c.id === coll.id)!;
@@ -261,7 +261,7 @@ describe("OpenDock store - CRUD operations", () => {
       workspaceId: "default",
       collectionId: "code",
       name: "Remote Added",
-      type: "URL",
+      type: "浏览器",
       value: "https://remote.example.test",
       tool: "Chrome",
       icon: "Globe",
@@ -466,7 +466,7 @@ describe("OpenDock store - CRUD operations", () => {
     const { useOpenDockStore } = await import("../store");
     const store = useOpenDockStore();
     const pluginJson = JSON.stringify({
-      toolTypes: [{ type: "Diagram Tool", collectionTypes: ["文件集合", "插件集合"], itemTypes: ["文件", "插件资源", "Diagram Spec"] }],
+      toolTypes: [{ type: "Diagram Tool", collectionTypes: ["文件集合", "插件集合"], itemTypes: ["系统", "插件", "Diagram Spec"] }],
       itemTypes: [{
         type: "Diagram Spec",
         label: "图表规格",
@@ -499,7 +499,7 @@ describe("OpenDock store - CRUD operations", () => {
     expect(plugin.enabled).toBe(true);
     expect(store.availableToolTypes()).toContain("Diagram Tool");
     expect(store.allowedToolTypesForCollection("文件集合")).toContain("Diagram Tool");
-    expect(store.allowedToolTypesForItem("文件")).toContain("Diagram Tool");
+    expect(store.allowedToolTypesForItem("系统")).toContain("Diagram Tool");
     expect(store.availableItemTypes()).toContain("Diagram Spec");
     expect(store.pluginItemFields("Diagram Spec").map((field) => field.key)).toEqual(["renderer", "layout"]);
     store.togglePlugin(plugin);
@@ -544,7 +544,7 @@ describe("OpenDock store - open tool configuration", () => {
     const collection = store.state.data.collections.find((c) => c.type === WEB_COLLECTION)!;
     const tool = store.state.data.tools.find((entry) => entry.type === "浏览器")!;
     tool.default = true;
-    store.createItem(collection.id, "Tool URL", "URL", "https://example.com");
+    store.createItem(collection.id, "Tool URL", "浏览器", "https://example.com");
     const item = store.state.data.items.find((entry) => entry.name === "Tool URL")!;
 
     await store.openItem(item);
@@ -562,7 +562,7 @@ describe("OpenDock store - open tool configuration", () => {
     const collection = store.state.data.collections.find((c) => c.type === WEB_COLLECTION)!;
     const tool = store.state.data.tools.find((entry) => entry.type === "浏览器")!;
     tool.default = true;
-    store.createItem(collection.id, "Same Window URL", "URL", "https://example.com");
+    store.createItem(collection.id, "Same Window URL", "浏览器", "https://example.com");
     const item = store.state.data.items.find((entry) => entry.name === "Same Window URL")!;
     await store.openItem(item);
     expect(invokeMock).toHaveBeenCalledWith("open_url_in_browser", {
@@ -581,8 +581,8 @@ describe("OpenDock store - open tool configuration", () => {
     store.createCollection("Batch Web Collection", WEB_COLLECTION, null, "");
     const collection = store.state.data.collections.find((c) => c.name === "Batch Web Collection")!;
     collection.defaultToolId = chromeTool.id;
-    store.createItem(collection.id, "Batch URL A", "URL", "https://a.example.com");
-    store.createItem(collection.id, "Batch URL B", "URL", "https://b.example.com");
+    store.createItem(collection.id, "Batch URL A", "浏览器", "https://a.example.com");
+    store.createItem(collection.id, "Batch URL B", "浏览器", "https://b.example.com");
     await store.openCollection(collection);
     // Batch-open all URLs via open_urls_in_browser
     const batchCalls = invokeMock.mock.calls.filter(([cmd]) => cmd === "open_urls_in_browser");
@@ -601,7 +601,7 @@ describe("OpenDock store - open tool configuration", () => {
     store.createTool("Alt Browser", "浏览器", "C:/alt.exe", "{url}");
     const tool = store.state.data.tools.find((entry) => entry.name === "Alt Browser")!;
     const collection = store.state.data.collections.find((c) => c.type === WEB_COLLECTION)!;
-    store.createItem(collection.id, "With Tool", "URL", "https://example.com", "", tool.id);
+    store.createItem(collection.id, "With Tool", "浏览器", "https://example.com", "", tool.id);
     const item = store.state.data.items.find((entry) => entry.name === "With Tool")!;
     store.deleteTool(tool.id);
     expect(store.state.data.tools.find((entry) => entry.id === tool.id)).toBeUndefined();
@@ -637,25 +637,25 @@ describe("OpenDock store - open tool configuration", () => {
       installed: true,
       enabled: false,
       configurable: false,
-      toolTypes: [{ type: "Design", collectionTypes: ["网页集合"], itemTypes: ["URL"] }]
+      toolTypes: [{ type: "Design", collectionTypes: ["网页集合"], itemTypes: ["浏览器"] }]
     });
     store.createTool("Figma Desktop", "Design", "C:/Figma/Figma.exe", "{path}");
     expect(store.availableToolTypes()).not.toContain("Design");
     expect(store.allowedToolTypesForCollection("网页集合")).not.toContain("Design");
-    expect(store.allowedToolTypesForItem("URL")).not.toContain("Design");
+    expect(store.allowedToolTypesForItem("浏览器")).not.toContain("Design");
     expect(store.visibleTools().some((tool) => tool.type === "Design")).toBe(false);
     const plugin = store.state.data.plugins.find((entry) => entry.id === "design-plugin")!;
     store.togglePlugin(plugin);
     expect(store.availableToolTypes()).toContain("Design");
     expect(store.allowedToolTypesForCollection("网页集合")).toContain("Design");
-    expect(store.allowedToolTypesForItem("URL")).toContain("Design");
+    expect(store.allowedToolTypesForItem("浏览器")).toContain("Design");
     expect(store.visibleTools().some((tool) => tool.type === "Design" && tool.name === "Figma Desktop")).toBe(true);
   });
   it("opens marketplace-defined item types through the built-in handler", async () => {
     const { useOpenDockStore } = await import("../store");
     const store = useOpenDockStore();
     const pluginJson = JSON.stringify({
-      toolTypes: [{ type: "Diagram Tool", collectionTypes: ["文件集合", "插件集合"], itemTypes: ["文件", "插件资源", "Diagram Spec"] }],
+      toolTypes: [{ type: "Diagram Tool", collectionTypes: ["文件集合", "插件集合"], itemTypes: ["系统", "插件", "Diagram Spec"] }],
       itemTypes: [{ type: "Diagram Spec", label: "图表规格", fields: [] }]
     });
     vi.stubGlobal("fetch", vi.fn(async () => ({ ok: true, text: async () => pluginJson })));
@@ -702,7 +702,7 @@ describe("OpenDock store - open tool configuration", () => {
     const editor = store.state.data.tools.find((entry) => entry.type === "编辑器")!;
     editor.default = true;
     // Remote URI should produce --folder-uri
-    store.createItem(collection.id, "Remote Dir", "目录", "vscode-remote://ssh-remote+root@server/path/to/project");
+    store.createItem(collection.id, "Remote Dir", "编辑器", "vscode-remote://ssh-remote+root@server/path/to/project");
     const remoteItem = store.state.data.items.find((entry) => entry.name === "Remote Dir")!;
     invokeMock.mockClear();
     await store.openItem(remoteItem);
@@ -711,7 +711,7 @@ describe("OpenDock store - open tool configuration", () => {
       args: ["--folder-uri", "vscode-remote://ssh-remote+root@server/path/to/project"]
     });
     // Local path should still use positional argument
-    store.createItem(collection.id, "Local Dir", "目录", "E:\\code\\project");
+    store.createItem(collection.id, "Local Dir", "编辑器", "E:\\code\\project");
     const localItem = store.state.data.items.find((entry) => entry.name === "Local Dir")!;
     invokeMock.mockClear();
     await store.openItem(localItem);
@@ -720,7 +720,7 @@ describe("OpenDock store - open tool configuration", () => {
       args: ["E:\\code\\project"]
     });
     // cursor-remote:// URI should also use --folder-uri
-    store.createItem(collection.id, "Cursor Remote", "目录", "cursor-remote://ssh-remote+user@host/workspace");
+    store.createItem(collection.id, "Cursor Remote", "编辑器", "cursor-remote://ssh-remote+user@host/workspace");
     const cursorItem = store.state.data.items.find((entry) => entry.name === "Cursor Remote")!;
     invokeMock.mockClear();
     await store.openItem(cursorItem);
@@ -738,7 +738,7 @@ describe("OpenDock store - search suggestions", () => {
     const scene = store.state.data.scenes.find((entry) => entry.name === "客户门户")!;
     store.createCollection("客户门户网页", WEB_COLLECTION, scene.id, "站点入口");
     const collection = store.state.data.collections.find((entry) => entry.name === "客户门户网页")!;
-    store.createItem(collection.id, "测试链接", "URL", "https://example.test");
+    store.createItem(collection.id, "测试链接", "浏览器", "https://example.test");
     store.state.search = "khmh";
     expect(store.searchSuggestions.value.some((entry) => entry.kind === "scene" && entry.title === "客户门户")).toBe(true);
     expect(store.searchSuggestions.value.some((entry) => entry.kind === "collection" && entry.title === "客户门户网页")).toBe(true);
@@ -758,8 +758,8 @@ describe("OpenDock store - search suggestions", () => {
     const scene = store.state.data.scenes.find((entry) => entry.name === "客户门户")!;
     store.createCollection("客户门户网页", WEB_COLLECTION, scene.id, "站点入口");
     const collection = store.state.data.collections.find((entry) => entry.name === "客户门户网页")!;
-    store.createItem(collection.id, "测试链接", "URL", "https://example.test/a");
-    store.createItem(collection.id, "后台链接", "URL", "https://example.test/b");
+    store.createItem(collection.id, "测试链接", "浏览器", "https://example.test/a");
+    store.createItem(collection.id, "后台链接", "浏览器", "https://example.test/b");
     invokeMock.mockClear();
     store.state.search = "khmh";
     const collectionSuggestion = store.searchSuggestions.value.find((entry) => entry.kind === "collection" && entry.title === "客户门户网页")!;
@@ -789,7 +789,7 @@ describe("OpenDock store - search suggestions", () => {
     store.state.data.tools.find((entry) => entry.name === "Terminal")!.default = true;
     store.createCollection("Commands", COMMAND_COLLECTION, null, "");
     const collection = store.state.data.collections.find((entry) => entry.name === "Commands")!;
-    store.createItem(collection.id, "Run Build", "\u547d\u4ee4", "echo build");
+    store.createItem(collection.id, "Run Build", "\u7ec8\u7aef", "echo build");
     invokeMock.mockClear();
     hideWindowMock.mockClear();
     store.state.search = "Run Build";
@@ -827,7 +827,7 @@ describe("OpenDock store - search suggestions", () => {
     const scene = store.state.data.scenes.find((entry) => entry.name === "客户门户")!;
     store.createCollection("客户门户网页", WEB_COLLECTION, scene.id, "站点入口");
     const collection = store.state.data.collections.find((entry) => entry.name === "客户门户网页")!;
-    store.createItem(collection.id, "测试链接", "URL", "https://example.test/a");
+    store.createItem(collection.id, "测试链接", "浏览器", "https://example.test/a");
     invokeMock.mockClear();
     store.state.search = "cslj";
     const itemSuggestion = store.searchSuggestions.value.find((entry) => entry.kind === "item" && entry.title === "测试链接")!;

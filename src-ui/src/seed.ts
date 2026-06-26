@@ -26,14 +26,14 @@ export const collectionMeta: Record<CollectionType, { icon: string; color: strin
 };
 
 export const itemMeta: Record<string, { icon: string; color: string; tool: string }> = {
-  目录: { icon: "FolderCode", color: "#6fb29d", tool: "Cursor" },
-  URL: { icon: "Globe", color: "#74a4d4", tool: "Chrome" },
-  命令: { icon: "Terminal", color: "#dcddde", tool: "Terminal" },
-  Excel: { icon: "FileSpreadsheet", color: "#6fb29d", tool: "Excel" },
+  编辑器: { icon: "FolderCode", color: "#6fb29d", tool: "Cursor" },
+  浏览器: { icon: "Globe", color: "#74a4d4", tool: "Chrome" },
+  终端: { icon: "Terminal", color: "#dcddde", tool: "Terminal" },
+  Office: { icon: "FileSpreadsheet", color: "#6fb29d", tool: "Excel" },
   CAD: { icon: "FileBox", color: "#a58ad7", tool: "AutoCAD" },
-  文件: { icon: "FileText", color: "#d19a66", tool: "系统默认应用" },
+  系统: { icon: "FileText", color: "#d19a66", tool: "系统默认应用" },
   应用: { icon: "AppWindow", color: "#d19a66", tool: "系统启动" },
-  插件资源: { icon: "Blocks", color: "#8a7ff0", tool: "Plugin Runtime" }
+  插件: { icon: "Blocks", color: "#8a7ff0", tool: "Plugin Runtime" }
 };
 
 const workspaces: Workspace[] = [
@@ -103,45 +103,45 @@ function item(data: Partial<CollectionItem> & Pick<CollectionItem, "id" | "colle
 
 const items: CollectionItem[] = [
   // 前端 - 项目代码
-  item({ id: "fe-main", collectionId: "fe-code", name: "主项目", type: "目录", value: "~/Projects/opendock-app" }, 1),
-  item({ id: "fe-shared", collectionId: "fe-code", name: "共享组件库", type: "目录", value: "~/Projects/shared-components" }, 2),
-  item({ id: "fe-docs", collectionId: "fe-code", name: "文档站", type: "目录", value: "~/Projects/opendock-docs" }, 3),
+  item({ id: "fe-main", collectionId: "fe-code", name: "主项目", type: "编辑器", value: "~/Projects/opendock-app" }, 1),
+  item({ id: "fe-shared", collectionId: "fe-code", name: "共享组件库", type: "编辑器", value: "~/Projects/shared-components" }, 2),
+  item({ id: "fe-docs", collectionId: "fe-code", name: "文档站", type: "编辑器", value: "~/Projects/opendock-docs" }, 3),
   // 前端 - 本地开发环境
-  item({ id: "local-web", collectionId: "fe-local", name: "本地前台", type: "URL", value: "http://localhost:5173" }, 1),
-  item({ id: "local-api", collectionId: "fe-local", name: "本地 API", type: "URL", value: "http://localhost:8080/api" }, 2),
-  item({ id: "local-storybook", collectionId: "fe-local", name: "Storybook", type: "URL", value: "http://localhost:6006" }, 3),
+  item({ id: "local-web", collectionId: "fe-local", name: "本地前台", type: "浏览器", value: "http://localhost:5173" }, 1),
+  item({ id: "local-api", collectionId: "fe-local", name: "本地 API", type: "浏览器", value: "http://localhost:8080/api" }, 2),
+  item({ id: "local-storybook", collectionId: "fe-local", name: "Storybook", type: "浏览器", value: "http://localhost:6006" }, 3),
   // 前端 - 开发环境
-  item({ id: "dev-web", collectionId: "fe-dev", name: "开发前台", type: "URL", value: "https://dev.opendock.app" }, 1),
-  item({ id: "dev-admin", collectionId: "fe-dev", name: "开发后台", type: "URL", value: "https://dev.opendock.app/admin" }, 2),
-  item({ id: "dev-api-docs", collectionId: "fe-dev", name: "API 文档", type: "URL", value: "https://dev.opendock.app/docs" }, 3),
-  item({ id: "dev-deploy", collectionId: "fe-dev", name: "发布系统", type: "URL", value: "https://ci.opendock.app" }, 4),
+  item({ id: "dev-web", collectionId: "fe-dev", name: "开发前台", type: "浏览器", value: "https://dev.opendock.app" }, 1),
+  item({ id: "dev-admin", collectionId: "fe-dev", name: "开发后台", type: "浏览器", value: "https://dev.opendock.app/admin" }, 2),
+  item({ id: "dev-api-docs", collectionId: "fe-dev", name: "API 文档", type: "浏览器", value: "https://dev.opendock.app/docs" }, 3),
+  item({ id: "dev-deploy", collectionId: "fe-dev", name: "发布系统", type: "浏览器", value: "https://ci.opendock.app" }, 4),
   // 前端 - 常用命令
-  item({ id: "cmd-dev", collectionId: "fe-cmd", name: "启动开发", type: "命令", value: "npm run dev", workingDirectory: "~/Projects/opendock-app" }, 1),
-  item({ id: "cmd-build", collectionId: "fe-cmd", name: "构建生产", type: "命令", value: "npm run build", workingDirectory: "~/Projects/opendock-app" }, 2),
-  item({ id: "cmd-test", collectionId: "fe-cmd", name: "运行测试", type: "命令", value: "npm run test", workingDirectory: "~/Projects/opendock-app" }, 3),
-  item({ id: "cmd-lint", collectionId: "fe-cmd", name: "代码检查", type: "命令", value: "npm run lint", workingDirectory: "~/Projects/opendock-app" }, 4),
+  item({ id: "cmd-dev", collectionId: "fe-cmd", name: "启动开发", type: "终端", value: "npm run dev", workingDirectory: "~/Projects/opendock-app" }, 1),
+  item({ id: "cmd-build", collectionId: "fe-cmd", name: "构建生产", type: "终端", value: "npm run build", workingDirectory: "~/Projects/opendock-app" }, 2),
+  item({ id: "cmd-test", collectionId: "fe-cmd", name: "运行测试", type: "终端", value: "npm run test", workingDirectory: "~/Projects/opendock-app" }, 3),
+  item({ id: "cmd-lint", collectionId: "fe-cmd", name: "代码检查", type: "终端", value: "npm run lint", workingDirectory: "~/Projects/opendock-app" }, 4),
   // 后端 - 代码
-  item({ id: "be-main", collectionId: "be-code", name: "API 服务", type: "目录", value: "~/Projects/opendock-server" }, 1),
-  item({ id: "be-scripts", collectionId: "be-code", name: "部署脚本", type: "目录", value: "~/Projects/opendock-deploy" }, 2),
+  item({ id: "be-main", collectionId: "be-code", name: "API 服务", type: "编辑器", value: "~/Projects/opendock-server" }, 1),
+  item({ id: "be-scripts", collectionId: "be-code", name: "部署脚本", type: "编辑器", value: "~/Projects/opendock-deploy" }, 2),
   // 后端 - 运维入口
-  item({ id: "be-grafana", collectionId: "be-web", name: "Grafana 监控", type: "URL", value: "https://grafana.opendock.app" }, 1),
-  item({ id: "be-logs", collectionId: "be-web", name: "日志平台", type: "URL", value: "https://logs.opendock.app" }, 2),
-  item({ id: "be-admin", collectionId: "be-web", name: "管理后台", type: "URL", value: "https://admin.opendock.app" }, 3),
+  item({ id: "be-grafana", collectionId: "be-web", name: "Grafana 监控", type: "浏览器", value: "https://grafana.opendock.app" }, 1),
+  item({ id: "be-logs", collectionId: "be-web", name: "日志平台", type: "浏览器", value: "https://logs.opendock.app" }, 2),
+  item({ id: "be-admin", collectionId: "be-web", name: "管理后台", type: "浏览器", value: "https://admin.opendock.app" }, 3),
   // 后端 - 数据库
-  item({ id: "db-dev", collectionId: "be-db", name: "开发库", type: "插件资源", value: "postgresql://dev-db:5432/opendock", tool: "Database Plugin" }, 1),
-  item({ id: "db-test", collectionId: "be-db", name: "测试库", type: "插件资源", value: "postgresql://test-db:5432/opendock_test", tool: "Database Plugin" }, 2),
+  item({ id: "db-dev", collectionId: "be-db", name: "开发库", type: "插件", value: "postgresql://dev-db:5432/opendock", tool: "Database Plugin" }, 1),
+  item({ id: "db-test", collectionId: "be-db", name: "测试库", type: "插件", value: "postgresql://test-db:5432/opendock_test", tool: "Database Plugin" }, 2),
   // 设计 - 设计稿
-  item({ id: "figma-main", collectionId: "design-files", name: "Figma 主设计稿", type: "URL", value: "https://figma.com/file/opendock-main" }, 1),
-  item({ id: "figma-icons", collectionId: "design-files", name: "图标库", type: "URL", value: "https://figma.com/file/opendock-icons" }, 2),
-  item({ id: "design-spec", collectionId: "design-files", name: "设计规范", type: "文件", value: "~/Design/opendock-design-spec.pdf" }, 3),
+  item({ id: "figma-main", collectionId: "design-files", name: "Figma 主设计稿", type: "浏览器", value: "https://figma.com/file/opendock-main" }, 1),
+  item({ id: "figma-icons", collectionId: "design-files", name: "图标库", type: "浏览器", value: "https://figma.com/file/opendock-icons" }, 2),
+  item({ id: "design-spec", collectionId: "design-files", name: "设计规范", type: "系统", value: "~/Design/opendock-design-spec.pdf" }, 3),
   // 设计 - 工具
   item({ id: "tool-figma", collectionId: "design-tools", name: "Figma", type: "应用", value: "/Applications/Figma.app" }, 1),
   item({ id: "tool-sketch", collectionId: "design-tools", name: "Sketch", type: "应用", value: "/Applications/Sketch.app" }, 2),
   item({ id: "tool-sip", collectionId: "design-tools", name: "Sip 取色", type: "应用", value: "/Applications/Sip.app" }, 3),
   // 办公 - 文档与报表
-  item({ id: "doc-plan", collectionId: "office-docs", name: "项目计划", type: "Excel", value: "~/Documents/项目计划.xlsx" }, 1),
-  item({ id: "doc-weekly", collectionId: "office-docs", name: "周报模板", type: "Excel", value: "~/Documents/周报模板.xlsx" }, 2),
-  item({ id: "doc-report", collectionId: "office-docs", name: "月度报表", type: "Excel", value: "~/Documents/月度报表.xlsx" }, 3),
+  item({ id: "doc-plan", collectionId: "office-docs", name: "项目计划", type: "Office", value: "~/Documents/项目计划.xlsx" }, 1),
+  item({ id: "doc-weekly", collectionId: "office-docs", name: "周报模板", type: "Office", value: "~/Documents/周报模板.xlsx" }, 2),
+  item({ id: "doc-report", collectionId: "office-docs", name: "月度报表", type: "Office", value: "~/Documents/月度报表.xlsx" }, 3),
   // 常用工具
   item({ id: "tool-snipaste", collectionId: "loose-tools", name: "Snipaste", type: "应用", value: "/Applications/Snipaste.app" }, 1),
   item({ id: "tool-clash", collectionId: "loose-tools", name: "ClashX", type: "应用", value: "/Applications/ClashX.app" }, 2),

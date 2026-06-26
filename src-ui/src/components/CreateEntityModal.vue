@@ -17,7 +17,7 @@ const form = reactive({
   collectionSceneId: "",
   collectionDescription: "",
   itemName: "",
-  itemType: "URL" as ItemType,
+  itemType: "浏览器" as ItemType,
   itemValue: "",
   itemWorkingDirectory: "",
   itemToolId: "",
@@ -28,7 +28,7 @@ const form = reactive({
 });
 
 const isEdit = computed(() => Boolean(store.state.modal.editingId));
-const itemTypeOptions = computed(() => store.availableItemTypes() as ItemType[]);
+const toolTypeOptions = computed(() => store.availableToolTypes());
 const itemTypeConfig = computed(() => store.pluginItemTypeConfig(form.itemType));
 const itemValueLabel = computed(() => itemTypeConfig.value?.valueLabel || t("modal.resourceContent"));
 const itemValuePlaceholder = computed(() => itemTypeConfig.value?.valuePlaceholder || t("modal.resourceContentPlaceholder"));
@@ -78,7 +78,7 @@ watch(
       const item = id ? store.state.data.items.find((i) => i.id === id) : null;
       const activeColl = store.activeCollection();
       form.itemName = item?.name || "";
-      form.itemType = item?.type || (activeColl?.type === "命令集合" ? "命令" : "URL");
+      form.itemType = item?.type || (activeColl?.type === "命令集合" ? "终端" : "浏览器");
       form.itemValue = item?.value || "";
       form.itemWorkingDirectory = item?.workingDirectory || "";
       form.itemToolId = item?.toolId || "";
@@ -156,9 +156,9 @@ function submitModal() {
 
       <div v-if="store.state.modal.kind === 'item'" class="settings-grid">
         <label class="setting-field"><span>{{ $t("modal.resourceName") }}</span><input v-model="form.itemName" required /></label>
-        <label class="setting-field"><span>{{ $t("modal.resourceType") }}</span>
+        <label class="setting-field"><span>打开工具类型</span>
           <select v-model="form.itemType">
-            <option v-for="type in itemTypeOptions" :key="type">{{ type }}</option>
+            <option v-for="type in toolTypeOptions" :key="type">{{ type }}</option>
           </select>
         </label>
         <label class="setting-field full"><span>{{ itemValueLabel }}</span><input v-model="form.itemValue" required :placeholder="itemValuePlaceholder" /></label>
