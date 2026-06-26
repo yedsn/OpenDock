@@ -117,3 +117,33 @@
     padding: 18px;
   }
 }
+
+/* Showcase section - screenshot & video */
+.od-showcase-media {
+  text-align: center;
+  margin: 12px 0;
+}
+
+.od-showcase-media img {
+  max-width: 100%;
+  border-radius: 16px;
+  border: 1px solid rgba(22, 140, 255, 0.12);
+  box-shadow: 0 8px 32px rgba(22, 140, 255, 0.10);
+}
+
+.od-showcase-video {
+  text-align: center;
+  margin: 16px 0 4px;
+}
+
+.od-showcase-video p {
+  margin-bottom: 8px;
+  color: var(--vp-c-text-2);
+}
+
+.od-showcase-video video {
+  max-width: 100%;
+  border-radius: 16px;
+  border: 1px solid rgba(22, 140, 255, 0.12);
+  box-shadow: 0 8px 32px rgba(22, 140, 255, 0.10);
+}

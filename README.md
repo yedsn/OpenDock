@@ -1,4 +1,4 @@
-﻿# OpenDock
+# OpenDock
 
 <p align="center">
   <img src="src-tauri/icons/icon.png" alt="OpenDock" width="160">
@@ -27,6 +27,10 @@
   <a href="https://github.com/yedsn/OpenDock">GitHub</a>
   ·
   <a href="docs/guide/quick-start.md">使用说明</a>
+</p>
+
+<p align="center">
+  <img src="assets/screenshot.png" alt="OpenDock 界面截图" width="720">
 </p>
 
 ---
