@@ -1,4 +1,5 @@
 ﻿import { createSeedData, schemaVersion } from "./seed";
+import { resolveSeedDemoPaths } from "./seed";
 import {
   dbGetValue,
   dbSetValue,
@@ -28,6 +29,7 @@ export async function loadAppData(): Promise<AppData> {
   const storedVersion = await dbGetValue(SCHEMA_VERSION_KEY);
   if (!storedVersion || storedVersion !== String(schemaVersion)) {
     const seed = createSeedData();
+    await resolveSeedDemoPaths(seed);
     await seedDb(seed);
     return seed;
   }
@@ -107,6 +109,7 @@ export async function saveActiveState(data: Pick<AppData, "activeWorkspaceId" | 
 /** Reset to seed data. */
 export async function resetAppData(): Promise<AppData> {
   const seed = createSeedData();
+  await resolveSeedDemoPaths(seed);
   await seedDb(seed);
   return seed;
 }

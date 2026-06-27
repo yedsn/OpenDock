@@ -1847,6 +1847,42 @@ fn db_init(state: tauri::State<AppState>) -> Result<String, String> {
     Ok("ok".into())
 }
 
+/// Return the path to the demo directory, creating project scaffolding at
+/// runtime so the seed data always points to real directories.
+/// Uses the app-local-data directory so it works in both dev and production.
+#[tauri::command]
+fn get_demo_dir(app: AppHandle) -> Result<String, String> {
+    let app_local = app.path().app_local_data_dir().map_err(|e| e.to_string())?;
+    let demo_dir = app_local.join("demo");
+    let projects = demo_dir.join("projects");
+    let _ = fs::create_dir_all(&projects);
+    // Scaffold demo project directories and placeholder files
+    let demo_projects = [
+        ("opendock-app", Some(r#"{"name":"opendock-app","version":"0.1.0","scripts":{"dev":"vite","build":"vite build","test":"vitest","lint":"eslint ."}}"#)),
+        ("opendock-server", Some(r#"{"name":"opendock-server","version":"0.1.0","scripts":{"start:dev":"nest start --watch","build":"nest build","test":"jest"}}"#)),
+        ("shared-components", None),
+        ("opendock-docs", None),
+    ];
+    for (name, pkg_json) in &demo_projects {
+        let dir = projects.join(name);
+        let src = dir.join("src");
+        let _ = fs::create_dir_all(&src);
+        // Write README.md placeholder
+        let readme = dir.join("README.md");
+        if !readme.exists() {
+            let _ = fs::write(&readme, format!("# {}\n\nDemo project for OpenDock.\n", name));
+        }
+        // Write package.json for Node-like projects
+        if let Some(content) = pkg_json {
+            let pkg_path = dir.join("package.json");
+            if !pkg_path.exists() {
+                let _ = fs::write(&pkg_path, *content);
+            }
+        }
+    }
+    Ok(demo_dir.to_string_lossy().to_string())
+}
+
 /// Execute a single SQL statement with no params.
 #[tauri::command]
 fn db_execute(state: tauri::State<AppState>, sql: String) -> Result<u64, String> {
@@ -2545,6 +2581,7 @@ pub fn run() {
             test_webdav_connection, sync_webdav_now, webdav_set_credential, webdav_get_credential, set_global_hotkey, set_app_icon_style, write_text_file,
             get_app_version, check_app_update, download_and_install_update, restart_app,
             db_init, db_execute, db_execute_params, db_get_value, db_set_value, db_list_table, db_bulk_insert,
+            get_demo_dir,
             snapshot_create, snapshot_update_meta, snapshot_list, snapshot_get, snapshot_delete, snapshot_prune,
             marketplace_fetch_text, marketplace_install_plugin_files, marketplace_get_installed_dir, marketplace_delete_plugin_dir
         ])

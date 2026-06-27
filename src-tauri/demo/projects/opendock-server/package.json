@@ -1,0 +1,9 @@
+{
+  "name": "opendock-server",
+  "version": "0.1.0",
+  "scripts": {
+    "start:dev": "nest start --watch",
+    "build": "nest build",
+    "test": "jest"
+  }
+}
