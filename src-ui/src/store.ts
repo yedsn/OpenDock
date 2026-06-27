@@ -932,6 +932,12 @@ async function openCollection(collection: Collection): Promise<void> {
   for (const item of items) {
     if (openedInBatch.has(item.id)) continue;
     await openItem(item);
+    // Delay between non-browser opens: macOS merges rapid `open` calls into
+    // one activation event, so only the first path would open in the app.
+    const remaining = items.filter((i) => !openedInBatch.has(i.id));
+    if (remaining.length > 0 && item.type !== "浏览器") {
+      await new Promise((r) => setTimeout(r, 350));
+    }
   }
 }
 
