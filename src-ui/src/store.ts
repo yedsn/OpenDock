@@ -8,7 +8,7 @@ import { createSeedData } from "./seed";
 import { nowIso, makeId, expandToolArgs, templateToCollectionType } from "./helpers";
 import { builtInThemes } from "./themes";
 import { getPluginOpenHandler } from "../../plugins/registry";
-import type { AppData, Collection, CollectionItem, CollectionMode, CollectionType, ItemType, MainView, MarketplaceIndex, MarketplacePlugin, ModalState, OpenTool, PluginItemFormField, PluginItemTypeContribution, PluginManifest, PluginToolTypeContribution, PluginToolTypeEntry, QuickViewId, Scene, SnapshotKind, SnapshotRecord, SceneType, Tab, TaskEntry, TaskStatus, ThemeDefinition, WebDavPendingConflict, Workspace } from "./types";
+import type { AppData, Collection, CollectionItem, CollectionMode, CollectionType, ItemType, MainView, MarketplaceIndex, MarketplacePlugin, ModalState, OpenTool, PluginItemFormField, PluginItemTypeContribution, PluginManifest, PluginToolTypeContribution, PluginToolTypeEntry, QuickViewId, Scene, SnapshotKind, SnapshotRecord, SceneType, Tab, TaskEntry, TaskStatus, ThemeDefinition, WebDavPendingConflict, SortMode, Workspace } from "./types";
 import type { SearchSuggestion } from "./types";
 import { matchesSearchText, scoreSearchText, createSearchText } from "./pinyin";
 import { useI18n } from "./i18n";
@@ -147,7 +147,10 @@ const state = reactive({
   webdavPendingConflict: null as WebDavPendingConflict | null,
   taskPanelOpen: false,
   tasks: [] as TaskEntry[],
-  toolSetupDone: false
+  toolSetupDone: false,
+  sceneSortMode: null as SortMode | null,
+  collectionSortMode: null as SortMode | null,
+  itemSortMode: null as SortMode | null
 });
 
 let saveTimer: ReturnType<typeof setTimeout> | null = null;
@@ -339,9 +342,18 @@ const currentCollections = computed(() =>
   state.data.collections.filter((c) => c.workspaceId === state.data.activeWorkspaceId)
 );
 
-const activeScenes = computed(() =>
-  state.data.scenes.filter((s) => s.workspaceId === state.data.activeWorkspaceId)
-);
+const activeScenes = computed(() => {
+  const scenes = state.data.scenes.filter((s) => s.workspaceId === state.data.activeWorkspaceId);
+  const mode = state.sceneSortMode || state.data.settings.general.sceneSort;
+  if (mode === "按名称") {
+    scenes.sort((a, b) => a.name.localeCompare(b.name, "zh-CN"));
+  } else if (mode === "按使用次数") {
+    scenes.sort((a, b) => (b.usageCount || 0) - (a.usageCount || 0));
+  } else {
+    scenes.sort((a, b) => (a.sort || 0) - (b.sort || 0));
+  }
+  return scenes;
+});
 
 const collectionById = computed(() => {
   const map = new Map<string, Collection>();
@@ -356,7 +368,16 @@ const itemsByCollectionId = computed(() => {
     if (items) items.push(item);
     else map.set(item.collectionId, [item]);
   }
-  for (const items of map.values()) items.sort((a, b) => a.sort - b.sort);
+  const mode = state.itemSortMode || state.data.settings.general.itemSort;
+  for (const items of map.values()) {
+    if (mode === "按名称") {
+      items.sort((a, b) => a.name.localeCompare(b.name, "zh-CN") || a.sort - b.sort);
+    } else if (mode === "按使用次数") {
+      items.sort((a, b) => (b.usageCount || 0) - (a.usageCount || 0) || a.sort - b.sort);
+    } else {
+      items.sort((a, b) => a.sort - b.sort);
+    }
+  }
   return map;
 });
 
@@ -405,13 +426,22 @@ const visibleCollections = computed(() => {
     });
   }
   if (state.quickView === "recent") {
-    return collections.sort((a, b) => {
+    collections.sort((a, b) => {
       const aTime = a.recentAt ? Date.parse(a.recentAt) : 0;
       const bTime = b.recentAt ? Date.parse(b.recentAt) : 0;
       return bTime - aTime || a.sort - b.sort;
     });
+    return collections;
   }
-  return collections.sort((a, b) => a.sort - b.sort);
+  const mode = state.collectionSortMode || state.data.settings.general.collectionSort;
+  if (mode === "按名称") {
+    collections.sort((a, b) => a.name.localeCompare(b.name, "zh-CN") || a.sort - b.sort);
+  } else if (mode === "按使用次数") {
+    collections.sort((a, b) => (b.usageCount || 0) - (a.usageCount || 0) || a.sort - b.sort);
+  } else {
+    collections.sort((a, b) => a.sort - b.sort);
+  }
+  return collections;
 });
 
 // ---- Active-entity helpers ----
@@ -645,7 +675,7 @@ function createScene(name: string, type: SceneType, description = ""): void {
   const meta = sceneMeta[type];
   const scene: Scene = {
     id: makeId("scene"), workspaceId: state.data.activeWorkspaceId, name, type, description,
-    icon: meta.icon, color: meta.color, favorite: false, createdAt: nowIso(), updatedAt: nowIso()
+    icon: meta.icon, color: meta.color, favorite: false, sort: activeScenes.value.length + 1, createdAt: nowIso(), updatedAt: nowIso()
   };
   state.data.scenes.push(scene);
   state.data.activeSceneId = scene.id;
@@ -894,6 +924,7 @@ async function openItem(item: CollectionItem): Promise<void> {
   if (item.type === "终端" && state.data.settings.general.confirmBeforeOpen && !(await confirmAction(`确认执行命令？\n${item.value}`))) return;
   const tool = resolveToolForItem(item);
   const result = await openItemWithTool(item, tool);
+  if (result.ok) item.usageCount = (item.usageCount || 0) + 1;
   const collection = findCollectionById(item.collectionId);
   if (collection) markCollectionRecent(collection);
   log(`${result.ok ? "打开" : "打开失败"}: ${item.name}${tool ? ` via ${tool.name}` : ""} - ${result.message}`);
@@ -903,6 +934,7 @@ async function openCollection(collection: Collection): Promise<void> {
   const items = collectionItems(collection.id);
   if (!items.length) return log(`集合为空: ${collection.name}`);
   if (state.data.settings.general.confirmBeforeOpen && items.length > 1 && !(await confirmAction(`确认打开集合「${collection.name}」中的 ${items.length} 个资源？`))) return;
+  collection.usageCount = (collection.usageCount || 0) + 1;
   markCollectionRecent(collection);
 
   const openedInBatch = new Set<string>();
@@ -926,7 +958,10 @@ async function openCollection(collection: Collection): Promise<void> {
       urls,
       newWindow: state.data.settings.general.openWebInNewWindow
     });
-    urlItems.forEach((item) => openedInBatch.add(item.id));
+    urlItems.forEach((item) => {
+      openedInBatch.add(item.id);
+      if (result.ok) item.usageCount = (item.usageCount || 0) + 1;
+    });
     log(`${result.ok ? "打开" : "打开失败"}: ${urlItems.length} 个网页资源 via ${tool.name} - ${result.message}`);
   }
   for (const item of items) {
@@ -945,6 +980,7 @@ async function openScene(scene: Scene): Promise<void> {
   const collections = state.data.collections.filter((c) => c.sceneId === scene.id);
   const count = collections.reduce((sum, c) => sum + collectionItems(c.id).length, 0);
   if (state.data.settings.general.confirmBeforeOpen && !(await confirmAction(`确认打开场景「${scene.name}」中的 ${count} 个资源？`))) return;
+  scene.usageCount = (scene.usageCount || 0) + 1;
   for (const collection of collections) await openCollection(collection);
 }
 
@@ -1897,6 +1933,56 @@ async function saveWebdavPassword(password: string): Promise<void> {
   state.data.settings.webdavSync.credentialRef = password ? "plugin-data:webdav-sync/secret:default" : "";
 }
 
+function reorderScenes(fromIndex: number, toIndex: number): void {
+  // Use activeScenes.value so indices match what the UI shows (which honors the
+  // current sort mode). Operate on a copy, then write back sort numbers.
+  const ordered = [...activeScenes.value];
+  if (fromIndex === toIndex || fromIndex < 0 || toIndex < 0 || fromIndex >= ordered.length || toIndex >= ordered.length) return;
+  const [moved] = ordered.splice(fromIndex, 1);
+  ordered.splice(toIndex, 0, moved);
+  ordered.forEach((scene, i) => { scene.sort = i + 1; });
+}
+
+function reorderCollections(fromIndex: number, toIndex: number): void {
+  const ordered = [...visibleCollections.value];
+  if (fromIndex === toIndex || fromIndex < 0 || toIndex < 0 || fromIndex >= ordered.length || toIndex >= ordered.length) return;
+  const [moved] = ordered.splice(fromIndex, 1);
+  ordered.splice(toIndex, 0, moved);
+  ordered.forEach((col, i) => { col.sort = i + 1; });
+}
+
+function reorderItems(collectionId: string, fromIndex: number, toIndex: number): void {
+  const ordered = [...collectionItems(collectionId)];
+  if (fromIndex === toIndex || fromIndex < 0 || toIndex < 0 || fromIndex >= ordered.length || toIndex >= ordered.length) return;
+  const [moved] = ordered.splice(fromIndex, 1);
+  ordered.splice(toIndex, 0, moved);
+  ordered.forEach((item, i) => { item.sort = i + 1; });
+}
+
+function setSceneSortMode(mode: SortMode | null): void {
+  state.sceneSortMode = mode;
+}
+
+function setCollectionSortMode(mode: SortMode | null): void {
+  state.collectionSortMode = mode;
+}
+
+function setItemSortMode(mode: SortMode | null): void {
+  state.itemSortMode = mode;
+}
+
+function effectiveSceneSortMode(): SortMode {
+  return state.sceneSortMode || state.data.settings.general.sceneSort;
+}
+
+function effectiveCollectionSortMode(): SortMode {
+  return state.collectionSortMode || state.data.settings.general.collectionSort;
+}
+
+function effectiveItemSortMode(): SortMode {
+  return state.itemSortMode || state.data.settings.general.itemSort;
+}
+
 export function useOpenDockStore() {
   return {
     state,
@@ -1981,6 +2067,15 @@ export function useOpenDockStore() {
     removeSnapshot,
     refreshSnapshots,
     startAutoSnapshotTimer,
-    stopAutoSnapshotTimer
+    stopAutoSnapshotTimer,
+    setSceneSortMode,
+    setCollectionSortMode,
+    setItemSortMode,
+    effectiveSceneSortMode,
+    effectiveCollectionSortMode,
+    effectiveItemSortMode,
+    reorderScenes,
+    reorderCollections,
+    reorderItems
   };
 }

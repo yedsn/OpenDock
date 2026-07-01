@@ -6,6 +6,7 @@ export type OpenStrategy = "single" | "batch" | "all";
 export type QuickViewId = "all" | "favorites" | "recent" | "unbound";
 export type MainView = "workspace" | "settings";
 export type CollectionMode = "collections" | "web" | "tool";
+export type SortMode = "手动" | "按名称" | "按使用次数";
 
 export interface ThemeColorTokens {
   bg: string;
@@ -57,6 +58,8 @@ export interface Scene {
   color: string;
   favorite: boolean;
   unbound?: boolean;
+  usageCount?: number;
+  sort: number;
   createdAt: string;
   updatedAt: string;
 }
@@ -78,6 +81,7 @@ export interface Collection {
   recentAt?: string;
   unbound: boolean;
   pluginId?: string;
+  usageCount?: number;
   sort: number;
   createdAt: string;
   updatedAt: string;
@@ -98,6 +102,7 @@ export interface CollectionItem {
   color: string;
   remark?: string;
   pluginData?: Record<string, unknown>;
+  usageCount?: number;
   sort: number;
   createdAt: string;
   updatedAt: string;
@@ -244,6 +249,9 @@ export interface GeneralSettings {
   autoSnapshotKeepCount: number;
   autoStart: boolean;
   startMinimized: boolean;
+  sceneSort: SortMode;
+  collectionSort: SortMode;
+  itemSort: SortMode;
 }
 
 export type SearchEnterBehavior = "open" | "navigate";

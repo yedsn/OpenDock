@@ -1,6 +1,6 @@
 import { builtInPluginManifests, builtInPluginStoreEntries } from "../../plugins/registry";
 import { invoke } from "@tauri-apps/api/core";
-import type { AppData, Collection, CollectionItem, CollectionType, ItemType, OpenTool, PluginManifest, Scene, SceneType, Workspace } from "./types";
+import type { AppData, Collection, CollectionItem, CollectionType, ItemType, OpenTool, PluginManifest, Scene, SceneType, SortMode, Workspace } from "./types";
 
 export const schemaVersion = 1;
 
@@ -44,11 +44,11 @@ const workspaces: Workspace[] = [
 ];
 
 const scenes: Scene[] = [
-  { id: "frontend", workspaceId: "default", name: "前端项目", type: "项目", description: "前端项目代码、开发环境与常用命令。", icon: "Code2", color: "#8a7ff0", favorite: true, createdAt: now, updatedAt: now },
-  { id: "backend", workspaceId: "default", name: "后端服务", type: "项目", description: "后端 API 服务、数据库和运维相关入口。", icon: "Server", color: "#74a4d4", favorite: true, createdAt: now, updatedAt: now },
-  { id: "devtools", workspaceId: "default", name: "开发工具", type: "工程", description: "技术文档、在线工具和开发者资源。", icon: "Wrench", color: "#d19a66", favorite: true, createdAt: now, updatedAt: now },
-  { id: "office", workspaceId: "default", name: "日常办公", type: "办公", description: "文档、表格和办公工具入口。", icon: "FileSpreadsheet", color: "#6fb29d", favorite: false, createdAt: now, updatedAt: now },
-  { id: "unbound", workspaceId: "default", name: "无场景", type: "通用", description: "未关联场景的独立集合。", icon: "FolderQuestion", color: "#d19a66", favorite: false, unbound: true, createdAt: now, updatedAt: now }
+  { id: "frontend", workspaceId: "default", name: "前端项目", type: "项目", description: "前端项目代码、开发环境与常用命令。", icon: "Code2", color: "#8a7ff0", favorite: true, sort: 1, createdAt: now, updatedAt: now },
+  { id: "backend", workspaceId: "default", name: "后端服务", type: "项目", description: "后端 API 服务、数据库和运维相关入口。", icon: "Server", color: "#74a4d4", favorite: true, sort: 2, createdAt: now, updatedAt: now },
+  { id: "devtools", workspaceId: "default", name: "开发工具", type: "工程", description: "技术文档、在线工具和开发者资源。", icon: "Wrench", color: "#d19a66", favorite: true, sort: 3, createdAt: now, updatedAt: now },
+  { id: "office", workspaceId: "default", name: "日常办公", type: "办公", description: "文档、表格和办公工具入口。", icon: "FileSpreadsheet", color: "#6fb29d", favorite: false, sort: 4, createdAt: now, updatedAt: now },
+  { id: "unbound", workspaceId: "default", name: "无场景", type: "通用", description: "未关联场景的独立集合。", icon: "FolderQuestion", color: "#d19a66", favorite: false, unbound: true, sort: 5, createdAt: now, updatedAt: now }
 ];
 
 const tools: OpenTool[] = [
@@ -185,7 +185,7 @@ export function createSeedData(): AppData {
       ...builtInPluginStoreEntries
     ]),
     settings: {
-      general: { defaultView: "全部资源", recentLimit: 12, confirmBeforeOpen: false, logOpenFailures: true, openWebInNewWindow: true, closeWindowAfterOpen: true, language: "简体中文", autoSnapshotIntervalMinutes: 60, autoSnapshotKeepCount: 7, autoStart: false, startMinimized: false },
+      general: { defaultView: "全部资源", recentLimit: 12, confirmBeforeOpen: false, logOpenFailures: true, openWebInNewWindow: true, closeWindowAfterOpen: true, language: "简体中文", autoSnapshotIntervalMinutes: 60, autoSnapshotKeepCount: 7, autoStart: false, startMinimized: false, sceneSort: "手动" as SortMode, collectionSort: "按使用次数" as SortMode, itemSort: "手动" as SortMode },
       search: { sceneEnterBehavior: "open", collectionEnterBehavior: "open", itemEnterBehavior: "open" },
       templates: ["代码目录", "本地网页", "开发环境网页", "线上环境网页", "常用命令"],
       shortcuts: [

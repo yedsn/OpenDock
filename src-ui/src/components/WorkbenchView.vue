@@ -1,10 +1,12 @@
-<script setup lang="ts">
+﻿<script setup lang="ts">
 import { computed, ref, watch } from "vue";
 import {
   Activity,
+  ArrowUpDown,
   FileText,
   FolderPlus,
   Globe,
+  GripVertical,
   Layers,
   Pencil,
   Play,
@@ -17,6 +19,7 @@ import { useOpenDockStore } from "../store";
 import { useI18n } from "../i18n";
 import { confirmDelete } from "../dialog";
 import VirtualList from "./VirtualList.vue";
+import { useListReorder } from "../composables/useListReorder";
 
 const store = useOpenDockStore();
 const { t, typeLabel } = useI18n();
@@ -157,6 +160,44 @@ async function deleteItemConfirm(itemId: string) {
   }
 }
 
+const collectionSortMode = computed(() => store.effectiveCollectionSortMode());
+const itemSortMode = computed(() => store.effectiveItemSortMode());
+
+const sortModeOptions = computed(() => [
+  { value: "手动", label: t("workbench.sortManual") },
+  { value: "按名称", label: t("workbench.sortByName") },
+  { value: "按使用次数", label: t("workbench.sortByUsage") }
+]);
+
+function setCollectionSort(mode: string) {
+  store.setCollectionSortMode(mode === store.state.data.settings.general.collectionSort ? null : mode as any);
+}
+
+function setItemSort(mode: string) {
+  store.setItemSortMode(mode === store.state.data.settings.general.itemSort ? null : mode as any);
+}
+
+const isManualCollectionSort = computed(() => store.effectiveCollectionSortMode() === "手动");
+const isManualItemSort = computed(() => store.effectiveItemSortMode() === "手动");
+
+const collectionListRef = ref<HTMLElement | null>(null);
+const itemListRef = ref<HTMLElement | null>(null);
+
+useListReorder({
+  el: collectionListRef,
+  enabled: isManualCollectionSort,
+  onReorder: (fromIndex, toIndex) => store.reorderCollections(fromIndex, toIndex)
+});
+
+useListReorder({
+  el: itemListRef,
+  enabled: isManualItemSort,
+  onReorder: (fromIndex, toIndex) => {
+    const collectionId = store.state.data.activeCollectionId;
+    if (collectionId) store.reorderItems(collectionId, fromIndex, toIndex);
+  }
+});
+
 function selectCollection(collection: { id: string; name: string; sceneId: string | null }) {
   const fullCollection = store.findCollectionById(collection.id);
   if (!fullCollection) return;
@@ -190,26 +231,17 @@ function selectCollection(collection: { id: string; name: string; sceneId: strin
         <button class="tool-chip action" @click="store.state.modal.kind = 'collection'; store.state.modal.editingId = undefined;"><FolderPlus />{{ $t("workbench.newCollection") }}</button>
       </div>
 
-      <VirtualList
-        v-if="collectionRows.length"
-        class="collection-list virtual-collection-list"
-        :items="collectionRows"
-        :item-height="collectionItemHeight"
-        :gap="rowGap"
-        :padding="listPad"
-      >
-        <template #row="{ item }">
-          <div
+      <div v-if="isManualCollectionSort && collectionRows.length" class="collection-list" ref="collectionListRef">
+          <div v-for="(item, index) in collectionRows" :key="item.id"
             class="collection-card"
-            v-memo="[item.id, item.favorite, item.subtitle, activeCollectionId === item.id, collectionItemHeight]"
-            :class="{ active: activeCollectionId === item.id }"
+            :class="{ active: activeCollectionId === item.id, 'manual-sort': isManualCollectionSort }"
             role="button"
             tabindex="0"
             :style="{ height: collectionItemHeight + 'px' }"
             @click="selectCollection(item.source)"
             @keydown.enter.prevent="selectCollection(item.source)"
-            @keydown.space.prevent="selectCollection(item.source)"
-          >
+            @keydown.space.prevent="selectCollection(item.source)">
+            <GripVertical v-if="isManualCollectionSort" class="drag-handle" />
             <span class="card-icon"><Layers /></span>
             <span class="card-text">
               <strong>{{ item.name }}</strong>
@@ -223,8 +255,40 @@ function selectCollection(collection: { id: string; name: string; sceneId: strin
               </button>
             </span>
           </div>
-        </template>
-      </VirtualList>
+        </div>
+        <VirtualList
+          v-else-if="collectionRows.length"
+          class="collection-list virtual-collection-list"
+          :items="collectionRows"
+          :item-height="collectionItemHeight"
+          :gap="rowGap"
+          :padding="listPad"
+        >
+          <template #row="{ item, index }">
+            <div
+              class="collection-card"
+              :class="{ active: activeCollectionId === item.id }"
+              role="button"
+              tabindex="0"
+              :style="{ height: collectionItemHeight + 'px' }"
+              @click="selectCollection(item.source)"
+              @keydown.enter.prevent="selectCollection(item.source)"
+              @keydown.space.prevent="selectCollection(item.source)">
+              <span class="card-icon"><Layers /></span>
+              <span class="card-text">
+                <strong>{{ item.name }}</strong>
+                <small>{{ item.subtitle }}</small>
+              </span>
+              <span class="card-actions">
+                <button class="icon-button" type="button" :title="$t('workbench.edit')" @click.stop="editCollection(item.id)"><Pencil /></button>
+                <button class="icon-button danger" type="button" :title="$t('workbench.delete')" @click.stop="deleteCollectionConfirm(item.id)"><Trash2 /></button>
+                <button class="icon-button" type="button" @click.stop="store.toggleFavorite(item.source)">
+                  <Star :fill="item.favorite ? 'currentColor' : 'none'" />
+                </button>
+              </span>
+            </div>
+          </template>
+        </VirtualList>
       <div v-else class="collection-list collection-list-empty">
         <div class="empty-state">{{ $t("workbench.noMatchingCollections") }}</div>
       </div>
@@ -237,22 +301,24 @@ function selectCollection(collection: { id: string; name: string; sceneId: strin
           <p>{{ activeCollection?.description || t("workbench.selectCollectionHint") }}</p>
         </div>
         <div class="resource-actions">
+          <span class="sort-control">
+            <ArrowUpDown :size="14" />
+            <select :value="itemSortMode" @change="setItemSort(($event.target as HTMLSelectElement).value)" class="sort-select">
+              <option v-for="opt in sortModeOptions" :key="opt.value" :value="opt.value">{{ opt.label }}</option>
+            </select>
+          </span>
           <button class="icon-button" @click="store.state.modal.kind = 'item'; store.state.modal.editingId = undefined;"><Plus /></button>
           <button class="icon-button" v-if="activeCollection" :title="$t('workbench.editCollection')" @click="editCollection(activeCollection.id)"><Pencil /></button>
           <button v-if="activeCollection" class="run-button" @click="store.openCollection(activeCollection)"><Play />{{ $t("workbench.openCollection") }}</button>
         </div>
       </div>
 
-      <VirtualList
-        v-if="itemRows.length"
-        class="item-list virtual-item-list"
-        :items="itemRows"
-        :item-height="itemRowHeight"
-        :gap="rowGap"
-        :padding="listPad"
-      >
-        <template #row="{ item }">
-          <div class="item-row" v-memo="[item.id, item.subtitle, itemRowHeight]" :style="{ height: itemRowHeight + 'px' }" role="button" tabindex="0" @keydown.enter.prevent="store.openItem(item.source)">
+      <div v-if="isManualItemSort && itemRows.length" class="item-list" ref="itemListRef">
+          <div v-for="(item, index) in itemRows" :key="item.id" class="item-row"
+            :class="{ 'manual-sort': isManualItemSort }"
+            :style="{ height: itemRowHeight + 'px' }" role="button" tabindex="0"
+            @keydown.enter.prevent="store.openItem(item.source)">
+            <GripVertical v-if="isManualItemSort" class="drag-handle" />
             <span class="card-icon"><FileText /></span>
             <span class="item-main">
               <strong>{{ item.name }}</strong>
@@ -264,8 +330,32 @@ function selectCollection(collection: { id: string; name: string; sceneId: strin
               <button class="icon-button danger" :title="$t('workbench.delete')" @click="deleteItemConfirm(item.id)"><Trash2 /></button>
             </span>
           </div>
-        </template>
-      </VirtualList>
+        </div>
+        <VirtualList
+          v-else-if="itemRows.length"
+          class="item-list virtual-item-list"
+          :items="itemRows"
+          :item-height="itemRowHeight"
+          :gap="rowGap"
+          :padding="listPad"
+        >
+          <template #row="{ item, index }">
+            <div class="item-row"
+              :style="{ height: itemRowHeight + 'px' }" role="button" tabindex="0"
+              @keydown.enter.prevent="store.openItem(item.source)">
+              <span class="card-icon"><FileText /></span>
+              <span class="item-main">
+                <strong>{{ item.name }}</strong>
+                <small>{{ item.subtitle }}</small>
+              </span>
+              <span class="item-actions">
+                <button class="row-open" @click="store.openItem(item.source)"><Play />{{ $t("workbench.open") }}</button>
+                <button class="icon-button" :title="$t('workbench.edit')" @click="editItem(item.id)"><Pencil /></button>
+                <button class="icon-button danger" :title="$t('workbench.delete')" @click="deleteItemConfirm(item.id)"><Trash2 /></button>
+              </span>
+            </div>
+          </template>
+        </VirtualList>
       <div v-else class="item-list item-list-empty">
         <div class="empty-state">{{ $t("workbench.noResourcesYet") }}</div>
       </div>
@@ -280,6 +370,30 @@ function selectCollection(collection: { id: string; name: string; sceneId: strin
   </section>
 </template>
 <style scoped>
+.collection-card.manual-sort { grid-template-columns: 16px 36px minmax(0,1fr) auto; user-select: none; }
+.item-row.manual-sort { grid-template-columns: 16px 28px minmax(0,1fr) auto; user-select: none; }
+.drag-handle { width: 14px; height: 14px; opacity: 0.35; cursor: grab; flex-shrink: 0; }
+.drag-handle:hover { opacity: 0.7; }
+.collection-card.sortable-ghost, .item-row.sortable-ghost { opacity: 0.35; }
+.collection-card.sortable-chosen, .item-row.sortable-chosen { cursor: grabbing; }
+.collection-card.sortable-drag, .item-row.sortable-drag { opacity: 0.9; }
+.collection-card.manual-sort .drag-handle,
+.item-row.manual-sort .drag-handle { cursor: grab; }
+.collection-card.manual-sort.sortable-chosen .drag-handle,
+.item-row.manual-sort.sortable-chosen .drag-handle { cursor: grabbing; }
+.collection-list:not(.virtual-collection-list),
+.item-list:not(.virtual-item-list) {
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+  min-height: 0;
+  padding: 10px;
+  gap: 8px;
+  margin-left: 10px;
+}
+.sort-control { display: inline-flex; align-items: center; gap: 4px; }
+.sort-select { background: var(--bg3); color: var(--text); border: 1px solid var(--line); border-radius: 4px; font-size: 11px; padding: 2px 4px; cursor: pointer; outline: none; }
+.sort-select:hover { border-color: var(--accent); }
 .pane-header-actions { display: flex; align-items: center; gap: 6px; }
 .card-actions { display: flex; align-items: center; gap: 2px; }
 .item-actions { display: flex; align-items: center; gap: 4px; }

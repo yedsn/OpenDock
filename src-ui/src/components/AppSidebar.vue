@@ -1,11 +1,13 @@
 ﻿<script setup lang="ts">
 import { computed, nextTick, onMounted, onUnmounted, ref } from "vue";
 import {
+  ArrowUpDown,
   ChevronsUpDown,
   Circle,
   Clock3,
   Code2,
   Database,
+  GripVertical,
   Inbox,
   Pencil,
   Plus,
@@ -18,6 +20,7 @@ import { useOpenDockStore } from "../store";
 import { useI18n } from "../i18n";
 import SearchOverlay from "./SearchOverlay.vue";
 import { confirmDelete } from "../dialog";
+import { useListReorder } from "../composables/useListReorder";
 
 const store = useOpenDockStore();
 const { t } = useI18n();
@@ -158,6 +161,27 @@ onUnmounted(() => {
   window.removeEventListener("focus", handleWindowFocus);
   document.removeEventListener("visibilitychange", handleVisibilityChange);
 });
+
+const sceneSortMode = computed(() => store.effectiveSceneSortMode());
+
+const sortModeOptions = computed(() => [
+  { value: "手动", label: t("workbench.sortManual") },
+  { value: "按名称", label: t("workbench.sortByName") },
+  { value: "按使用次数", label: t("workbench.sortByUsage") }
+]);
+
+function setSceneSort(mode: string) {
+  store.setSceneSortMode(mode === store.state.data.settings.general.sceneSort ? null : mode as any);
+}
+
+const isManualSceneSort = computed(() => store.effectiveSceneSortMode() === "手动");
+const sceneListRef = ref<HTMLElement | null>(null);
+
+useListReorder({
+  el: sceneListRef,
+  enabled: isManualSceneSort,
+  onReorder: (fromIndex, toIndex) => store.reorderScenes(fromIndex, toIndex)
+});
 </script>
 
 <template>
@@ -193,18 +217,22 @@ onUnmounted(() => {
         <span>{{ $t("sidebar.sceneList") }}</span>
         <button class="mini-title-button" :title="$t('sidebar.newScene')" @click="openModal('scene')"><Plus /></button>
       </div>
-      <div class="tree-list">
-        <button v-for="scene in store.activeScenes.value" :key="scene.id"
+      <div class="tree-list" ref="sceneListRef">
+        <div v-for="(scene, sIdx) in store.activeScenes.value" :key="scene.id"
           class="scene-button"
-          :class="{ active: store.state.activeTabId === 'scene-' + scene.id }"
-          @click="store.openTab({ id: 'scene-' + scene.id, kind: 'scene', title: scene.name, sceneId: scene.id })">
+          role="button"
+          tabindex="0"
+          :class="{ active: store.state.activeTabId === 'scene-' + scene.id, 'manual-sort': isManualSceneSort }"
+          @click="store.openTab({ id: 'scene-' + scene.id, kind: 'scene', title: scene.name, sceneId: scene.id })"
+          @keydown.enter.prevent="store.openTab({ id: 'scene-' + scene.id, kind: 'scene', title: scene.name, sceneId: scene.id })">
+          <GripVertical v-if="isManualSceneSort" class="drag-handle" />
           <Code2 />
           <span><span class="scene-name">{{ scene.name }}</span><small class="scene-detail">{{ scene.description }}</small></span>
           <span class="scene-actions">
             <Pencil class="row-edit-icon" @click.stop="editScene(scene.id)" />
             <Trash2 class="row-edit-icon danger" @click.stop="deleteSceneConfirm(scene.id)" />
           </span>
-        </button>
+        </div>
       </div>
     </div>
 
@@ -235,6 +263,17 @@ onUnmounted(() => {
 </template>
 
 <style scoped>
+.scene-button.manual-sort { grid-template-columns: 16px 18px minmax(0,1fr) auto; user-select: none; }
+.drag-handle { width: 14px; height: 14px; opacity: 0.35; cursor: grab; flex-shrink: 0; }
+.drag-handle:hover { opacity: 0.85; }
+.scene-button.sortable-ghost { opacity: 0.35; }
+.scene-button.sortable-chosen { cursor: grabbing; }
+.scene-button.sortable-drag { opacity: 0.9; }
+.scene-button.manual-sort .drag-handle { cursor: grab; }
+.scene-button.manual-sort.sortable-chosen .drag-handle { cursor: grabbing; }
+.sort-control { display: inline-flex; align-items: center; gap: 2px; }
+.sort-select { background: var(--bg3); color: var(--text); border: 1px solid var(--line); border-radius: 4px; font-size: 11px; padding: 1px 3px; cursor: pointer; outline: none; }
+.sort-select:hover { border-color: var(--accent); }
 .scene-actions { display: none; gap: 4px; }
 .scene-button:hover .scene-actions { display: inline-flex; align-items: center; }
 .row-edit-icon { width: 14px; height: 14px; opacity: 0.6; cursor: pointer; }

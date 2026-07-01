@@ -62,7 +62,11 @@
     confirmRunCommand: "确认执行命令？",
     confirmOpenCollection: "确认打开集合「{name}」中的 {count} 个资源？",
     confirmOpenScene: "确认打开场景「{name}」中的 {count} 个资源？",
-    noResourcesYet: "这个集合还没有资源"
+    noResourcesYet: "这个集合还没有资源",
+    sortBy: "排序",
+    sortManual: "手动",
+    sortByName: "按名称",
+    sortByUsage: "按使用次数"
   },
   // Search overlay
   search: {
@@ -113,6 +117,13 @@
     logOpenFailures: "记录打开失败",
     autoStart: "开机自启动",
     startMinimized: "启动时最小化窗口",
+    sortSettings: "列表排序",
+    sceneSort: "场景排序",
+    collectionSort: "集合排序",
+    itemSort: "资源排序",
+    sortManual: "手动排序",
+    sortByName: "按名称排序",
+    sortByUsage: "按使用次数排序",
     // Appearance panel
     appIcon: "App icon",
     appIconDark: "Dark",

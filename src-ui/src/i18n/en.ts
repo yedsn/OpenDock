@@ -59,7 +59,11 @@
     confirmRunCommand: "Run this command?",
     confirmOpenCollection: "Open {count} resources in collection \"{name}\"?",
     confirmOpenScene: "Open {count} resources in scene \"{name}\"?",
-    noResourcesYet: "This collection has no resources yet"
+    noResourcesYet: "This collection has no resources yet",
+    sortBy: "Sort",
+    sortManual: "Manual",
+    sortByName: "By name",
+    sortByUsage: "By usage"
   },
   search: {
     searchResults: "Search results",
@@ -107,6 +111,13 @@
     logOpenFailures: "Log open failures",
     autoStart: "Auto-start on login",
     startMinimized: "Start minimized",
+    sortSettings: "List sorting",
+    sceneSort: "Scene sort",
+    collectionSort: "Collection sort",
+    itemSort: "Resource sort",
+    sortManual: "Manual",
+    sortByName: "By name",
+    sortByUsage: "By usage count",
     appIcon: "App icon",
     appIconDark: "Dark",
     appIconDarkDesc: "Dark O + Dock icon for the default desktop style.",

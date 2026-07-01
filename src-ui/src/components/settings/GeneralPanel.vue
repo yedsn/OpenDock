@@ -1,4 +1,4 @@
-﻿<script setup lang="ts">
+<script setup lang="ts">
 import { useOpenDockStore } from "../../store";
 import { useI18n } from "../../i18n";
 const store = useOpenDockStore();
@@ -58,6 +58,34 @@ const general = store.state.data.settings.general;
         <span class="setting-switch">
           <input v-model="general.startMinimized" type="checkbox" /><span></span>
         </span>
+      </label>
+    </div>
+  
+    <div class="settings-card-title">{{ $t("settings.sortSettings") }}</div>
+    <div class="settings-grid">
+      <label class="setting-field">
+        <span>{{ $t("settings.sceneSort") }}</span>
+        <select v-model="general.sceneSort">
+          <option value="手动">{{ $t("settings.sortManual") }}</option>
+          <option value="按名称">{{ $t("settings.sortByName") }}</option>
+          <option value="按使用次数">{{ $t("settings.sortByUsage") }}</option>
+        </select>
+      </label>
+      <label class="setting-field">
+        <span>{{ $t("settings.collectionSort") }}</span>
+        <select v-model="general.collectionSort">
+          <option value="手动">{{ $t("settings.sortManual") }}</option>
+          <option value="按名称">{{ $t("settings.sortByName") }}</option>
+          <option value="按使用次数">{{ $t("settings.sortByUsage") }}</option>
+        </select>
+      </label>
+      <label class="setting-field">
+        <span>{{ $t("settings.itemSort") }}</span>
+        <select v-model="general.itemSort">
+          <option value="手动">{{ $t("settings.sortManual") }}</option>
+          <option value="按名称">{{ $t("settings.sortByName") }}</option>
+          <option value="按使用次数">{{ $t("settings.sortByUsage") }}</option>
+        </select>
       </label>
     </div>
   </section>
