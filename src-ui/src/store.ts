@@ -1,9 +1,10 @@
-﻿import { computed, reactive, watch } from "vue";
+﻿import { computed, reactive, watch, toRaw } from "vue";
 import { invoke } from "@tauri-apps/api/core";
 import { collectionMeta, itemMeta, sceneMeta } from "./seed";
 import { exportAppData, loadAppData, normalizeAppData, resetAppData, saveActiveState, saveAppData } from "./storage";
 import { createSnapshot, listSnapshots, loadSnapshot, deleteSnapshot, pruneSnapshots, updateSnapshotMeta } from "./storage";
 import { webdavSetCredential, webdavGetCredential } from "./db";
+import { serializeAppDataOffThread, parseJsonOffThread, summarizeDiffOffThread } from "./webdavWorkerClient";
 import { createSeedData } from "./seed";
 import { nowIso, makeId, expandToolArgs, templateToCollectionType } from "./helpers";
 import { builtInThemes } from "./themes";
@@ -207,7 +208,7 @@ watch(() => [state.data.activeWorkspaceId, state.data.activeSceneId, state.data.
 /** Load data from SQLite, replacing seed data. Call once at app startup. */
 
 let webdavAutoSyncTimer: ReturnType<typeof setInterval> | null = null;
-const WEBDAV_QUICK_SYNC_DEBOUNCE_MS = 300;
+const WEBDAV_QUICK_SYNC_DEBOUNCE_MS = 2000;
 
 async function init() {
   try {
@@ -1149,7 +1150,37 @@ async function testWebdav(): Promise<void> {
   log(`WebDAV Sync 测试连接: ${result.message}`);
 }
 
+// Serialize WebDAV sync runs so auto-sync and manual sync never overlap on the UI thread.
+let webdavSyncPromise: Promise<void> | null = null;
+
+function runWhenIdle<T>(fn: () => T, timeout = 800): Promise<T> {
+  return new Promise((resolve) => {
+    const run = () => resolve(fn());
+    if (typeof window !== "undefined" && "requestIdleCallback" in window) {
+      (window as unknown as { requestIdleCallback: (cb: () => void, opts?: { timeout: number }) => number }).requestIdleCallback(run, { timeout });
+    } else {
+      setTimeout(run, 0);
+    }
+  });
+}
+
 async function syncWebdavNow(): Promise<void> {
+  // Chain sync requests so only one runs at a time; callers still await their own run.
+  const previous = webdavSyncPromise;
+  let resolveChain!: () => void;
+  const chainPromise = new Promise<void>((resolve) => { resolveChain = resolve; });
+  webdavSyncPromise = chainPromise;
+  try {
+    if (previous) { await previous; }
+    await syncWebdavNowOnce();
+  } finally {
+    resolveChain();
+    // Only clear if no later caller has already replaced us in the chain.
+    if (webdavSyncPromise === chainPromise) webdavSyncPromise = null;
+  }
+}
+
+async function syncWebdavNowOnce(): Promise<void> {
   const config = state.data.settings.webdavSync;
   const taskId = "webdav-sync";
   const existingTask = state.tasks.find((task) => task.id === taskId && task.status === "running");
@@ -1167,7 +1198,9 @@ async function syncWebdavNow(): Promise<void> {
   });
   const password = await webdavGetCredential();
   updateTask(taskId, { message: "正在读取本地数据并连接 WebDAV...", progress: 22 });
-  const localData = exportAppData(state.data);
+  // Serialize the (potentially large) app data snapshot on an idle frame so it does not block UI animation.
+  // Serialize on a worker so the main thread stays free for UI clicks during sync.
+  const localData = await serializeAppDataOffThread(toRaw(state.data), false);
   const result = await callOpenCommand("sync_webdav_now", {
     serverUrl: config.serverUrl,
     username: config.username,
@@ -1197,8 +1230,8 @@ async function syncWebdavNow(): Promise<void> {
       const isMergedData = result.message.startsWith("SYNC_MERGED_DATA:");
       const remoteJson = result.message.slice(isMergedData ? "SYNC_MERGED_DATA:".length : "SYNC_REMOTE_DATA:".length);
       try {
-        const remoteData = parseWebdavRemoteData(remoteJson);
-        const changeSummary = summarizeSyncChanges(state.data, remoteData);
+        const remoteData = await parseWebdavRemoteDataAsync(remoteJson);
+        const changeSummary = await summarizeDiffOffThread(toRaw(state.data), remoteData);
         await replaceLocalDataFromWebdav(remoteData, isMergedData ? "WebDAV 增量合并前快照" : "WebDAV 远程覆盖前快照", { preserveLocalSettings: isMergedData });
         state.data.settings.webdavSync.status = isMergedData ? `同步成功（已增量合并：${changeSummary}）` : `同步成功（远程优先：${changeSummary}）`;
         state.data.settings.webdavSync.lastError = "";
@@ -1270,6 +1303,12 @@ function parseWebdavRemoteData(remoteJson: string): AppData {
   return normalizeWebdavData(remoteData);
 }
 
+/** Off-thread JSON parse + normalize for large remote payloads on the hot sync path. */
+async function parseWebdavRemoteDataAsync(remoteJson: string): Promise<AppData> {
+  const remoteData = await parseJsonOffThread(remoteJson);
+  return normalizeWebdavData(remoteData);
+}
+
 function normalizeWebdavData(input: unknown): AppData {
   return normalizeAppData(input);
 }
@@ -1306,7 +1345,7 @@ function syncEntityKey(collection: SyncDiffCollection, value: unknown): string |
 
 function comparableSyncEntity(value: unknown): string {
   if (!value || typeof value !== "object") return JSON.stringify(value);
-  const copy = JSON.parse(JSON.stringify(value)) as Record<string, unknown>;
+  const copy = { ...(value as Record<string, unknown>) };
   delete copy.sort;
   delete copy.recent;
   delete copy.recentAt;

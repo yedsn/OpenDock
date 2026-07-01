@@ -1465,18 +1465,39 @@ fn assemble_webdav_split_payload(manifest_json: &str, load_file: impl FnMut(&str
 }
 
 async fn upload_webdav_sync_payload(server_url: &str, username: &str, password: &str, remote_dir: &str, manifest_path: &str, local_data: &str) -> Result<(), String> {
-    let (files, manifest_json) = split_webdav_sync_payload(local_data)?;
-    let remote_manifest = webdav::download(server_url, username, password, manifest_path).await
-        .ok()
-        .and_then(|raw| serde_json::from_str::<serde_json::Value>(&raw).ok())
-        .filter(|manifest| manifest.get("format").and_then(|value| value.as_str()) == Some(WEBDAV_SPLIT_FORMAT));
+    // Move CPU-bound split/hash work onto blocking threads so async runtime workers stay free for IPC / UI.
+    let local_owned = local_data.to_string();
+    let (files, manifest_json, local_hashes) = tauri::async_runtime::spawn_blocking(move || -> Result<(Vec<(String, String)>, String, std::collections::HashMap<String, String>), String> {
+        let (files, manifest_json) = split_webdav_sync_payload(&local_owned)?;
+        let mut hashes = std::collections::HashMap::new();
+        for (relative_path, contents) in &files {
+            if let Some((key, _)) = WEBDAV_SPLIT_FILES
+                .iter()
+                .find(|(_, filename)| *relative_path == format!("{WEBDAV_SPLIT_DIR}/{filename}"))
+            {
+                hashes.insert((*key).to_string(), sha256_hex(contents));
+            }
+        }
+        Ok((files, manifest_json, hashes))
+    })
+    .await
+    .map_err(|e| format!("拆分本地同步数据任务失败: {e}"))??;
+
+    let remote_manifest = match webdav::download(server_url, username, password, manifest_path).await.ok() {
+        Some(raw) => tauri::async_runtime::spawn_blocking(move || {
+            serde_json::from_str::<serde_json::Value>(&raw).ok()
+                .filter(|manifest| manifest.get("format").and_then(|value| value.as_str()) == Some(WEBDAV_SPLIT_FORMAT))
+        }).await.unwrap_or(None),
+        None => None,
+    };
+
     for (relative_path, contents) in files {
         let key = WEBDAV_SPLIT_FILES
             .iter()
             .find(|(_, filename)| relative_path == format!("{WEBDAV_SPLIT_DIR}/{filename}"))
             .map(|(key, _)| *key);
         if let (Some(manifest), Some(key)) = (&remote_manifest, key) {
-            if manifest_file_hash(manifest, key).as_deref() == Some(sha256_hex(&contents).as_str()) {
+            if manifest_file_hash(manifest, key).as_deref() == local_hashes.get(key).map(|s| s.as_str()) {
                 continue;
             }
         }
@@ -1490,9 +1511,17 @@ async fn upload_webdav_sync_payload(server_url: &str, username: &str, password: 
 
 async fn download_webdav_sync_payload(server_url: &str, username: &str, password: &str, remote_dir: &str, manifest_path: &str, local_data: Option<&str>) -> Result<String, String> {
     let manifest_or_legacy = webdav::download(server_url, username, password, manifest_path).await?;
-    let local_files = local_data
-        .and_then(|data| split_webdav_sync_payload(data).ok())
-        .map(|(files, _)| files.into_iter().collect::<std::collections::HashMap<String, String>>());
+    // Splitting local data for cache-hit comparison is CPU-bound: run on a blocking thread.
+    let local_files = if let Some(data) = local_data {
+        let data_owned = data.to_string();
+        tauri::async_runtime::spawn_blocking(move || {
+            split_webdav_sync_payload(&data_owned).ok()
+                .map(|(files, _)| files.into_iter().collect::<std::collections::HashMap<String, String>>())
+        })
+        .await
+        .ok()
+        .flatten()
+    } else { None };
     download_and_assemble_split_payload(&manifest_or_legacy, server_url, username, password, remote_dir, local_files.as_ref()).await
 }
 
@@ -1588,18 +1617,34 @@ async fn sync_webdav_now_impl(
             Err(e) => return Ok(failure(format!("下载远程数据失败: {e}"))),
         };
 
-        if json_values_equal(&remote_data, &local_data) {
+        // Compare/merge payloads on blocking threads: these parse and hash potentially large JSON.
+        let local_for_cmp = local_data.to_string();
+        let remote_for_cmp = remote_data.clone();
+        let equal = tauri::async_runtime::spawn_blocking(move || json_values_equal(&remote_for_cmp, &local_for_cmp))
+            .await
+            .map_err(|e| format!("比较任务失败: {e}"))?;
+        if equal {
             return Ok(success("同步成功（本地与远程一致）"));
         }
 
-        match merge_webdav_payload_without_conflict(local_data, &remote_data) {
+        let local_for_merge = local_data.to_string();
+        let remote_for_merge = remote_data.clone();
+        let outcome = tauri::async_runtime::spawn_blocking(move || merge_webdav_payload_without_conflict(&local_for_merge, &remote_for_merge))
+            .await
+            .map_err(|e| format!("合并任务失败: {e}"))?;
+        match outcome {
             WebDavMergeOutcome::Same => return Ok(success("同步成功（本地与远程一致）")),
             WebDavMergeOutcome::Merged(merged_data) => {
                 if conflict_policy != "覆盖远程" && conflict_policy != "覆盖本地" {
                     if let Err(e) = upload_webdav_sync_payload(server_url, username, password, remote_dir, &remote_file_path, &merged_data).await {
                         return Ok(failure(format!("上传合并数据失败: {e}")));
                     }
-                    if json_values_equal(&merged_data, &local_data) {
+                    let local_for_eq = local_data.to_string();
+                    let merged_for_eq = merged_data.clone();
+                    let merged_eq_local = tauri::async_runtime::spawn_blocking(move || json_values_equal(&merged_for_eq, &local_for_eq))
+                        .await
+                        .map_err(|e| format!("比较任务失败: {e}"))?;
+                    if merged_eq_local {
                         return Ok(success("同步成功（已增量同步到远程）"));
                     }
                     return Ok(success(format!("SYNC_MERGED_DATA:{merged_data}")));
@@ -2307,6 +2352,7 @@ fn current_hotkey_matches(candidate: &Shortcut) -> bool {
 
 // ---- Auto-start on login ----
 
+#[cfg(target_os = "macos")]
 const AUTOSTART_APP_ID: &str = "com.opendock.app";
 
 fn app_exe_path() -> Result<String, String> {
@@ -2608,10 +2654,10 @@ pub fn run() {
         ])
         .build(tauri::generate_context!())
         .expect("error while building OpenDock")
-        .run(|app, event| {
+        .run(|_app, _event| {
             #[cfg(target_os = "macos")]
-            if let tauri::RunEvent::Reopen { .. } = event {
-                show_main_window(app);
+            if let tauri::RunEvent::Reopen { .. } = _event {
+                show_main_window(_app);
             }
         });
 }

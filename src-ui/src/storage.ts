@@ -114,13 +114,26 @@ export async function resetAppData(): Promise<AppData> {
   return seed;
 }
 
-/** Export data as JSON, excluding sensitive credentials. */
-export function exportAppData(data: AppData): string {
-  const copy = JSON.parse(JSON.stringify(data));
+/**
+ * Export data as JSON, excluding sensitive credentials.
+ * `pretty` controls human-readable formatting (default true for downloads);
+ * machine consumers (WebDAV sync, snapshots) pass false to skip whitespace.
+ */
+export function exportAppData(data: AppData, pretty: boolean = true): string {
+  // structuredClone avoids the JSON.parse(JSON.stringify()) double traversal and
+  // is faster in Chromium-based webviews. It cannot clone Vue reactive Proxy objects
+  // though, so we fall back to JSON when it throws (e.g. tests that pass reactive state).
+  let copy: AppData;
+  if (typeof structuredClone === "function") {
+    try { copy = structuredClone(data as unknown) as AppData; }
+    catch { copy = JSON.parse(JSON.stringify(data)); }
+  } else {
+    copy = JSON.parse(JSON.stringify(data));
+  }
   if (copy.settings?.webdavSync) {
     copy.settings.webdavSync.credentialRef = "";
   }
-  return JSON.stringify(copy, null, 2);
+  return pretty ? JSON.stringify(copy, null, 2) : JSON.stringify(copy);
 }
 
 /**

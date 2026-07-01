@@ -7,3 +7,9 @@ interface Window {
     dismiss: () => void;
   };
 }
+
+// Vite worker imports (?worker suffix). Keeps TypeScript from choking on the query string.
+declare module "*?worker" {
+  const WorkerCtor: { new (): Worker };
+  export default WorkerCtor;
+}
