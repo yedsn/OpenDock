@@ -1136,7 +1136,7 @@ enum WebDavMergeOutcome {
 
 /// Fields to strip when comparing two entity objects for business-equality.
 /// Sort order is machine-local, runtime-only fields should not cause conflict.
-const ENTITY_IGNORE_FIELDS: &[&str] = &["sort", "recent", "recentAt", "favorite"];
+const ENTITY_IGNORE_FIELDS: &[&str] = &["sort", "recent", "recentAt", "favorite", "updatedAt", "createdAt"];
 
 /// Normalize an entity value for comparison: strip order/runtime-only fields.
 fn normalized_entity_value(mut value: serde_json::Value) -> serde_json::Value {
@@ -3059,6 +3059,96 @@ mod tests {
                 assert_eq!(merged_sort, 1);
             },
             other => panic!("expected Merged with local sort when only sort differs on both sides, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn webdav_merge_multiple_sort_changes_no_conflict() {
+        let local = sample_app_data();
+        let mut local_value = serde_json::from_str::<serde_json::Value>(&local).unwrap();
+        let mut remote_value = serde_json::from_str::<serde_json::Value>(&local).unwrap();
+
+        let local_items = local_value.get_mut("items").and_then(|items| items.as_array_mut()).unwrap();
+        let remote_items = remote_value.get_mut("items").and_then(|items| items.as_array_mut()).unwrap();
+        local_items.push(serde_json::json!({
+            "id": "item-2",
+            "workspaceId": "default",
+            "collectionId": "collection-1",
+            "name": "Item 2",
+            "type": "browser",
+            "value": "https://example.com/2",
+            "tool": "browser",
+            "icon": "link",
+            "color": "#60a5fa",
+            "sort": 2,
+            "createdAt": "2026-06-14T00:00:00.000Z",
+            "updatedAt": "2026-06-14T00:00:00.000Z"
+        }));
+        remote_items.push(local_items.last().unwrap().clone());
+
+        local_items[0].as_object_mut().unwrap().insert("sort".to_string(), serde_json::json!(2));
+        local_items[1].as_object_mut().unwrap().insert("sort".to_string(), serde_json::json!(1));
+        remote_items[0].as_object_mut().unwrap().insert("sort".to_string(), serde_json::json!(1));
+        remote_items[1].as_object_mut().unwrap().insert("sort".to_string(), serde_json::json!(2));
+
+        match merge_webdav_payload_without_conflict(&local_value.to_string(), &remote_value.to_string()) {
+            WebDavMergeOutcome::Merged(merged) => {
+                let merged_value: serde_json::Value = serde_json::from_str(&merged).unwrap();
+                let merged_items = merged_value.get("items").and_then(|items| items.as_array()).unwrap();
+                let item_1_sort = merged_items.iter()
+                    .find(|item| item.get("id").and_then(|id| id.as_str()) == Some("item-1"))
+                    .and_then(|item| item.get("sort"))
+                    .and_then(|sort| sort.as_i64())
+                    .unwrap();
+                let item_2_sort = merged_items.iter()
+                    .find(|item| item.get("id").and_then(|id| id.as_str()) == Some("item-2"))
+                    .and_then(|item| item.get("sort"))
+                    .and_then(|sort| sort.as_i64())
+                    .unwrap();
+                assert_eq!(item_1_sort, 2);
+                assert_eq!(item_2_sort, 1);
+            }
+            other => panic!("expected Merged without conflict for multi-item reorder, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn webdav_merge_sort_with_timestamp_noise_no_conflict() {
+        let local = sample_app_data();
+        let mut local_value = serde_json::from_str::<serde_json::Value>(&local).unwrap();
+        let mut remote_value = serde_json::from_str::<serde_json::Value>(&local).unwrap();
+
+        let local_item = local_value
+            .get_mut("items")
+            .and_then(|items| items.as_array_mut())
+            .and_then(|items| items.first_mut())
+            .and_then(|item| item.as_object_mut())
+            .unwrap();
+        local_item.insert("sort".to_string(), serde_json::json!(2));
+        local_item.insert("updatedAt".to_string(), serde_json::json!("not-a-valid-rfc3339-time-local"));
+
+        let remote_item = remote_value
+            .get_mut("items")
+            .and_then(|items| items.as_array_mut())
+            .and_then(|items| items.first_mut())
+            .and_then(|item| item.as_object_mut())
+            .unwrap();
+        remote_item.insert("sort".to_string(), serde_json::json!(5));
+        remote_item.insert("updatedAt".to_string(), serde_json::json!("not-a-valid-rfc3339-time-remote"));
+
+        match merge_webdav_payload_without_conflict(&local_value.to_string(), &remote_value.to_string()) {
+            WebDavMergeOutcome::Merged(merged) => {
+                let merged_value: serde_json::Value = serde_json::from_str(&merged).unwrap();
+                let merged_sort = merged_value
+                    .get("items")
+                    .and_then(|items| items.as_array())
+                    .and_then(|items| items.first())
+                    .and_then(|item| item.get("sort"))
+                    .and_then(|sort| sort.as_i64())
+                    .unwrap();
+                assert_eq!(merged_sort, 2);
+            }
+            other => panic!("expected Merged without conflict when only sort/timestamps differ, got {other:?}"),
         }
     }
 

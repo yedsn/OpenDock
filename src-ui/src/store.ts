@@ -1,4 +1,4 @@
-﻿import { computed, reactive, watch, toRaw } from "vue";
+﻿import { computed, reactive, watch } from "vue";
 import { invoke } from "@tauri-apps/api/core";
 import { collectionMeta, itemMeta, sceneMeta } from "./seed";
 import { exportAppData, loadAppData, normalizeAppData, resetAppData, saveActiveState, saveAppData } from "./storage";
@@ -1200,7 +1200,7 @@ async function syncWebdavNowOnce(): Promise<void> {
   updateTask(taskId, { message: "正在读取本地数据并连接 WebDAV...", progress: 22 });
   // Serialize the (potentially large) app data snapshot on an idle frame so it does not block UI animation.
   // Serialize on a worker so the main thread stays free for UI clicks during sync.
-  const localData = await serializeAppDataOffThread(toRaw(state.data), false);
+  const localData = await serializeAppDataOffThread(state.data, false);
   const result = await callOpenCommand("sync_webdav_now", {
     serverUrl: config.serverUrl,
     username: config.username,
@@ -1231,7 +1231,7 @@ async function syncWebdavNowOnce(): Promise<void> {
       const remoteJson = result.message.slice(isMergedData ? "SYNC_MERGED_DATA:".length : "SYNC_REMOTE_DATA:".length);
       try {
         const remoteData = await parseWebdavRemoteDataAsync(remoteJson);
-        const changeSummary = await summarizeDiffOffThread(toRaw(state.data), remoteData);
+        const changeSummary = await summarizeDiffOffThread(state.data, remoteData);
         await replaceLocalDataFromWebdav(remoteData, isMergedData ? "WebDAV 增量合并前快照" : "WebDAV 远程覆盖前快照", { preserveLocalSettings: isMergedData });
         state.data.settings.webdavSync.status = isMergedData ? `同步成功（已增量合并：${changeSummary}）` : `同步成功（远程优先：${changeSummary}）`;
         state.data.settings.webdavSync.lastError = "";
