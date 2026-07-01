@@ -1,5 +1,5 @@
 ﻿<script setup lang="ts">
-import { computed, ref, watch } from "vue";
+import { computed, onBeforeUnmount, ref, watch } from "vue";
 import {
   Activity,  FileText,
   FolderPlus,
@@ -33,6 +33,10 @@ watch(activeCollectionId, (collectionId) => {
     deferredActiveCollectionId.value = collectionId;
     pendingItemsFrame = 0;
   });
+});
+
+onBeforeUnmount(() => {
+  if (pendingItemsFrame) cancelAnimationFrame(pendingItemsFrame);
 });
 
 const activeItems = computed(() =>
@@ -102,6 +106,10 @@ const listPad = computed(() => (isComfortable.value ? 12 : 10));
 const collectionItemHeight = computed(() => 36 + cardPad.value * 2);
 const itemPad = computed(() => (isComfortable.value ? 12 : 9));
 const itemRowHeight = computed(() => 36 + itemPad.value * 2);
+const collectionSkeletonRows = [0, 1, 2, 3, 4, 5];
+const itemSkeletonRows = [0, 1, 2, 3, 4, 5, 6];
+const collectionsLoading = computed(() => store.state.dataLoading);
+const itemsLoading = computed(() => store.state.dataLoading || deferredActiveCollectionId.value !== activeCollectionId.value);
 
 const quickViewLabels = computed<Record<string, string>>(() => ({
   all: t("sidebar.allResources"),
@@ -213,7 +221,20 @@ function selectCollection(collection: { id: string; name: string; sceneId: strin
         <button class="tool-chip action" @click="store.state.modal.kind = 'collection'; store.state.modal.editingId = undefined;"><FolderPlus />{{ $t("workbench.newCollection") }}</button>
       </div>
 
-      <div v-if="isManualCollectionSort && collectionRows.length" class="collection-list" ref="collectionListRef">
+      <div v-if="collectionsLoading" class="collection-list skeleton-list" aria-busy="true" aria-live="polite">
+        <div v-for="row in collectionSkeletonRows" :key="row" class="collection-card skeleton-card" :style="{ height: collectionItemHeight + 'px' }">
+          <span class="skeleton-block skeleton-icon"></span>
+          <span class="skeleton-text-group">
+            <span class="skeleton-block skeleton-title"></span>
+            <span class="skeleton-block skeleton-subtitle"></span>
+          </span>
+          <span class="skeleton-actions">
+            <span class="skeleton-block skeleton-action"></span>
+            <span class="skeleton-block skeleton-action"></span>
+          </span>
+        </div>
+      </div>
+      <div v-else-if="isManualCollectionSort && collectionRows.length" class="collection-list" ref="collectionListRef">
           <div v-for="(item, index) in collectionRows" :key="item.id"
             class="collection-card"
             :class="{ active: activeCollectionId === item.id, 'manual-sort': isManualCollectionSort }"
@@ -289,7 +310,21 @@ function selectCollection(collection: { id: string; name: string; sceneId: strin
         </div>
       </div>
 
-      <div v-if="isManualItemSort && itemRows.length" class="item-list" ref="itemListRef">
+      <div v-if="itemsLoading" class="item-list skeleton-list" aria-busy="true" aria-live="polite">
+        <div v-for="row in itemSkeletonRows" :key="row" class="item-row skeleton-row" :style="{ height: itemRowHeight + 'px' }">
+          <span class="skeleton-block skeleton-icon compact"></span>
+          <span class="skeleton-text-group">
+            <span class="skeleton-block skeleton-title"></span>
+            <span class="skeleton-block skeleton-subtitle wide"></span>
+          </span>
+          <span class="skeleton-actions">
+            <span class="skeleton-block skeleton-pill"></span>
+            <span class="skeleton-block skeleton-action"></span>
+            <span class="skeleton-block skeleton-action"></span>
+          </span>
+        </div>
+      </div>
+      <div v-else-if="isManualItemSort && itemRows.length" class="item-list" ref="itemListRef">
           <div v-for="(item, index) in itemRows" :key="item.id" class="item-row"
             :class="{ 'manual-sort': isManualItemSort }"
             :style="{ height: itemRowHeight + 'px' }" role="button" tabindex="0"
@@ -378,5 +413,79 @@ function selectCollection(collection: { id: string; name: string; sceneId: strin
   display: grid;
   place-items: center;
   padding: var(--list-pad, 10px);
+}
+.skeleton-list {
+  pointer-events: none;
+}
+.skeleton-card,
+.skeleton-row {
+  cursor: default;
+}
+.skeleton-card:hover {
+  background: var(--bg-2);
+  border-color: var(--line);
+}
+.skeleton-block {
+  position: relative;
+  display: block;
+  overflow: hidden;
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--bg-4) 74%, var(--bg-2));
+}
+.skeleton-block::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  transform: translateX(-100%);
+  background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--text) 10%, transparent), transparent);
+  animation: skeleton-shimmer 1.2s ease-in-out infinite;
+}
+.skeleton-icon {
+  width: 34px;
+  height: 34px;
+  border-radius: 8px;
+}
+.skeleton-icon.compact {
+  width: 28px;
+  height: 28px;
+}
+.skeleton-text-group {
+  min-width: 0;
+  display: grid;
+  gap: 7px;
+}
+.skeleton-title {
+  width: min(68%, 180px);
+  height: 13px;
+}
+.skeleton-subtitle {
+  width: min(48%, 140px);
+  height: 10px;
+  opacity: 0.78;
+}
+.skeleton-subtitle.wide {
+  width: min(72%, 300px);
+}
+.skeleton-actions {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+}
+.skeleton-action {
+  width: 28px;
+  height: 28px;
+  border-radius: var(--radius);
+}
+.skeleton-pill {
+  width: 58px;
+  height: 28px;
+  border-radius: var(--radius);
+}
+@keyframes skeleton-shimmer {
+  100% { transform: translateX(100%); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .skeleton-block::after { animation: none; }
 }
 </style>

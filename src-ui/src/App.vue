@@ -220,9 +220,9 @@ onUnmounted(() => {
         <button role="menuitem" @click="closeAllTabs">{{ $t("app.closeAll") }}</button>
       </div>
 
-      <ToolSetupGuide v-if="!store.state.toolSetupDone" />
+      <ToolSetupGuide v-if="!store.state.dataLoading && !store.state.toolSetupDone" />
       <template v-else>
-        <WorkbenchView v-if="store.state.mainView === 'workspace'" />
+        <WorkbenchView v-if="store.state.dataLoading || store.state.mainView === 'workspace'" />
         <SettingsView v-else />
       </template>
 

@@ -148,6 +148,7 @@ const state = reactive({
   webdavPendingConflict: null as WebDavPendingConflict | null,
   taskPanelOpen: false,
   tasks: [] as TaskEntry[],
+  dataLoading: true,
   toolSetupDone: false,
   sceneSortMode: null as SortMode | null,
   collectionSortMode: null as SortMode | null,
@@ -313,6 +314,7 @@ async function init() {
     state.activeTabId = state.tabs[0].id;
   }
   state.mainView = 'workspace';
+  state.dataLoading = false;
   await applyToggleWindowHotkey();
   // Sync auto-start state from OS to UI on startup
   try {
