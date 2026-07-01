@@ -1061,7 +1061,7 @@ fn normalized_webdav_comparable_value(raw: &str) -> Result<serde_json::Value, se
 
 fn normalized_sync_entity_value(mut value: serde_json::Value) -> serde_json::Value {
     if let Some(object) = value.as_object_mut() {
-        for field in ["recent", "recentAt", "favorite"] {
+        for field in ["recent", "recentAt", "favorite", "usageCount"] {
             object.remove(field);
         }
         if let Some(webdav_sync) = object
@@ -1136,7 +1136,7 @@ enum WebDavMergeOutcome {
 
 /// Fields to strip when comparing two entity objects for business-equality.
 /// Sort order is machine-local, runtime-only fields should not cause conflict.
-const ENTITY_IGNORE_FIELDS: &[&str] = &["sort", "recent", "recentAt", "favorite", "updatedAt", "createdAt"];
+const ENTITY_IGNORE_FIELDS: &[&str] = &["sort", "recent", "recentAt", "favorite", "usageCount", "updatedAt", "createdAt"];
 
 /// Normalize an entity value for comparison: strip order/runtime-only fields.
 fn normalized_entity_value(mut value: serde_json::Value) -> serde_json::Value {
@@ -1160,7 +1160,7 @@ fn normalized_entity_value(mut value: serde_json::Value) -> serde_json::Value {
 /// merge by key: same key & same business content => keep local;
 /// same key & different content => pick newer (has updatedAt) or conflict.
 fn merge_same_key_entity(local_item: &serde_json::Value, remote_item: &serde_json::Value) -> Result<serde_json::Value, ()> {
-    // If business content is equal (ignoring sort/recent/favorite), accept local copy
+    // If business content is equal (ignoring sort/recent/favorite/usageCount), accept local copy
     if normalized_entity_value(local_item.clone()) == normalized_entity_value(remote_item.clone()) {
         return Ok(local_item.clone());
     }
@@ -3168,6 +3168,45 @@ mod tests {
         match merge_webdav_payload_without_conflict(&local, &remote_value.to_string()) {
             WebDavMergeOutcome::Same => {},
             other => panic!("expected Same when only favorite differs, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn webdav_merge_sort_with_usage_count_noise_no_conflict() {
+        let local = sample_app_data();
+        let mut local_value = serde_json::from_str::<serde_json::Value>(&local).unwrap();
+        let mut remote_value = serde_json::from_str::<serde_json::Value>(&local).unwrap();
+
+        let local_item = local_value
+            .get_mut("items")
+            .and_then(|items| items.as_array_mut())
+            .and_then(|items| items.first_mut())
+            .and_then(|item| item.as_object_mut())
+            .unwrap();
+        local_item.insert("sort".to_string(), serde_json::json!(2));
+        local_item.insert("usageCount".to_string(), serde_json::json!(12));
+
+        let remote_item = remote_value
+            .get_mut("items")
+            .and_then(|items| items.as_array_mut())
+            .and_then(|items| items.first_mut())
+            .and_then(|item| item.as_object_mut())
+            .unwrap();
+        remote_item.insert("sort".to_string(), serde_json::json!(5));
+        remote_item.insert("usageCount".to_string(), serde_json::json!(99));
+
+        match merge_webdav_payload_without_conflict(&local_value.to_string(), &remote_value.to_string()) {
+            WebDavMergeOutcome::Merged(merged) => {
+                let merged_value: serde_json::Value = serde_json::from_str(&merged).unwrap();
+                let merged_item = merged_value
+                    .get("items")
+                    .and_then(|items| items.as_array())
+                    .and_then(|items| items.first())
+                    .unwrap();
+                assert_eq!(merged_item.get("sort").and_then(|sort| sort.as_i64()), Some(2));
+                assert_eq!(merged_item.get("usageCount").and_then(|count| count.as_i64()), Some(12));
+            }
+            other => panic!("expected Merged without conflict when only sort/usageCount differ, got {other:?}"),
         }
     }
 

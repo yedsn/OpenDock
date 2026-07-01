@@ -1350,6 +1350,7 @@ function comparableSyncEntity(value: unknown): string {
   delete copy.recent;
   delete copy.recentAt;
   delete copy.favorite;
+  delete copy.usageCount;
   return JSON.stringify(copy);
 }
 
