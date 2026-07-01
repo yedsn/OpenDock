@@ -1,51 +1,51 @@
 {
-    "$schema": "https://schema.tauri.app/config/2",
-    "productName": "OpenDock",
-    "version": "0.1.25",
-    "identifier": "com.opendock.app",
-    "build": {
-        "beforeDevCommand": "npm run dev",
-        "devUrl": "http://127.0.0.1:6250",
-        "beforeBuildCommand": "npm run build",
-        "frontendDist": "../dist"
-    },
-    "app": {
-        "windows": [
-            {
-                "title": "OpenDock",
-                "width": 1440,
-                "height": 900,
-                "minWidth": 1100,
-                "minHeight": 720,
-                "resizable": true,
-                "center": true,
-                "decorations": false
-            }
-        ],
-        "security": {
-            "csp": null
-        }
-    },
-    "bundle": {
-        "active": true,
-        "createUpdaterArtifacts": true,
-        "targets": "all",
-        "icon": [
-            "icons/icon.ico",
-            "icons/icon.icns",
-            "icons/icon.png"
-        ]
-    },
-    "plugins": {
-        "updater": {
-            "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDdCRDQ0MzNCNDIzN0MyMzIKUldReXdqZENPMFBVZTdZNHZIbTN0ZFJBSWkvUlJFa1lJbERyNG8xYzZMNGk1ZUVUbFZHbUl6b2sK",
-            "endpoints": [
-                "https://gitee.com/hongxiaojian/open-dock/releases/download/latest/latest.json",
-                "https://github.com/yedsn/OpenDock/releases/latest/download/latest.json"
-            ],
-            "windows": {
-                "installMode": "passive"
-            }
-        }
-    }
+    "$schema":  "https://schema.tauri.app/config/2",
+    "productName":  "OpenDock",
+    "version":  "0.1.26",
+    "identifier":  "com.opendock.app",
+    "build":  {
+                  "beforeDevCommand":  "npm run dev",
+                  "devUrl":  "http://127.0.0.1:6250",
+                  "beforeBuildCommand":  "npm run build",
+                  "frontendDist":  "../dist"
+              },
+    "app":  {
+                "windows":  [
+                                {
+                                    "title":  "OpenDock",
+                                    "width":  1440,
+                                    "height":  900,
+                                    "minWidth":  1100,
+                                    "minHeight":  720,
+                                    "resizable":  true,
+                                    "center":  true,
+                                    "decorations":  false
+                                }
+                            ],
+                "security":  {
+                                 "csp":  null
+                             }
+            },
+    "bundle":  {
+                   "active":  true,
+                   "createUpdaterArtifacts":  true,
+                   "targets":  "all",
+                   "icon":  [
+                                "icons/icon.ico",
+                                "icons/icon.icns",
+                                "icons/icon.png"
+                            ]
+               },
+    "plugins":  {
+                    "updater":  {
+                                    "pubkey":  "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDdCRDQ0MzNCNDIzN0MyMzIKUldReXdqZENPMFBVZTdZNHZIbTN0ZFJBSWkvUlJFa1lJbERyNG8xYzZMNGk1ZUVUbFZHbUl6b2sK",
+                                    "endpoints":  [
+                                                      "https://gitee.com/hongxiaojian/open-dock/releases/download/latest/latest.json",
+                                                      "https://github.com/yedsn/OpenDock/releases/latest/download/latest.json"
+                                                  ],
+                                    "windows":  {
+                                                    "installMode":  "passive"
+                                                }
+                                }
+                }
 }
