@@ -30,9 +30,12 @@ type WorkerResponse = WorkerSuccess | WorkerFailure;
 
 function stripCredentials(parsed: unknown): unknown {
   // Match exportAppData: blank out the WebDAV credential reference on export.
-  const root = parsed as { settings?: { webdavSync?: { credentialRef?: string } } };
+  const root = parsed as { settings?: { webdavSync?: { credentialRef?: string } }; activity?: unknown[] };
   if (root?.settings?.webdavSync) {
     root.settings.webdavSync.credentialRef = "";
+  }
+  if (root && typeof root === "object" && Array.isArray(root.activity)) {
+    root.activity = [];
   }
   return parsed;
 }

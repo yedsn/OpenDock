@@ -133,6 +133,7 @@ export function exportAppData(data: AppData, pretty: boolean = true): string {
   if (copy.settings?.webdavSync) {
     copy.settings.webdavSync.credentialRef = "";
   }
+  copy.activity = [];
   return pretty ? JSON.stringify(copy, null, 2) : JSON.stringify(copy);
 }
 

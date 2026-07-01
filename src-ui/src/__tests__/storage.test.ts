@@ -83,6 +83,21 @@ describe("storage", () => {
   });
 
   describe("export-import round-trip", () => {
+    it("excludes activity records and WebDAV credential refs from exports", async () => {
+      const { exportAppData } = await import("../storage");
+      const seed = createSeedData();
+      seed.activity = [
+        { id: "activity-export-test", text: "打开资源: 测试", createdAt: "2026-07-02T00:00:00.000Z" },
+      ];
+      seed.settings.webdavSync.credentialRef = "plugin-data:webdav-sync/secret:default";
+
+      const exported = JSON.parse(exportAppData(seed));
+
+      expect(exported.workspaces.length).toBe(seed.workspaces.length);
+      expect(exported.activity).toEqual([]);
+      expect(exported.settings.webdavSync.credentialRef).toBe("");
+    });
+
     it("re-imports a seed export without losing data", async () => {
       const { exportAppData, importAppData } = await import("../storage");
       const seed = createSeedData();
