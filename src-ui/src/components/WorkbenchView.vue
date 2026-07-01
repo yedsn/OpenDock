@@ -301,12 +301,6 @@ function selectCollection(collection: { id: string; name: string; sceneId: strin
           <p>{{ activeCollection?.description || t("workbench.selectCollectionHint") }}</p>
         </div>
         <div class="resource-actions">
-          <span class="sort-control">
-            <ArrowUpDown :size="14" />
-            <select :value="itemSortMode" @change="setItemSort(($event.target as HTMLSelectElement).value)" class="sort-select">
-              <option v-for="opt in sortModeOptions" :key="opt.value" :value="opt.value">{{ opt.label }}</option>
-            </select>
-          </span>
           <button class="icon-button" @click="store.state.modal.kind = 'item'; store.state.modal.editingId = undefined;"><Plus /></button>
           <button class="icon-button" v-if="activeCollection" :title="$t('workbench.editCollection')" @click="editCollection(activeCollection.id)"><Pencil /></button>
           <button v-if="activeCollection" class="run-button" @click="store.openCollection(activeCollection)"><Play />{{ $t("workbench.openCollection") }}</button>
