@@ -11,6 +11,7 @@ import SettingsView from "./components/SettingsView.vue";
 import CreateEntityModal from "./components/CreateEntityModal.vue";
 import ToolSetupGuide from "./components/ToolSetupGuide.vue";
 import TaskDock from "./components/TaskDock.vue";
+import FullscreenLoading from "./components/FullscreenLoading.vue";
 import { invoke } from "@tauri-apps/api/core";
 import { themeCssVars } from "./themes";
 
@@ -234,6 +235,7 @@ onUnmounted(() => {
     </main>
 
     <CreateEntityModal />
+    <FullscreenLoading />
   </div>
 </template>
 

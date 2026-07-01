@@ -1,14 +1,14 @@
-
 import { describe, it, expect, beforeEach } from "vitest";
 import { useOpenDockStore } from "../store";
 
 describe("reorder with reactive updates", () => {
   let store: ReturnType<typeof useOpenDockStore>;
+
   beforeEach(() => {
     store = useOpenDockStore();
   });
 
-  it("reorderItems updates item sort and visible order", () => {
+  it("reorderItems updates item sort and visible order immediately", () => {
     // Ensure manual sort mode
     store.setItemSortMode("手动");
     const collId = store.state.data.activeCollectionId;
@@ -31,6 +31,7 @@ describe("reorder with reactive updates", () => {
     console.log("after:", after);
 
     // The item previously at index 2 should now be at index 0
+    expect(store.state.reorderSavePending).toBe(true);
     expect(after[0]).toBe(before[2]);
     expect(after[1]).toBe(before[0]);
     expect(after[2]).toBe(before[1]);

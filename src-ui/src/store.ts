@@ -150,7 +150,8 @@ const state = reactive({
   toolSetupDone: false,
   sceneSortMode: null as SortMode | null,
   collectionSortMode: null as SortMode | null,
-  itemSortMode: null as SortMode | null
+  itemSortMode: null as SortMode | null,
+  reorderSavePending: false
 });
 
 let saveTimer: ReturnType<typeof setTimeout> | null = null;
@@ -168,7 +169,12 @@ watch(() => ({
 }), () => {
   if (saveTimer) clearTimeout(saveTimer);
   saveTimer = setTimeout(() => {
-    saveAppData(state.data).catch((e) => console.error("DB save failed:", e));
+    saveAppData(state.data)
+      .catch((e) => console.error("DB save failed:", e))
+      .finally(() => {
+        state.reorderSavePending = false;
+        if (typeof window !== "undefined") window.vloading?.dismiss();
+      });
   }, 300);
 }, { deep: true });
 
@@ -201,6 +207,7 @@ watch(() => [state.data.activeWorkspaceId, state.data.activeSceneId, state.data.
 /** Load data from SQLite, replacing seed data. Call once at app startup. */
 
 let webdavAutoSyncTimer: ReturnType<typeof setInterval> | null = null;
+const WEBDAV_QUICK_SYNC_DEBOUNCE_MS = 300;
 
 async function init() {
   try {
@@ -1222,6 +1229,15 @@ async function syncWebdavNow(): Promise<void> {
 
 let webdavQuickSyncTimer: ReturnType<typeof setTimeout> | null = null;
 
+function runWebdavSyncInBackground(): void {
+  void syncWebdavNow().catch((error) => {
+    const message = error instanceof Error ? error.message : String(error);
+    state.data.settings.webdavSync.status = "同步失败";
+    state.data.settings.webdavSync.lastError = message;
+    finishTask("webdav-sync", "error", message);
+  });
+}
+
 function scheduleWebdavQuickSync(reason: string): void {
   const config = state.data.settings.webdavSync;
   if (!config.autoSync) return;
@@ -1238,13 +1254,8 @@ function scheduleWebdavQuickSync(reason: string): void {
   });
   webdavQuickSyncTimer = setTimeout(() => {
     webdavQuickSyncTimer = null;
-    syncWebdavNow().catch((error) => {
-      const message = error instanceof Error ? error.message : String(error);
-      state.data.settings.webdavSync.status = "同步失败";
-      state.data.settings.webdavSync.lastError = message;
-      finishTask("webdav-sync", "error", message);
-    });
-  }, 900);
+    runWebdavSyncInBackground();
+  }, WEBDAV_QUICK_SYNC_DEBOUNCE_MS);
   (webdavQuickSyncTimer as unknown as { unref?: () => void }).unref?.();
 }
 
@@ -1902,12 +1913,8 @@ function startWebdavAutoSync(): void {
   if (!config.autoSync || config.syncInterval === "关闭") return;
   const intervalMs = syncIntervalToMs(config.syncInterval);
   if (intervalMs <= 0) return;
-  webdavAutoSyncTimer = setInterval(async () => {
-    try {
-      await syncWebdavNow();
-    } catch (e) {
-      console.error("WebDAV auto-sync failed:", e);
-    }
+  webdavAutoSyncTimer = setInterval(() => {
+    runWebdavSyncInBackground();
   }, intervalMs);
 }
 
@@ -1933,6 +1940,12 @@ async function saveWebdavPassword(password: string): Promise<void> {
   state.data.settings.webdavSync.credentialRef = password ? "plugin-data:webdav-sync/secret:default" : "";
 }
 
+function markReorderChanged(reason: string): void {
+  state.reorderSavePending = true;
+  if (typeof window !== "undefined") window.vloading?.loading({ message: "保存排序中..." });
+  scheduleWebdavQuickSync(reason);
+}
+
 function reorderScenes(fromIndex: number, toIndex: number): void {
   // Use activeScenes.value so indices match what the UI shows (which honors the
   // current sort mode). Operate on a copy, then write back sort numbers.
@@ -1941,6 +1954,7 @@ function reorderScenes(fromIndex: number, toIndex: number): void {
   const [moved] = ordered.splice(fromIndex, 1);
   ordered.splice(toIndex, 0, moved);
   ordered.forEach((scene, i) => { scene.sort = i + 1; });
+  markReorderChanged("场景排序变更");
 }
 
 function reorderCollections(fromIndex: number, toIndex: number): void {
@@ -1949,6 +1963,7 @@ function reorderCollections(fromIndex: number, toIndex: number): void {
   const [moved] = ordered.splice(fromIndex, 1);
   ordered.splice(toIndex, 0, moved);
   ordered.forEach((col, i) => { col.sort = i + 1; });
+  markReorderChanged("集合排序变更");
 }
 
 function reorderItems(collectionId: string, fromIndex: number, toIndex: number): void {
@@ -1957,6 +1972,7 @@ function reorderItems(collectionId: string, fromIndex: number, toIndex: number):
   const [moved] = ordered.splice(fromIndex, 1);
   ordered.splice(toIndex, 0, moved);
   ordered.forEach((item, i) => { item.sort = i + 1; });
+  markReorderChanged("资源排序变更");
 }
 
 function setSceneSortMode(mode: SortMode | null): void {
