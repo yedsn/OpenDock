@@ -1993,7 +1993,8 @@ function reorderScenes(fromIndex: number, toIndex: number): void {
   if (fromIndex === toIndex || fromIndex < 0 || toIndex < 0 || fromIndex >= ordered.length || toIndex >= ordered.length) return;
   const [moved] = ordered.splice(fromIndex, 1);
   ordered.splice(toIndex, 0, moved);
-  ordered.forEach((scene, i) => { scene.sort = i + 1; });
+  const updatedAt = nowIso();
+  ordered.forEach((scene, i) => { Object.assign(scene, { sort: i + 1, updatedAt }); });
   markReorderChanged("场景排序变更");
 }
 
@@ -2002,7 +2003,8 @@ function reorderCollections(fromIndex: number, toIndex: number): void {
   if (fromIndex === toIndex || fromIndex < 0 || toIndex < 0 || fromIndex >= ordered.length || toIndex >= ordered.length) return;
   const [moved] = ordered.splice(fromIndex, 1);
   ordered.splice(toIndex, 0, moved);
-  ordered.forEach((col, i) => { col.sort = i + 1; });
+  const updatedAt = nowIso();
+  ordered.forEach((col, i) => { Object.assign(col, { sort: i + 1, updatedAt }); });
   markReorderChanged("集合排序变更");
 }
 
@@ -2011,7 +2013,8 @@ function reorderItems(collectionId: string, fromIndex: number, toIndex: number):
   if (fromIndex === toIndex || fromIndex < 0 || toIndex < 0 || fromIndex >= ordered.length || toIndex >= ordered.length) return;
   const [moved] = ordered.splice(fromIndex, 1);
   ordered.splice(toIndex, 0, moved);
-  ordered.forEach((item, i) => { item.sort = i + 1; });
+  const updatedAt = nowIso();
+  ordered.forEach((item, i) => { Object.assign(item, { sort: i + 1, updatedAt }); });
   markReorderChanged("资源排序变更");
 }
 

@@ -1160,13 +1160,19 @@ fn normalized_entity_value(mut value: serde_json::Value) -> serde_json::Value {
 /// merge by key: same key & same business content => keep local;
 /// same key & different content => pick newer (has updatedAt) or conflict.
 fn merge_same_key_entity(local_item: &serde_json::Value, remote_item: &serde_json::Value) -> Result<serde_json::Value, ()> {
-    // If business content is equal (ignoring sort/recent/favorite/usageCount), accept local copy
-    if normalized_entity_value(local_item.clone()) == normalized_entity_value(remote_item.clone()) {
-        return Ok(local_item.clone());
-    }
-    // Try updatedAt-based resolution
     let local_updated = entity_updated_at_millis(local_item);
     let remote_updated = entity_updated_at_millis(remote_item);
+
+    // If business content is equal, runtime/order fields can be resolved by timestamp.
+    // This lets manual sort changes propagate without treating sort as a conflict source.
+    if normalized_entity_value(local_item.clone()) == normalized_entity_value(remote_item.clone()) {
+        return Ok(match (local_updated, remote_updated) {
+            (Some(lu), Some(ru)) if ru > lu => remote_item.clone(),
+            _ => local_item.clone(),
+        });
+    }
+
+    // Real business differences still use updatedAt-based resolution, or conflict if neither side is newer.
     match (local_updated, remote_updated) {
         (Some(lu), Some(ru)) if lu > ru => Ok(local_item.clone()),
         (Some(lu), Some(ru)) if ru > lu => Ok(remote_item.clone()),
@@ -2983,6 +2989,34 @@ mod tests {
                 assert_eq!(merged_sort, local_sort);
             },
             other => panic!("expected Merged so local sort uploads, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn webdav_merge_downloads_newer_remote_sort_order() {
+        let local = sample_app_data();
+        let mut remote_value = serde_json::from_str::<serde_json::Value>(&local).unwrap();
+        let remote_item = remote_value
+            .get_mut("items")
+            .and_then(|items| items.as_array_mut())
+            .and_then(|items| items.first_mut())
+            .and_then(|item| item.as_object_mut())
+            .unwrap();
+        remote_item.insert("sort".to_string(), serde_json::Value::Number(42.into()));
+        remote_item.insert("updatedAt".to_string(), serde_json::Value::String("2026-06-14T01:00:00.000Z".to_string()));
+
+        match merge_webdav_payload_without_conflict(&local, &remote_value.to_string()) {
+            WebDavMergeOutcome::Merged(merged) => {
+                let merged_value: serde_json::Value = serde_json::from_str(&merged).unwrap();
+                let merged_item = merged_value
+                    .get("items")
+                    .and_then(|items| items.as_array())
+                    .and_then(|items| items.first())
+                    .unwrap();
+                assert_eq!(merged_item.get("sort").and_then(|sort| sort.as_i64()), Some(42));
+                assert_eq!(merged_item.get("updatedAt").and_then(|value| value.as_str()), Some("2026-06-14T01:00:00.000Z"));
+            },
+            other => panic!("expected Merged so newer remote sort downloads, got {other:?}"),
         }
     }
 
