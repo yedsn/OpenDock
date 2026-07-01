@@ -1,9 +1,7 @@
 ﻿<script setup lang="ts">
 import { computed, ref, watch } from "vue";
 import {
-  Activity,
-  ArrowUpDown,
-  FileText,
+  Activity,  FileText,
   FolderPlus,
   Globe,
   GripVertical,
@@ -160,22 +158,6 @@ async function deleteItemConfirm(itemId: string) {
   }
 }
 
-const collectionSortMode = computed(() => store.effectiveCollectionSortMode());
-const itemSortMode = computed(() => store.effectiveItemSortMode());
-
-const sortModeOptions = computed(() => [
-  { value: "手动", label: t("workbench.sortManual") },
-  { value: "按名称", label: t("workbench.sortByName") },
-  { value: "按使用次数", label: t("workbench.sortByUsage") }
-]);
-
-function setCollectionSort(mode: string) {
-  store.setCollectionSortMode(mode === store.state.data.settings.general.collectionSort ? null : mode as any);
-}
-
-function setItemSort(mode: string) {
-  store.setItemSortMode(mode === store.state.data.settings.general.itemSort ? null : mode as any);
-}
 
 const isManualCollectionSort = computed(() => store.effectiveCollectionSortMode() === "手动");
 const isManualItemSort = computed(() => store.effectiveItemSortMode() === "手动");
@@ -385,9 +367,6 @@ function selectCollection(collection: { id: string; name: string; sceneId: strin
   gap: 8px;
   margin-left: 10px;
 }
-.sort-control { display: inline-flex; align-items: center; gap: 4px; }
-.sort-select { background: var(--bg3); color: var(--text); border: 1px solid var(--line); border-radius: 4px; font-size: 11px; padding: 2px 4px; cursor: pointer; outline: none; }
-.sort-select:hover { border-color: var(--accent); }
 .pane-header-actions { display: flex; align-items: center; gap: 6px; }
 .card-actions { display: flex; align-items: center; gap: 2px; }
 .item-actions { display: flex; align-items: center; gap: 4px; }

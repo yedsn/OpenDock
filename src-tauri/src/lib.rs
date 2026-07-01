@@ -1031,9 +1031,10 @@ fn json_values_equal(left: &str, right: &str) -> bool {
     left_value == right_value
 }
 
-fn webdav_business_values_equal(left: &str, right: &str) -> bool {
-    let Ok(left_value) = normalized_webdav_business_value(left) else { return json_values_equal(left, right); };
-    let Ok(right_value) = normalized_webdav_business_value(right) else { return json_values_equal(left, right); };
+
+fn webdav_sync_values_equal(left: &str, right: &str) -> bool {
+    let Ok(left_value) = normalized_webdav_sync_value(left) else { return json_values_equal(left, right); };
+    let Ok(right_value) = normalized_webdav_sync_value(right) else { return json_values_equal(left, right); };
     left_value == right_value
 }
 
@@ -1058,7 +1059,24 @@ fn normalized_webdav_comparable_value(raw: &str) -> Result<serde_json::Value, se
     Ok(value)
 }
 
-fn normalized_webdav_business_value(raw: &str) -> Result<serde_json::Value, serde_json::Error> {
+fn normalized_sync_entity_value(mut value: serde_json::Value) -> serde_json::Value {
+    if let Some(object) = value.as_object_mut() {
+        for field in ["recent", "recentAt", "favorite"] {
+            object.remove(field);
+        }
+        if let Some(webdav_sync) = object
+            .get_mut("webdavSync")
+            .and_then(|webdav_sync| webdav_sync.as_object_mut())
+        {
+            webdav_sync.remove("status");
+            webdav_sync.remove("lastSyncAt");
+            webdav_sync.remove("lastError");
+        }
+    }
+    value
+}
+
+fn normalized_webdav_sync_value(raw: &str) -> Result<serde_json::Value, serde_json::Error> {
     let value = serde_json::from_str::<serde_json::Value>(raw)?;
     let Some(object) = value.as_object() else { return Ok(value); };
     let mut output = serde_json::Map::new();
@@ -1070,7 +1088,7 @@ fn normalized_webdav_business_value(raw: &str) -> Result<serde_json::Value, serd
             .cloned()
             .unwrap_or_default()
             .into_iter()
-            .map(normalized_entity_value)
+            .map(normalized_sync_entity_value)
             .collect::<Vec<_>>();
         values.sort_by(|a, b| stable_entity_key(collection, a).cmp(&stable_entity_key(collection, b)));
         output.insert(collection.to_string(), serde_json::Value::Array(values));
@@ -1090,6 +1108,7 @@ fn normalized_webdav_business_value(raw: &str) -> Result<serde_json::Value, serd
     output.insert("tombstones".to_string(), serde_json::Value::Array(tombstones));
     Ok(serde_json::Value::Object(output))
 }
+
 
 fn stable_entity_key(collection: &str, value: &serde_json::Value) -> Option<String> {
     let object = value.as_object()?;
@@ -1295,11 +1314,13 @@ fn merge_webdav_payload_without_conflict(local: &str, remote: &str) -> WebDavMer
 
     match serde_json::to_string(&serde_json::Value::Object(merged)) {
         Ok(merged_json) => {
-            if webdav_business_values_equal(local, remote) {
+            // Business equality avoids false conflicts for local-only fields, but sort
+            // order must still propagate to WebDAV. Compare the full sync payload
+            // (minus only machine-local active state / WebDAV runtime status) to decide
+            // whether remote needs an upload.
+            if webdav_sync_values_equal(local, remote) {
                 WebDavMergeOutcome::Same
             } else {
-                // At this point local and remote differ in business data. If the merged
-                // result equals local, local still needs to be uploaded so remote catches up.
                 WebDavMergeOutcome::Merged(merged_json)
             }
         }
@@ -2884,10 +2905,10 @@ mod tests {
     }
 
     #[test]
-    fn webdav_merge_ignores_sort_order_difference() {
+    fn webdav_merge_uploads_local_sort_order_difference() {
         let local = sample_app_data();
         let mut remote_value = serde_json::from_str::<serde_json::Value>(&local).unwrap();
-        // Change sort on an item - should NOT cause conflict
+        // Remote has stale sort. Local sort should be uploaded without conflict.
         remote_value
             .get_mut("items")
             .and_then(|items| items.as_array_mut())
@@ -2897,8 +2918,25 @@ mod tests {
             .insert("sort".to_string(), serde_json::Value::Number(42.into()));
 
         match merge_webdav_payload_without_conflict(&local, &remote_value.to_string()) {
-            WebDavMergeOutcome::Same => {},
-            other => panic!("expected Same when only sort differs, got {other:?}"),
+            WebDavMergeOutcome::Merged(merged) => {
+                let merged_value: serde_json::Value = serde_json::from_str(&merged).unwrap();
+                let merged_sort = merged_value
+                    .get("items")
+                    .and_then(|items| items.as_array())
+                    .and_then(|items| items.first())
+                    .and_then(|item| item.get("sort"))
+                    .and_then(|sort| sort.as_i64())
+                    .unwrap_or(0);
+                let local_sort = serde_json::from_str::<serde_json::Value>(&local).unwrap()
+                    .get("items")
+                    .and_then(|items| items.as_array())
+                    .and_then(|items| items.first())
+                    .and_then(|item| item.get("sort"))
+                    .and_then(|sort| sort.as_i64())
+                    .unwrap_or(0);
+                assert_eq!(merged_sort, local_sort);
+            },
+            other => panic!("expected Merged so local sort uploads, got {other:?}"),
         }
     }
 
@@ -2961,10 +2999,20 @@ mod tests {
             .unwrap()
             .insert("sort".to_string(), serde_json::Value::Number(5.into()));
 
-        // Should NOT conflict: sort is machine-local
+        // Should NOT conflict: sort differences are resolved local-first and uploaded.
         match merge_webdav_payload_without_conflict(&local_value.to_string(), &remote_value.to_string()) {
-            WebDavMergeOutcome::Same => {},
-            other => panic!("expected Same when only sort differs on both sides, got {other:?}"),
+            WebDavMergeOutcome::Merged(merged) => {
+                let merged_value: serde_json::Value = serde_json::from_str(&merged).unwrap();
+                let merged_sort = merged_value
+                    .get("items")
+                    .and_then(|items| items.as_array())
+                    .and_then(|items| items.first())
+                    .and_then(|item| item.get("sort"))
+                    .and_then(|sort| sort.as_i64())
+                    .unwrap();
+                assert_eq!(merged_sort, 1);
+            },
+            other => panic!("expected Merged with local sort when only sort differs on both sides, got {other:?}"),
         }
     }
 
