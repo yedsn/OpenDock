@@ -168,6 +168,7 @@ export interface SearchSuggestion {
   itemId?: string;
   isUrl?: boolean;
   score: number;
+  usageCount?: number;
 }
 
 export interface PluginStoreEntry {
@@ -260,6 +261,9 @@ export interface SearchSettings {
   sceneEnterBehavior: SearchEnterBehavior;
   collectionEnterBehavior: SearchEnterBehavior;
   itemEnterBehavior: SearchEnterBehavior;
+  sceneTagColor: string;
+  collectionTagColor: string;
+  itemTagColor: string;
 }
 
 export interface AppearanceSettings {

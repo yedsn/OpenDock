@@ -71,7 +71,13 @@
     scene: "Scene",
     collection: "Collection",
     link: "Link",
-    resource: "Resource"
+    resource: "Resource",
+    directOpen: "Open directly",
+    openResource: "Open resource",
+    openAllResources: "Open all resources",
+    openCurrentResource: "Open current resource",
+    openSceneList: "Open scene list",
+    openCollectionList: "Open collection list"
   },
   settings: {
     title: "Settings",
@@ -234,6 +240,11 @@
     itemResult: "Resource result",
     directlyOpenItem: "Open resource directly",
     hideWindowAfterOpenLink: "Hide window after opening",
+    searchTagColors: "Search tag colors",
+    searchTagColorsDesc: "Set the type tag colors for scenes, collections, and resources in search results.",
+    sceneTagColor: "Scene tag color",
+    collectionTagColor: "Collection tag color",
+    itemTagColor: "Resource tag color",
     dataOverview: "Data overview",
     recentActivity: "Recent activity",
     dataOverviewDesc: "Review data size and schema version before backing up.",

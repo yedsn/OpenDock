@@ -247,7 +247,10 @@ async function init() {
     state.data.settings.search = {
       sceneEnterBehavior: legacySearchEnterBehavior || "open",
       collectionEnterBehavior: legacySearchEnterBehavior || "open",
-      itemEnterBehavior: legacySearchEnterBehavior || "open"
+      itemEnterBehavior: legacySearchEnterBehavior || "open",
+      sceneTagColor: "#60a5fa",
+      collectionTagColor: "#34d399",
+      itemTagColor: "#fbbf24"
     };
   }
   if (!state.data.settings.search.sceneEnterBehavior) {
@@ -259,6 +262,9 @@ async function init() {
   if (!state.data.settings.search.itemEnterBehavior) {
     state.data.settings.search.itemEnterBehavior = legacySearchEnterBehavior || "open";
   }
+  if (!state.data.settings.search.sceneTagColor) state.data.settings.search.sceneTagColor = "#60a5fa";
+  if (!state.data.settings.search.collectionTagColor) state.data.settings.search.collectionTagColor = "#34d399";
+  if (!state.data.settings.search.itemTagColor) state.data.settings.search.itemTagColor = "#fbbf24";
   ensureToggleWindowShortcut();
   const seed = createSeedData();
   // Backfill all built-in plugins so they always appear in the installed list
@@ -1765,7 +1771,8 @@ const searchSuggestions = computed<SearchSuggestion[]>(() => {
         title: scene.name,
         subtitle: `${scene.type} 场景`,
         sceneId: scene.id,
-        score
+        score,
+        usageCount: scene.usageCount || 0
       });
     }
   }
@@ -1782,7 +1789,8 @@ const searchSuggestions = computed<SearchSuggestion[]>(() => {
         subtitle: `${collection.type} · ${scene?.name || "无场景"}`,
         collectionId: collection.id,
         sceneId: collection.sceneId || undefined,
-        score
+        score,
+        usageCount: collection.usageCount || 0
       });
     }
   }
@@ -1800,23 +1808,32 @@ const searchSuggestions = computed<SearchSuggestion[]>(() => {
         collectionId: item.collectionId,
         itemId: item.id,
         isUrl: item.type === "浏览器",
-        score
+        score,
+        usageCount: item.usageCount || 0
       });
     }
   }
 
-  return results.sort((a, b) => b.score - a.score).slice(0, 20);
+  const kindOrder: Record<SearchSuggestion["kind"], number> = { scene: 0, collection: 1, item: 2 };
+  return results.sort((a, b) => {
+    const typeDelta = kindOrder[a.kind] - kindOrder[b.kind];
+    if (typeDelta !== 0) return typeDelta;
+    const usageDelta = (b.usageCount || 0) - (a.usageCount || 0);
+    if (usageDelta !== 0) return usageDelta;
+    return b.score - a.score;
+  }).slice(0, 20);
 });
 
 const runningTaskCount = computed(() => state.tasks.filter((task) => task.status === "running").length);
 const latestTask = computed(() => state.tasks[0]);
 const webdavPluginInstalled = computed(() => Boolean(state.data.plugins.find((plugin) => plugin.id === "webdav-sync" && plugin.installed && plugin.enabled)));
 
-async function executeSuggestion(suggestion: SearchSuggestion): Promise<boolean> {
+async function executeSuggestion(suggestion: SearchSuggestion, mode?: "open" | "navigate"): Promise<boolean> {
   if (suggestion.kind === "scene" && suggestion.sceneId) {
     const scene = state.data.scenes.find((entry) => entry.id === suggestion.sceneId);
     if (!scene) return false;
-    if (state.data.settings.search.sceneEnterBehavior === "open") {
+    const behavior = mode || state.data.settings.search.sceneEnterBehavior;
+    if (behavior === "open") {
       await openScene(scene);
       return true;
     }
@@ -1824,7 +1841,8 @@ async function executeSuggestion(suggestion: SearchSuggestion): Promise<boolean>
   } else if (suggestion.kind === "collection" && suggestion.collectionId) {
     const collection = findCollectionById(suggestion.collectionId);
     if (!collection) return false;
-    if (state.data.settings.search.collectionEnterBehavior === "open") {
+    const behavior = mode || state.data.settings.search.collectionEnterBehavior;
+    if (behavior === "open") {
       await openCollection(collection);
       return true;
     }
@@ -1832,7 +1850,8 @@ async function executeSuggestion(suggestion: SearchSuggestion): Promise<boolean>
   } else if (suggestion.kind === "item" && suggestion.itemId) {
     const item = state.data.items.find((i) => i.id === suggestion.itemId);
     if (!item) return false;
-    if (state.data.settings.search.itemEnterBehavior === "open") {
+    const behavior = mode || state.data.settings.search.itemEnterBehavior;
+    if (behavior === "open") {
       await openItem(item);
       return true;
     }
@@ -1844,8 +1863,8 @@ async function executeSuggestion(suggestion: SearchSuggestion): Promise<boolean>
   return false;
 }
 
-async function executeSuggestionAndMaybeHide(suggestion: SearchSuggestion): Promise<void> {
-  const opened = await executeSuggestion(suggestion);
+async function executeSuggestionAndMaybeHide(suggestion: SearchSuggestion, mode?: "open" | "navigate"): Promise<void> {
+  const opened = await executeSuggestion(suggestion, mode);
   if (opened && state.data.settings.general.closeWindowAfterOpen) {
     const { getCurrentWindow } = await import("@tauri-apps/api/window");
     await getCurrentWindow().hide();

@@ -186,7 +186,7 @@ export function createSeedData(): AppData {
     ]),
     settings: {
       general: { defaultView: "全部资源", recentLimit: 12, confirmBeforeOpen: false, logOpenFailures: true, openWebInNewWindow: true, closeWindowAfterOpen: true, language: "简体中文", autoSnapshotIntervalMinutes: 60, autoSnapshotKeepCount: 7, autoStart: false, startMinimized: false, sceneSort: "手动" as SortMode, collectionSort: "按使用次数" as SortMode, itemSort: "手动" as SortMode },
-      search: { sceneEnterBehavior: "open", collectionEnterBehavior: "open", itemEnterBehavior: "open" },
+      search: { sceneEnterBehavior: "open", collectionEnterBehavior: "open", itemEnterBehavior: "open", sceneTagColor: "#60a5fa", collectionTagColor: "#34d399", itemTagColor: "#fbbf24" },
       templates: ["代码目录", "本地网页", "开发环境网页", "线上环境网页", "常用命令"],
       shortcuts: [
         { action: "显示/隐藏窗口", key: "Alt+O" },

@@ -75,7 +75,13 @@
     scene: "场景",
     collection: "集合",
     link: "链接",
-    resource: "资源"
+    resource: "资源",
+    directOpen: "直接打开",
+    openResource: "直接打开资源",
+    openAllResources: "打开全部资源",
+    openCurrentResource: "打开当前资源",
+    openSceneList: "打开场景列表",
+    openCollectionList: "打开集合列表"
   },
   // Settings
   settings: {
@@ -247,6 +253,11 @@
     itemResult: "资源结果",
     directlyOpenItem: "直接打开资源",
     hideWindowAfterOpenLink: "打开后隐藏窗口",
+    searchTagColors: "搜索标签颜色",
+    searchTagColorsDesc: "分别设置场景、集合、资源在搜索结果中的类型标签颜色。",
+    sceneTagColor: "场景标签颜色",
+    collectionTagColor: "集合标签颜色",
+    itemTagColor: "资源标签颜色",
     // Data panel
     dataOverview: "数据概览",
     recentActivity: "最近活动",

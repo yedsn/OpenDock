@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, ref, watch } from "vue";
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { FileText, FolderKanban, Globe, Layers, Search } from "lucide-vue-next";
 import { useOpenDockStore } from "../store";
 import { useI18n } from "../i18n";
@@ -17,6 +17,7 @@ const store = useOpenDockStore();
 const { t } = useI18n();
 const activeIndex = ref(0);
 const listRef = ref<HTMLElement | null>(null);
+const modifierPressed = ref(false);
 
 const results = computed(() => store.searchSuggestions.value);
 const hasQuery = computed(() => Boolean(store.state.search.trim()));
@@ -37,6 +38,20 @@ function labelFor(result: SearchSuggestion): string {
   return result.isUrl ? t("search.link") : t("search.resource");
 }
 
+function tagColorFor(result: SearchSuggestion): string {
+  const searchSettings = store.state.data.settings.search;
+  if (result.kind === "scene") return searchSettings.sceneTagColor;
+  if (result.kind === "collection") return searchSettings.collectionTagColor;
+  return searchSettings.itemTagColor;
+}
+
+function actionLabelFor(result: SearchSuggestion): string {
+  if (!modifierPressed.value) return result.kind === "item" ? t("search.openCurrentResource") : t("search.openAllResources");
+  if (result.kind === "scene") return t("search.openSceneList");
+  if (result.kind === "collection") return t("search.openCollectionList");
+  return t("search.openCollectionList");
+}
+
 function setActive(index: number) {
   if (!results.value.length) return;
   activeIndex.value = Math.max(0, Math.min(index, results.value.length - 1));
@@ -55,11 +70,31 @@ async function move(delta: number) {
   await scrollActiveIntoView();
 }
 
-async function run(result = results.value[activeIndex.value]) {
+function updateModifierPressed(event: KeyboardEvent | MouseEvent) {
+  modifierPressed.value = event.ctrlKey || event.metaKey;
+}
+
+function clearModifierPressed() {
+  modifierPressed.value = false;
+}
+
+async function run(result = results.value[activeIndex.value], navigate = modifierPressed.value) {
   if (!result) return;
-  await store.executeSuggestionAndMaybeHide(result);
+  await store.executeSuggestionAndMaybeHide(result, navigate ? "navigate" : "open");
   emit("close");
 }
+
+onMounted(() => {
+  window.addEventListener("keydown", updateModifierPressed);
+  window.addEventListener("keyup", updateModifierPressed);
+  window.addEventListener("blur", clearModifierPressed);
+});
+
+onBeforeUnmount(() => {
+  window.removeEventListener("keydown", updateModifierPressed);
+  window.removeEventListener("keyup", updateModifierPressed);
+  window.removeEventListener("blur", clearModifierPressed);
+});
 
 defineExpose({
   move,
@@ -79,14 +114,17 @@ defineExpose({
         role="option"
         :aria-selected="index === activeIndex"
         @mouseenter="setActive(index)"
-        @mousedown.prevent="run(result)"
+        @mousedown.prevent="run(result, $event.ctrlKey || $event.metaKey)"
       >
         <span class="search-result-icon"><component :is="iconFor(result)" /></span>
         <span class="search-result-main">
           <strong>{{ result.title }}</strong>
           <small>{{ result.subtitle }}</small>
         </span>
-        <span class="search-result-kind">{{ labelFor(result) }}</span>
+        <span class="search-result-meta">
+          <span class="search-result-action">{{ actionLabelFor(result) }}</span>
+          <span class="search-result-kind" :style="{ '--tag-color': tagColorFor(result) }">{{ labelFor(result) }}</span>
+        </span>
       </button>
     </div>
     <div v-else class="search-empty">

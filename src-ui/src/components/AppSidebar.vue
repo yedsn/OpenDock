@@ -110,7 +110,7 @@ async function handleSearchKeydown(event: KeyboardEvent) {
   }
   if (event.key === "Enter") {
     event.preventDefault();
-    await overlayRef.value?.run();
+    await overlayRef.value?.run(undefined, event.ctrlKey || event.metaKey);
     return;
   }
   if (event.key === "Escape") {

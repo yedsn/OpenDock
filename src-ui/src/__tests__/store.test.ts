@@ -836,6 +836,45 @@ describe("OpenDock store - search suggestions", () => {
     expect(invokeMock).not.toHaveBeenCalledWith("open_application", expect.anything());
     expect(hideWindowMock).not.toHaveBeenCalled();
   });
+  it("lets search callers force open or navigate regardless of saved Enter behavior", async () => {
+    const { useOpenDockStore } = await import("../store");
+    const store = useOpenDockStore();
+    store.state.data.settings.search.collectionEnterBehavior = "navigate";
+    store.createCollection("客户门户网页", WEB_COLLECTION, null, "站点入口");
+    const collection = store.state.data.collections.find((entry) => entry.name === "客户门户网页")!;
+    store.createItem(collection.id, "测试链接", "浏览器", "https://example.test/a");
+    invokeMock.mockClear();
+
+    store.state.search = "khmh";
+    const collectionSuggestion = store.searchSuggestions.value.find((entry) => entry.kind === "collection" && entry.title === "客户门户网页")!;
+    await store.executeSuggestionAndMaybeHide(collectionSuggestion, "open");
+    expect(invokeMock).toHaveBeenCalledWith("open_url", { url: "https://example.test/a", newWindow: true });
+
+    invokeMock.mockClear();
+    await store.executeSuggestionAndMaybeHide(collectionSuggestion, "navigate");
+    expect(store.state.activeTabId).toBe(`collection-${collection.id}`);
+    expect(invokeMock).not.toHaveBeenCalled();
+  });
+  it("sorts search suggestions by type first and usage count within each type", async () => {
+    const { useOpenDockStore } = await import("../store");
+    const store = useOpenDockStore();
+    store.createScene("通用搜索", OFFICE);
+    const scene = store.state.data.scenes.find((entry) => entry.name === "通用搜索")!;
+    store.createCollection("通用低频集合", WEB_COLLECTION, scene.id, "通用");
+    store.createCollection("通用高频集合", WEB_COLLECTION, scene.id, "通用");
+    const lowCollection = store.state.data.collections.find((entry) => entry.name === "通用低频集合")!;
+    const highCollection = store.state.data.collections.find((entry) => entry.name === "通用高频集合")!;
+    scene.usageCount = 1;
+    lowCollection.usageCount = 1;
+    highCollection.usageCount = 9;
+    store.createItem(lowCollection.id, "通用资源", "浏览器", "https://example.test/common");
+    const item = store.state.data.items.find((entry) => entry.name === "通用资源")!;
+    item.usageCount = 99;
+
+    store.state.search = "通用";
+    const suggestions = store.searchSuggestions.value.filter((entry) => ["通用搜索", "通用低频集合", "通用高频集合", "通用资源"].includes(entry.title));
+    expect(suggestions.map((entry) => entry.title)).toEqual(["通用搜索", "通用高频集合", "通用低频集合", "通用资源"]);
+  });
 });
 describe("OpenDock store - tab navigation", () => {
   it("setActiveScene returns from settings view to workspace", async () => {
