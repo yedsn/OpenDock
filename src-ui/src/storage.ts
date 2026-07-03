@@ -12,6 +12,7 @@ import {
   snapshotGet as dbSnapshotGet,
   snapshotDelete as dbSnapshotDelete,
   snapshotPrune as dbSnapshotPrune,
+  snapshotClearAll as dbSnapshotClearAll,
 } from "./db";
 import type { AppData, SnapshotKind, SnapshotRecord } from "./types";
 
@@ -257,4 +258,9 @@ export async function deleteSnapshot(id: string): Promise<void> {
 /** Keep the newest `keep` snapshots of the given kind, delete the rest. */
 export async function pruneSnapshots(kind: SnapshotKind, keep: number): Promise<number> {
   return await dbSnapshotPrune(kind, keep);
+}
+
+/** Delete every snapshot. Returns the number of rows removed. */
+export async function clearAllSnapshots(): Promise<number> {
+  return await dbSnapshotClearAll();
 }

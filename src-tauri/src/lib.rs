@@ -2152,6 +2152,16 @@ fn snapshot_prune(state: tauri::State<AppState>, kind: String, keep: i64) -> Res
     Ok(affected as u64)
 }
 
+/// Delete all snapshots. Returns the number of rows removed.
+#[tauri::command]
+fn snapshot_clear_all(state: tauri::State<AppState>) -> Result<u64, String> {
+    let db = state.db.lock().map_err(|e| e.to_string())?;
+    let affected = db
+        .execute("DELETE FROM snapshots", [])
+        .map_err(|e| e.to_string())?;
+    Ok(affected as u64)
+}
+
 // ---- Entry point ----
 
 /// Default global hotkey to toggle the OpenDock main window.
@@ -2655,7 +2665,7 @@ pub fn run() {
             get_app_version, check_app_update, download_and_install_update, restart_app,
             db_init, db_execute, db_execute_params, db_get_value, db_set_value, db_list_table, db_bulk_insert,
             get_demo_dir,
-            snapshot_create, snapshot_update_meta, snapshot_list, snapshot_get, snapshot_delete, snapshot_prune,
+            snapshot_create, snapshot_update_meta, snapshot_list, snapshot_get, snapshot_delete, snapshot_prune, snapshot_clear_all,
             marketplace_fetch_text, marketplace_install_plugin_files, marketplace_get_installed_dir, marketplace_delete_plugin_dir
         ])
         .build(tauri::generate_context!())

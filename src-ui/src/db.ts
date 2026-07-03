@@ -104,6 +104,13 @@ export async function snapshotPrune(kind: SnapshotKind, keep: number): Promise<n
   } catch (e) { throw snapshotUnavailable(e); }
 }
 
+export async function snapshotClearAll(): Promise<number> {
+  await ensureDb();
+  try {
+    return await invoke<number>("snapshot_clear_all");
+  } catch (e) { throw snapshotUnavailable(e); }
+}
+
 // ---- WebDAV credential helpers ----
 
 export async function webdavSetCredential(password: string): Promise<void> {

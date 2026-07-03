@@ -2,7 +2,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { collectionMeta, itemMeta, sceneMeta } from "./seed";
 import { exportAppData, loadAppData, normalizeAppData, resetAppData, saveActiveState, saveAppData } from "./storage";
-import { createSnapshot, listSnapshots, loadSnapshot, deleteSnapshot, pruneSnapshots, updateSnapshotMeta } from "./storage";
+import { createSnapshot, listSnapshots, loadSnapshot, deleteSnapshot, pruneSnapshots, updateSnapshotMeta, clearAllSnapshots } from "./storage";
 import { webdavSetCredential, webdavGetCredential } from "./db";
 import { serializeAppDataOffThread, parseJsonOffThread, summarizeDiffOffThread } from "./webdavWorkerClient";
 import { createSeedData } from "./seed";
@@ -1554,6 +1554,12 @@ async function pruneAutoSnapshots(keep: number = 10): Promise<number> {
   return deleted;
 }
 
+async function clearAllSnapshotsFn(): Promise<number> {
+  const deleted = await clearAllSnapshots();
+  state.snapshots = [];
+  return deleted;
+}
+
 function formatSnapshotLabel(kind: SnapshotKind): string {
   const now = new Date();
   const pad = (n: number) => String(n).padStart(2, "0");
@@ -2146,6 +2152,7 @@ export function useOpenDockStore() {
     restoreSnapshot,
     removeSnapshot,
     refreshSnapshots,
+    clearAllSnapshots: clearAllSnapshotsFn,
     startAutoSnapshotTimer,
     stopAutoSnapshotTimer,
     setSceneSortMode,

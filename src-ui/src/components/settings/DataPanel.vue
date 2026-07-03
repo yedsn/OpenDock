@@ -289,6 +289,25 @@ async function onDeleteSnapshot(id: string, label: string) {
   }
 }
 
+async function onClearAllSnapshots() {
+  const count = store.state.snapshots.length;
+  if (count === 0) {
+    snapshotFeedback.value = { kind: "info", text: t("settings.noSnapshotsToClear") };
+    return;
+  }
+  if (!(await confirmDelete(t("settings.clearAllSnapshotsConfirm", { count })))) return;
+  snapshotBusy.value = true;
+  snapshotFeedback.value = { kind: "info", text: t("settings.clearing") };
+  try {
+    const deleted = await store.clearAllSnapshots();
+    snapshotFeedback.value = { kind: "success", text: t("settings.snapshotsCleared", { count: deleted }) };
+  } catch (e) {
+    snapshotFeedback.value = { kind: "error", text: t("settings.clearAllSnapshotsFailed", { error: describeError(e) }) };
+  } finally {
+    snapshotBusy.value = false;
+  }
+}
+
 function beginEditSnapshot(snap: SnapshotRecord) {
   snapshotEditingId.value = snap.id;
   snapshotEditForm.value = { label: snap.label, note: snap.note || "" };
@@ -412,6 +431,7 @@ function formatSnapshotTime(iso: string): string {
           <template v-else><Camera />{{ $t("settings.takeSnapshotNow") }}</template>
         </button>
         <button class="settings-action-button" type="button" :disabled="snapshotBusy" @click="refreshSnapshotList"><RefreshCw />{{ $t("settings.refresh") }}</button>
+        <button class="settings-action-button data-danger" type="button" :disabled="snapshotBusy || !store.state.snapshots.length" @click="onClearAllSnapshots"><Trash2 />{{ $t("settings.clearAllSnapshots") }}</button>
       </div>
     </div>
     <div class="settings-card-description">
