@@ -2,10 +2,12 @@
 import { computed, nextTick, onMounted, onUnmounted, ref } from "vue";
 import {
   ArrowUpDown,
+  Check,
   ChevronsUpDown,
   Circle,
   Clock3,
   Code2,
+  Copy,
   Database,
   GripVertical,
   Inbox,
@@ -20,6 +22,7 @@ import { useOpenDockStore } from "../store";
 import { useI18n } from "../i18n";
 import SearchOverlay from "./SearchOverlay.vue";
 import { confirmDelete } from "../dialog";
+import { copyText, showToast } from "../helpers";
 import { useListReorder } from "../composables/useListReorder";
 
 const store = useOpenDockStore();
@@ -182,6 +185,17 @@ useListReorder({
   enabled: isManualSceneSort,
   onReorder: (fromIndex, toIndex) => store.reorderScenes(fromIndex, toIndex)
 });
+
+const copiedSceneId = ref<string | null>(null);
+let copySceneTimer = 0;
+async function copySceneName(scene: { id: string; name: string }) {
+  if (await copyText(scene.name)) {
+    copiedSceneId.value = scene.id;
+    showToast(t("common.copySuccess"));
+    if (copySceneTimer) window.clearTimeout(copySceneTimer);
+    copySceneTimer = window.setTimeout(() => { copiedSceneId.value = null; }, 1200);
+  }
+}
 </script>
 
 <template>
@@ -229,6 +243,7 @@ useListReorder({
           <Code2 />
           <span><span class="scene-name">{{ scene.name }}</span><small class="scene-detail">{{ scene.description }}</small></span>
           <span class="scene-actions">
+            <component :is="copiedSceneId === scene.id ? Check : Copy" class="row-edit-icon" :title="$t('sidebar.copyName')" @click.stop="copySceneName(scene)" />
             <Pencil class="row-edit-icon" @click.stop="editScene(scene.id)" />
             <Trash2 class="row-edit-icon danger" @click.stop="deleteSceneConfirm(scene.id)" />
           </span>

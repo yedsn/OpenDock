@@ -1,7 +1,9 @@
 ﻿<script setup lang="ts">
 import { computed, onBeforeUnmount, ref, watch } from "vue";
 import {
-  Activity,  FileText,
+  Activity,  Check,
+  Copy,
+  FileText,
   FolderPlus,
   Globe,
   GripVertical,
@@ -18,6 +20,7 @@ import { useI18n } from "../i18n";
 import { confirmDelete } from "../dialog";
 import VirtualList from "./VirtualList.vue";
 import { useListReorder } from "../composables/useListReorder";
+import { copyText, showToast } from "../helpers";
 
 const store = useOpenDockStore();
 const { t, typeLabel } = useI18n();
@@ -37,6 +40,8 @@ watch(activeCollectionId, (collectionId) => {
 
 onBeforeUnmount(() => {
   if (pendingItemsFrame) cancelAnimationFrame(pendingItemsFrame);
+  if (copyCollectionTimer) window.clearTimeout(copyCollectionTimer);
+  if (copyItemTimer) window.clearTimeout(copyItemTimer);
 });
 
 const activeItems = computed(() =>
@@ -166,6 +171,29 @@ async function deleteItemConfirm(itemId: string) {
   }
 }
 
+const copiedCollectionId = ref<string | null>(null);
+const copiedItemId = ref<string | null>(null);
+let copyCollectionTimer = 0;
+let copyItemTimer = 0;
+
+async function copyCollectionName(collection: { id: string; name: string }) {
+  if (await copyText(collection.name)) {
+    copiedCollectionId.value = collection.id;
+    showToast(t("common.copySuccess"));
+    if (copyCollectionTimer) window.clearTimeout(copyCollectionTimer);
+    copyCollectionTimer = window.setTimeout(() => { copiedCollectionId.value = null; }, 1200);
+  }
+}
+
+async function copyItemName(item: { id: string; name: string }) {
+  if (await copyText(item.name)) {
+    copiedItemId.value = item.id;
+    showToast(t("common.copySuccess"));
+    if (copyItemTimer) window.clearTimeout(copyItemTimer);
+    copyItemTimer = window.setTimeout(() => { copiedItemId.value = null; }, 1200);
+  }
+}
+
 
 const isManualCollectionSort = computed(() => store.effectiveCollectionSortMode() === "手动");
 const isManualItemSort = computed(() => store.effectiveItemSortMode() === "手动");
@@ -251,6 +279,7 @@ function selectCollection(collection: { id: string; name: string; sceneId: strin
               <small>{{ item.subtitle }}</small>
             </span>
             <span class="card-actions">
+              <button class="icon-button" type="button" :title="$t('workbench.copyName')" @click.stop="copyCollectionName(item)"><component :is="copiedCollectionId === item.id ? Check : Copy" /></button>
               <button class="icon-button" type="button" :title="$t('workbench.edit')" @click.stop="editCollection(item.id)"><Pencil /></button>
               <button class="icon-button danger" type="button" :title="$t('workbench.delete')" @click.stop="deleteCollectionConfirm(item.id)"><Trash2 /></button>
               <button class="icon-button" type="button" @click.stop="store.toggleFavorite(item.source)">
@@ -283,6 +312,7 @@ function selectCollection(collection: { id: string; name: string; sceneId: strin
                 <small>{{ item.subtitle }}</small>
               </span>
               <span class="card-actions">
+                <button class="icon-button" type="button" :title="$t('workbench.copyName')" @click.stop="copyCollectionName(item)"><component :is="copiedCollectionId === item.id ? Check : Copy" /></button>
                 <button class="icon-button" type="button" :title="$t('workbench.edit')" @click.stop="editCollection(item.id)"><Pencil /></button>
                 <button class="icon-button danger" type="button" :title="$t('workbench.delete')" @click.stop="deleteCollectionConfirm(item.id)"><Trash2 /></button>
                 <button class="icon-button" type="button" @click.stop="store.toggleFavorite(item.source)">
@@ -337,6 +367,7 @@ function selectCollection(collection: { id: string; name: string; sceneId: strin
             </span>
             <span class="item-actions">
               <button class="row-open" @click="store.openItem(item.source)"><Play />{{ $t("workbench.open") }}</button>
+              <button class="icon-button" :title="$t('workbench.copyName')" @click="copyItemName(item)"><component :is="copiedItemId === item.id ? Check : Copy" /></button>
               <button class="icon-button" :title="$t('workbench.edit')" @click="editItem(item.id)"><Pencil /></button>
               <button class="icon-button danger" :title="$t('workbench.delete')" @click="deleteItemConfirm(item.id)"><Trash2 /></button>
             </span>
@@ -361,6 +392,7 @@ function selectCollection(collection: { id: string; name: string; sceneId: strin
               </span>
               <span class="item-actions">
                 <button class="row-open" @click="store.openItem(item.source)"><Play />{{ $t("workbench.open") }}</button>
+                <button class="icon-button" :title="$t('workbench.copyName')" @click="copyItemName(item)"><component :is="copiedItemId === item.id ? Check : Copy" /></button>
                 <button class="icon-button" :title="$t('workbench.edit')" @click="editItem(item.id)"><Pencil /></button>
                 <button class="icon-button danger" :title="$t('workbench.delete')" @click="deleteItemConfirm(item.id)"><Trash2 /></button>
               </span>

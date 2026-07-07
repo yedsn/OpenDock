@@ -1,4 +1,4 @@
-﻿export default {
+export default {
   // App chrome
   app: {
     name: "OpenDock",
@@ -11,6 +11,9 @@
     closeAll: "关闭全部",
     collections: "集合",
     plugins: "插件"
+  },
+  common: {
+    copySuccess: "复制成功"
   },
   // Sidebar
   sidebar: {
@@ -29,6 +32,7 @@
     newScene: "新建场景",
     editScene: "编辑场景",
     deleteScene: "删除场景",
+    copyName: "复制名称",
     confirmDeleteScene: "确认删除场景「{name}」？此场景下的集合将变为无场景集合。",
     workspaces: "工作区",
     newWorkspace: "新建工作区",
@@ -52,6 +56,7 @@
     newCollection: "新建集合",
     edit: "编辑",
     delete: "删除",
+    copyName: "复制名称",
     unselectedCollection: "未选择集合",
     selectCollectionHint: "选择一个集合查看资源。",
     editCollection: "编辑集合",

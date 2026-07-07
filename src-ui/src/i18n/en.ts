@@ -11,6 +11,9 @@
     collections: "collections",
     plugins: "plugins"
   },
+  common: {
+    copySuccess: "Copied"
+  },
   sidebar: {
     resourceVault: "Resource Vault",
     searchPlaceholder: "Commands, scenes, collections, resources",
@@ -27,6 +30,7 @@
     newScene: "New scene",
     editScene: "Edit scene",
     deleteScene: "Delete scene",
+    copyName: "Copy name",
     confirmDeleteScene: "Delete scene \"{name}\"? Collections in this scene will become unbound.",
     workspaces: "Workspaces",
     newWorkspace: "New workspace",
@@ -49,6 +53,7 @@
     newCollection: "New collection",
     edit: "Edit",
     delete: "Delete",
+    copyName: "Copy name",
     unselectedCollection: "No collection selected",
     selectCollectionHint: "Select a collection to view resources.",
     editCollection: "Edit collection",

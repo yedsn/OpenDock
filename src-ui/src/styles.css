@@ -84,6 +84,8 @@ kbd { height: 19px; display: inline-grid; place-items: center; padding: 0 5px; c
 .tree-row:hover, .scene-button:hover { color: var(--text); background: color-mix(in srgb, var(--bg-3) 72%, transparent); border-color: transparent; }
 .tree-row.active, .scene-button.active { color: var(--text); border-color: transparent; background: var(--bg-3); }
 .icon-button:hover, .tool-chip:hover, .tab:hover { color: var(--text); background: var(--bg-3); }
+.app-toast { position: fixed; left: 50%; bottom: 32px; z-index: 2100; min-width: 112px; max-width: min(360px, calc(100vw - 32px)); min-height: 34px; display: inline-flex; align-items: center; justify-content: center; padding: 0 14px; color: var(--text); background: var(--bg-2); border: 1px solid var(--line-strong); border-radius: 8px; box-shadow: 0 16px 42px var(--shadow, rgba(0,0,0,.42)); font-size: 12px; font-weight: 750; pointer-events: none; opacity: 0; transform: translate(-50%, 8px); transition: opacity .14s ease, transform .14s ease; }
+.app-toast.show { opacity: 1; transform: translate(-50%, 0); }
 .tree-row span, .scene-name { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; color: var(--text); font-size: var(--sidebar-font-size, 11px); font-weight: 400; }
 .tree-row small, .scene-detail { display: block; min-width: 0; margin-top: 3px; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; color: var(--faint); font-size: var(--sidebar-detail-size, 10px); font-weight: 520; }
 .tree-count { color: var(--muted); font-size: var(--sidebar-detail-size, 10px); }

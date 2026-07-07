@@ -1,4 +1,4 @@
-import type { Collection, CollectionType, ItemType, SceneType } from "./types";
+﻿import type { Collection, CollectionType, ItemType, SceneType } from "./types";
 import { useI18n } from "./i18n";
 
 export const sceneTypeOptions: SceneType[] = ["项目", "办公", "工程", "设计", "通用", "自定义"];
@@ -45,6 +45,51 @@ export function templateToCollectionType(template: string): CollectionType {
   return "网页集合";
 }
 
+// Copy text to the system clipboard. Prefers the async Clipboard API and
+// falls back to a transient textarea + execCommand for older webviews.
+export async function copyText(text: string): Promise<boolean> {
+  try {
+    if (navigator.clipboard && window.isSecureContext) {
+      await navigator.clipboard.writeText(text);
+      return true;
+    }
+  } catch {
+    // fall through to legacy path
+  }
+  try {
+    const textarea = document.createElement("textarea");
+    textarea.value = text;
+    textarea.style.position = "fixed";
+    textarea.style.opacity = "0";
+    document.body.appendChild(textarea);
+    textarea.focus();
+    textarea.select();
+    const ok = document.execCommand("copy");
+    document.body.removeChild(textarea);
+    return ok;
+  } catch {
+    return false;
+  }
+}
+
+let toastTimer = 0;
+
+export function showToast(message: string): void {
+  let toast = document.querySelector<HTMLElement>(".app-toast");
+  if (!toast) {
+    toast = document.createElement("div");
+    toast.className = "app-toast";
+    document.body.appendChild(toast);
+  }
+  toast.textContent = message;
+  toast.classList.add("show");
+  if (toastTimer) window.clearTimeout(toastTimer);
+  toastTimer = window.setTimeout(() => {
+    toast?.classList.remove("show");
+  }, 1400);
+}
+
 export function describeCollection(collection: Collection, sceneName: string | undefined): string {
   return `${collection.type} · ${sceneName || "无场景"}`;
 }
+
