@@ -1,4 +1,4 @@
-﻿## ADDED Requirements
+## ADDED Requirements
 
 ### Requirement: Open single resource
 The system SHALL open a single collection item using the configured tool for that item type.

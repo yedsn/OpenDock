@@ -1,4 +1,4 @@
-﻿## ADDED Requirements
+## ADDED Requirements
 
 ### Requirement: Desktop application shell
 The system SHALL provide a Tauri desktop application shell backed by Vue UI.

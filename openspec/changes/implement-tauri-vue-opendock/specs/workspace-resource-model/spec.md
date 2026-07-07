@@ -1,4 +1,4 @@
-﻿## ADDED Requirements
+## ADDED Requirements
 
 ### Requirement: Workspace data model
 The system SHALL model workspaces as top-level containers for scenes, collections, tools, settings, plugins, and sync configuration.
@@ -14,6 +14,17 @@ The system SHALL model scenes, collections, and collection items with stable IDs
 - **WHEN** a collection is associated with a scene
 - **THEN** the collection can be listed under that scene and opened from scene context
 
+### Requirement: Collection tag model
+The system SHALL allow each collection to store zero or more text tags as collection metadata.
+
+#### Scenario: Collection has multiple tags
+- **WHEN** a collection is saved with tags `frontend`, `docs`, and `daily`
+- **THEN** the collection record stores all three tags without changing its scene, type, favorite, recent, or opening metadata
+
+#### Scenario: Existing collection without tags is loaded
+- **WHEN** persisted data contains a collection record without a tag field
+- **THEN** the application treats the collection as having an empty tag list
+
 ### Requirement: Tool configuration model
 The system SHALL model opening tools with name, type, executable path, argument template, and default-tool flag.
 
@@ -27,6 +38,10 @@ The system SHALL persist OpenDock workspace data and settings to local applicati
 #### Scenario: Restart restores data
 - **WHEN** the user creates a collection and restarts the app
 - **THEN** the created collection is restored from local storage
+
+#### Scenario: Restart restores collection tags
+- **WHEN** the user assigns tags to a collection and restarts the app
+- **THEN** the collection tags are restored from local storage
 
 ### Requirement: Export-safe data boundary
 The system SHALL keep secret credential values separate from ordinary exportable workspace data.

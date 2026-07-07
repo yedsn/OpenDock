@@ -1,4 +1,4 @@
-﻿## ADDED Requirements
+## ADDED Requirements
 
 ### Requirement: Settings navigation
 The system SHALL provide a settings page with system settings, plugin settings, and about entries in the left settings menu.

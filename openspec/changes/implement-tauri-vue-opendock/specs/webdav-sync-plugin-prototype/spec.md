@@ -1,4 +1,4 @@
-﻿## ADDED Requirements
+## ADDED Requirements
 
 ### Requirement: WebDAV Sync plugin settings
 The system SHALL provide a WebDAV Sync plugin settings page when the WebDAV Sync plugin is installed and configurable.

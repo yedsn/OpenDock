@@ -1,4 +1,4 @@
-﻿## ADDED Requirements
+## ADDED Requirements
 
 ### Requirement: Plugin records
 The system SHALL model plugins with id, name, version, category, capability description, permissions, installed status, enabled status, and configurable flag.

@@ -1,4 +1,4 @@
-﻿## 1. Project Scaffold
+## 1. Project Scaffold
 
 - [x] 1.1 Scaffold a Tauri + Vue + TypeScript application in the repository without deleting the existing static prototype files.
 - [x] 1.2 Add package scripts for Vue dev server, Tauri dev mode, build, type check, and lint if lint tooling is included.
@@ -66,6 +66,16 @@
 - [x] 8.5 Implement test-connection and sync-now actions using mocked or preflight Tauri commands.
 - [x] 8.6 Persist WebDAV settings while excluding credential values from ordinary exports.
 
+## 8A. Collection Tags and Tag Filter Quick View
+
+- [ ] 8A.1 Extend the collection data model with `tags: string[]`, including seed data, persistence import/export, and migration/defaulting for existing collection records without tags.
+- [ ] 8A.2 Add tag editing to collection create/edit flows, supporting multiple tags with trimming, empty-value removal, and duplicate removal.
+- [ ] 8A.3 Show collection tags in the collection list and selected collection detail without causing row height or text overflow issues.
+- [ ] 8A.4 Add a tag-filter quick view entry and main workbench tag selection UI.
+- [ ] 8A.5 Update collection filtering so selected tags can be combined with existing quick view, collection mode, scene, and keyword search filters.
+- [ ] 8A.6 Include collection tags in sidebar/global search matching.
+- [ ] 8A.7 Add focused tests for tag persistence, tag editing, tag quick-view filtering, tag + keyword combined filtering, and legacy data without tags.
+
 ## 9. Verification
 > 当前环境状态：
 > - `npm run typecheck` / `npm run build` 通过。
@@ -93,3 +103,4 @@
 - [ ] 9.4 Verify open actions with safe sample URL/path/command cases and confirmation dialogs.
 - [ ] 9.5 Verify app restart restores persisted workspace data.
 - [ ] 9.6 Capture or inspect desktop and narrow viewport screenshots for non-overlap and readable layout.
+- [ ] 9.7 Verify collection tag create/edit, tag display, tag-filter quick view, and tag search flows.

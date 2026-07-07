@@ -1,4 +1,4 @@
-﻿## Context
+## Context
 
 OpenDock currently consists of a static desktop-style prototype (`index.html`, `styles.css`, `app.js`) and a detailed Chinese requirements document. The prototype already establishes the desired interaction model: Obsidian-like left sidebar, workspaces at the lower-left, settings at the lower-left, quick views, scene list, collection/resource workbench, and settings pages including plugin management and WebDAV Sync plugin configuration.
 
