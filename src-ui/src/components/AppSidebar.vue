@@ -16,6 +16,7 @@ import {
   Search,
   Settings,
   Star,
+  Tags,
   Trash2
 } from "lucide-vue-next";
 import { useOpenDockStore } from "../store";
@@ -32,6 +33,7 @@ const quickViews = computed(() => [
   { id: "all" as const, label: t("sidebar.allResources"), hint: t("sidebar.allScenes"), icon: Inbox },
   { id: "favorites" as const, label: t("sidebar.favoriteCollections"), hint: t("sidebar.commonEntries"), icon: Star },
   { id: "recent" as const, label: t("sidebar.recentlyOpened"), hint: t("sidebar.recentlyUsed"), icon: Clock3 },
+  { id: "tags" as const, label: t("sidebar.tagFilter"), hint: t("sidebar.allScenes"), icon: Tags },
   { id: "unbound" as const, label: t("sidebar.unboundCollections"), hint: t("sidebar.independentCollection"), icon: Circle }
 ]);
 
@@ -41,6 +43,7 @@ const quickViewCounts = computed(() => {
     all: collections.length,
     favorites: collections.filter((item) => item.favorite).length,
     recent: collections.filter((item) => item.recent).length,
+    tags: store.collectionTags.value.length,
     unbound: collections.filter((item) => item.unbound || !item.sceneId).length
   };
 });

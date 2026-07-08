@@ -26,7 +26,7 @@ The system SHALL allow users to assign multiple tags to a collection during coll
 
 #### Scenario: Create collection with tags
 - **WHEN** the user creates a collection and enters multiple tags
-- **THEN** the collection is saved with all entered tags after trimming whitespace and removing empty tags
+- **THEN** the collection is saved with all entered tags after trimming whitespace, removing empty tags, and removing duplicates
 
 #### Scenario: Edit collection tags
 - **WHEN** the user edits a collection's tags

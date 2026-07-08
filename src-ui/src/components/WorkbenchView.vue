@@ -12,6 +12,7 @@ import {
   Play,
   Plus,
   Star,
+  Tags,
   Trash2,
   Wrench
 } from "lucide-vue-next";
@@ -64,6 +65,7 @@ interface CollectionRow {
   sceneId: string | null;
   favorite: boolean;
   subtitle: string;
+  tags: string[];
   source: any;
 }
 
@@ -78,6 +80,7 @@ const collectionRows = computed<CollectionRow[]>(() => {
       sceneId: collection.sceneId,
       favorite: collection.favorite,
       subtitle: sceneName,
+      tags: collection.tags || [],
       source: collection
     };
   });
@@ -120,6 +123,7 @@ const quickViewLabels = computed<Record<string, string>>(() => ({
   all: t("sidebar.allResources"),
   favorites: t("sidebar.favoriteCollections"),
   recent: t("sidebar.recentlyOpened"),
+  tags: t("sidebar.tagFilter"),
   unbound: t("sidebar.unboundCollections")
 }));
 
@@ -128,6 +132,7 @@ const isQuickViewTab = computed(() => activeTab.value?.kind === "quickview");
 const paneTitle = computed(() => isQuickViewTab.value ? quickViewLabels.value[store.state.quickView] : store.activeScene().name);
 const paneDescription = computed(() => {
   const count = collectionRows.value.length;
+  if (store.state.quickView === "tags" && store.state.activeTag) return `${store.state.activeTag} · ${count} ${t("settings.collections")}`;
   if (isQuickViewTab.value) return `${t("workbench.allScenes")} \u00b7 ${count} ${t("settings.collections")}`;
   return `${count} ${t("settings.collections")}`;
 });
@@ -228,7 +233,7 @@ function selectCollection(collection: { id: string; name: string; sceneId: strin
 </script>
 <template>
   <section class="workspace">
-    <section class="collection-pane">
+    <section class="collection-pane" :class="{ 'with-tag-filter': store.state.quickView === 'tags' }">
       <div class="pane-header">
         <div>
           <h1>{{ paneTitle }}</h1>
@@ -248,6 +253,35 @@ function selectCollection(collection: { id: string; name: string; sceneId: strin
         <span class="tool-spacer"></span>
         <button class="tool-chip action" @click="store.state.modal.kind = 'collection'; store.state.modal.editingId = undefined;"><FolderPlus />{{ $t("workbench.newCollection") }}</button>
       </div>
+
+      <section v-if="store.state.quickView === 'tags'" class="tag-filter-panel">
+        <div class="tag-filter-heading">
+          <div>
+            <div class="tag-filter-title"><Tags />{{ $t("sidebar.tagFilter") }}</div>
+            <p v-if="!store.collectionTags.value.length">{{ $t("workbench.tagFilterHint") }}</p>
+          </div>
+          <button
+            class="tag-filter-reset"
+            type="button"
+            :class="{ active: !store.state.activeTag }"
+            @click="store.state.activeTag = ''">
+            {{ $t("workbench.allTags") }}
+          </button>
+        </div>
+        <div v-if="store.collectionTags.value.length" class="tag-filter-grid">
+          <button
+            v-for="tag in store.collectionTags.value"
+            :key="tag.name"
+            class="tag-filter-card"
+            :class="{ active: store.state.activeTag === tag.name }"
+            :title="tag.name"
+            @click="store.state.activeTag = store.state.activeTag === tag.name ? '' : tag.name">
+            <span class="tag-filter-name">{{ tag.name }}</span>
+            <span class="tag-filter-count">{{ tag.count }}</span>
+          </button>
+        </div>
+        <div v-else class="tag-filter-empty">{{ $t("workbench.noTagsYet") }}</div>
+      </section>
 
       <div v-if="collectionsLoading" class="collection-list skeleton-list" aria-busy="true" aria-live="polite">
         <div v-for="row in collectionSkeletonRows" :key="row" class="collection-card skeleton-card" :style="{ height: collectionItemHeight + 'px' }">
@@ -276,7 +310,7 @@ function selectCollection(collection: { id: string; name: string; sceneId: strin
             <span class="card-icon"><Layers /></span>
             <span class="card-text">
               <strong>{{ item.name }}</strong>
-              <small>{{ item.subtitle }}</small>
+              <small class="collection-meta"><span class="collection-scene-name">{{ item.subtitle }}</span><span v-if="item.tags.length" class="collection-tags"><span v-for="tag in item.tags" :key="tag" class="collection-tag">{{ tag }}</span></span></small>
             </span>
             <span class="card-actions">
               <button class="icon-button" type="button" :title="$t('workbench.copyName')" @click.stop="copyCollectionName(item)"><component :is="copiedCollectionId === item.id ? Check : Copy" /></button>
@@ -309,7 +343,7 @@ function selectCollection(collection: { id: string; name: string; sceneId: strin
               <span class="card-icon"><Layers /></span>
               <span class="card-text">
                 <strong>{{ item.name }}</strong>
-                <small>{{ item.subtitle }}</small>
+                <small class="collection-meta"><span class="collection-scene-name">{{ item.subtitle }}</span><span v-if="item.tags.length" class="collection-tags"><span v-for="tag in item.tags" :key="tag" class="collection-tag">{{ tag }}</span></span></small>
               </span>
               <span class="card-actions">
                 <button class="icon-button" type="button" :title="$t('workbench.copyName')" @click.stop="copyCollectionName(item)"><component :is="copiedCollectionId === item.id ? Check : Copy" /></button>
@@ -332,6 +366,7 @@ function selectCollection(collection: { id: string; name: string; sceneId: strin
         <div>
           <h2>{{ activeCollection?.name || t("workbench.unselectedCollection") }}</h2>
           <p>{{ activeCollection?.description || t("workbench.selectCollectionHint") }}</p>
+          <div v-if="activeCollection?.tags?.length" class="collection-tags detail-tags"><span v-for="tag in activeCollection.tags" :key="tag" class="collection-tag">{{ tag }}</span></div>
         </div>
         <div class="resource-actions">
           <button class="icon-button" @click="store.state.modal.kind = 'item'; store.state.modal.editingId = undefined;"><Plus /></button>
@@ -437,6 +472,32 @@ function selectCollection(collection: { id: string; name: string; sceneId: strin
 .pane-header-actions { display: flex; align-items: center; gap: 6px; }
 .card-actions { display: flex; align-items: center; gap: 2px; }
 .item-actions { display: flex; align-items: center; gap: 4px; }
+.tag-filter-panel {
+  display: grid;
+  gap: 10px;
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--line);
+  background: color-mix(in srgb, var(--bg-2) 55%, var(--bg));
+}
+.tag-filter-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
+.tag-filter-title { display: inline-flex; align-items: center; gap: 6px; color: var(--text); font-size: 12px; font-weight: 800; }
+.tag-filter-title svg { width: 14px; height: 14px; color: var(--accent); }
+.tag-filter-heading p { margin-top: 3px; color: var(--faint); font-size: 11px; line-height: 1.35; }
+.tag-filter-reset, .tag-filter-card { border: 1px solid var(--line); color: var(--muted); background: var(--bg); border-radius: var(--radius); cursor: pointer; }
+.tag-filter-reset { flex: 0 0 auto; min-height: 28px; padding: 0 10px; font-size: 11px; font-weight: 750; }
+.tag-filter-reset:hover, .tag-filter-reset.active { color: var(--text); border-color: color-mix(in srgb, var(--accent) 38%, var(--line)); background: var(--accent-soft); }
+.tag-filter-grid { display: flex; flex-wrap: wrap; gap: 6px; max-height: 68px; overflow-y: auto; padding-right: 2px; }
+.tag-filter-card { display: inline-grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 8px; min-width: 86px; max-width: 180px; height: 30px; padding: 0 9px; text-align: left; }
+.tag-filter-card:hover { color: var(--text); border-color: var(--line-strong); background: var(--bg-3); }
+.tag-filter-card.active { color: var(--text); border-color: color-mix(in srgb, var(--accent) 58%, var(--line)); background: color-mix(in srgb, var(--accent) 20%, var(--bg)); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 18%, transparent); }
+.tag-filter-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; font-weight: 750; }
+.tag-filter-count { min-width: 20px; height: 18px; padding: 0 6px; border-radius: 999px; color: var(--accent); background: color-mix(in srgb, var(--accent) 13%, var(--bg-2)); font-size: 10px; line-height: 18px; text-align: center; }
+.tag-filter-empty { min-height: 28px; display: flex; align-items: center; color: var(--faint); font-size: 12px; }
+.collection-meta { display: flex !important; align-items: center; gap: 6px; min-width: 0; }
+.collection-scene-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.collection-tags { display: flex; align-items: center; gap: 4px; min-width: 0; overflow: hidden; white-space: nowrap; }
+.collection-tag { display: inline-flex; align-items: center; max-width: 96px; height: 18px; padding: 0 6px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--accent); background: color-mix(in srgb, var(--accent) 11%, var(--bg-2)); border: 1px solid color-mix(in srgb, var(--accent) 24%, var(--line)); border-radius: 4px; font-size: 10px; line-height: 18px; }
+.detail-tags { margin-top: 8px; flex-wrap: wrap; white-space: normal; }
 .icon-button.danger { color: var(--red); }
 .icon-button.danger:hover { background: rgba(210, 109, 109, 0.15); }
 .collection-list-empty,

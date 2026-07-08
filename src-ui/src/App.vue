@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, reactive, ref } from "vue";
-import { Circle, Clock3, Inbox, Layers, Minus, Settings, Square, Star, X } from "lucide-vue-next";
+import { Circle, Clock3, Inbox, Layers, Minus, Settings, Square, Star, Tags, X } from "lucide-vue-next";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import type { UnlistenFn } from "@tauri-apps/api/event";
 import { useOpenDockStore } from "./store";
@@ -17,7 +17,21 @@ import { themeCssVars } from "./themes";
 
 const store = useOpenDockStore();
 const { t } = useI18n();
-const appWindow = getCurrentWindow();
+const appWindow = (() => {
+  try {
+    return getCurrentWindow();
+  } catch {
+    return {
+      startDragging: async () => {},
+      isMaximized: async () => false,
+      minimize: async () => {},
+      toggleMaximize: async () => {},
+      close: async () => {},
+      hide: async () => {},
+      onResized: async () => null
+    };
+  }
+})();
 
 const activeAppIconSource = computed(() => {
   const appearance = store.state.data.settings.appearance as typeof store.state.data.settings.appearance & {
@@ -57,6 +71,7 @@ const quickViewIconMap = {
   all: Inbox,
   favorites: Star,
   recent: Clock3,
+  tags: Tags,
   unbound: Circle
 };
 
@@ -75,6 +90,7 @@ function quickViewTitle(id: string): string {
     all: t("sidebar.allResources"),
     favorites: t("sidebar.favoriteCollections"),
     recent: t("sidebar.recentlyOpened"),
+    tags: t("sidebar.tagFilter"),
     unbound: t("sidebar.unboundCollections")
   };
   return labels[id] || id;

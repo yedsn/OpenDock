@@ -73,6 +73,16 @@ describe("storage", () => {
       expect(result.schemaVersion).toBe(schemaVersion);
     });
 
+    it("defaults legacy collections without tags to an empty tag list", () => {
+      const seed = createSeedData();
+      const legacyCollection = { ...seed.collections[0] } as any;
+      delete legacyCollection.tags;
+
+      const result = normalizeAppData({ ...seed, collections: [legacyCollection] });
+
+      expect(result.collections[0].tags).toEqual([]);
+    });
+
     it("works with empty collections and missing settings", () => {
       const result = normalizeAppData({ schemaVersion: 1 });
       expect(result.collections.length).toBeGreaterThan(0);  // Falls back to seed

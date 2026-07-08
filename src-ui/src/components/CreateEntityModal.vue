@@ -3,6 +3,7 @@ import { computed, reactive, watch } from "vue";
 import { X } from "lucide-vue-next";
 import { useOpenDockStore } from "../store";
 import { useI18n } from "../i18n";
+import TagInput from "./TagInput.vue";
 import type { Collection, CollectionItem, CollectionType, ItemType, Scene, SceneType, Workspace } from "../types";
 
 const store = useOpenDockStore();
@@ -16,6 +17,7 @@ const form = reactive({
   collectionType: "网页集合" as CollectionType,
   collectionSceneId: "",
   collectionDescription: "",
+  collectionTags: [] as string[],
   itemName: "",
   itemType: "浏览器" as ItemType,
   itemValue: "",
@@ -28,6 +30,7 @@ const form = reactive({
 });
 
 const isEdit = computed(() => Boolean(store.state.modal.editingId));
+const existingTags = computed(() => store.collectionTags.value.map((tag) => tag.name));
 const toolTypeOptions = computed(() => store.availableToolTypes());
 const itemTypeConfig = computed(() => store.pluginItemTypeConfig(form.itemType));
 const itemValueLabel = computed(() => itemTypeConfig.value?.valueLabel || t("modal.resourceContent"));
@@ -74,6 +77,7 @@ watch(
       form.collectionType = coll?.type || "网页集合";
       form.collectionSceneId = coll?.sceneId || (id ? "" : store.state.data.activeSceneId);
       form.collectionDescription = coll?.description || "";
+      form.collectionTags = store.normalizeCollectionTags(coll?.tags || []);
     } else if (kind === "item") {
       const item = id ? store.state.data.items.find((i) => i.id === id) : null;
       const activeColl = store.activeCollection();
@@ -115,8 +119,9 @@ function submitModal() {
     if (id) store.updateScene(id, { name: form.sceneName.trim(), type: form.sceneType, description: form.sceneDescription.trim() });
     else store.createScene(form.sceneName.trim(), form.sceneType, form.sceneDescription.trim());
   } else if (kind === "collection" && form.collectionName.trim()) {
-    if (id) store.updateCollection(id, { name: form.collectionName.trim(), type: form.collectionType, sceneId: form.collectionSceneId || null, description: form.collectionDescription.trim() });
-    else store.createCollection(form.collectionName.trim(), form.collectionType, form.collectionSceneId || null, form.collectionDescription.trim());
+    const tags = store.normalizeCollectionTags(form.collectionTags);
+    if (id) store.updateCollection(id, { name: form.collectionName.trim(), type: form.collectionType, sceneId: form.collectionSceneId || null, description: form.collectionDescription.trim(), tags });
+    else store.createCollection(form.collectionName.trim(), form.collectionType, form.collectionSceneId || null, form.collectionDescription.trim(), tags);
   } else if (kind === "item" && form.itemName.trim() && form.itemValue.trim()) {
     const activeColl = store.activeCollection();
     const pluginData = Object.fromEntries(itemPluginFields.value.map((field) => [field.key, form.itemPluginData[field.key] || ""]));
@@ -151,6 +156,7 @@ function submitModal() {
             <option v-for="scene in store.activeScenes.value" :key="scene.id" :value="scene.id">{{ scene.name }}</option>
           </select>
         </label>
+        <label class="setting-field full"><span>{{ $t("modal.collectionTags") }}</span><TagInput v-model="form.collectionTags" :options="existingTags" :placeholder="$t('modal.collectionTagsPlaceholder')" /></label>
         <label class="setting-field full"><span>{{ $t("modal.description") }}</span><textarea v-model="form.collectionDescription"></textarea></label>
       </div>
 

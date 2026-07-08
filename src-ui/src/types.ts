@@ -3,7 +3,7 @@ export type CollectionType = "目录集合" | "网页集合" | "命令集合" | 
 export type ItemType = string;
 export type ToolType = string;
 export type OpenStrategy = "single" | "batch" | "all";
-export type QuickViewId = "all" | "favorites" | "recent" | "unbound";
+export type QuickViewId = "all" | "favorites" | "recent" | "unbound" | "tags";
 export type MainView = "workspace" | "settings";
 export type CollectionMode = "collections" | "web" | "tool";
 export type SortMode = "手动" | "按名称" | "按使用次数";
@@ -76,6 +76,7 @@ export interface Collection {
   icon: string;
   color: string;
   openStrategy: OpenStrategy;
+  tags: string[];
   favorite: boolean;
   recent: boolean;
   recentAt?: string;

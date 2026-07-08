@@ -64,6 +64,7 @@ function collection(data: Partial<Collection> & Pick<Collection, "id" | "sceneId
     icon: meta.icon,
     color: meta.color,
     openStrategy: "all",
+    tags: [],
     favorite: false,
     recent: false,
     unbound: data.sceneId === null,

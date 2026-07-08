@@ -106,6 +106,16 @@ describe("OpenDock store - CRUD operations", () => {
     expect(store.state.data.collections.find((c) => c.id === coll.id)).toBeUndefined();
     expect(store.collectionItems(coll.id).length).toBe(0);
   });
+  it("creates and updates collection tags with normalization", async () => {
+    const { useOpenDockStore } = await import("../store");
+    const store = useOpenDockStore();
+    store.createCollection("Tagged Coll", WEB_COLLECTION, null, "", ["docs", " docs ", "frontend", ""]);
+    const coll = store.state.data.collections.find((c) => c.name === "Tagged Coll")!;
+    expect(coll.tags).toEqual(["docs", "frontend"]);
+
+    store.updateCollection(coll.id, { tags: ["daily", "docs", "daily", " "] });
+    expect(store.state.data.collections.find((c) => c.id === coll.id)!.tags).toEqual(["daily", "docs"]);
+  });
   it("creates and deletes individual collection items", async () => {
     const { useOpenDockStore } = await import("../store");
     const store = useOpenDockStore();
@@ -173,6 +183,22 @@ describe("OpenDock store - CRUD operations", () => {
       const itemMatch = store.collectionItems(c.id).some((i) => `${i.name}${i.value}`.includes(CODE));
       expect(`${c.name}${c.description}${scene?.name || ""}`.includes(CODE) || itemMatch).toBeTruthy();
     });
+  });
+  it("filters collections by tag and combines tag with keyword search", async () => {
+    const { useOpenDockStore } = await import("../store");
+    const store = useOpenDockStore();
+    store.createCollection("Docs Alpha", WEB_COLLECTION, null, "release notes", ["docs"]);
+    store.createCollection("Docs Beta", WEB_COLLECTION, null, "internal runbook", ["docs"]);
+    store.createCollection("Ops Alpha", WEB_COLLECTION, null, "release notes", ["ops"]);
+
+    store.state.quickView = "tags";
+    store.state.activeTag = "docs";
+    store.state.search = "";
+    expect(store.visibleCollections.value.map((entry) => entry.name)).toEqual(expect.arrayContaining(["Docs Alpha", "Docs Beta"]));
+    expect(store.visibleCollections.value.some((entry) => entry.name === "Ops Alpha")).toBe(false);
+
+    store.state.search = "release";
+    expect(store.visibleCollections.value.map((entry) => entry.name)).toEqual(["Docs Alpha"]);
   });
   it("switches workspace and updates active scene", async () => {
     const { useOpenDockStore } = await import("../store");
@@ -259,7 +285,7 @@ describe("OpenDock store - CRUD operations", () => {
     mergedData.items.push({
       id: "remote-added-item",
       workspaceId: "default",
-      collectionId: "code",
+      collectionId: "fe-code",
       name: "Remote Added",
       type: "浏览器",
       value: "https://remote.example.test",
@@ -288,7 +314,7 @@ describe("OpenDock store - CRUD operations", () => {
   it("applies WebDAV merged collection title changes", async () => {
     const { createSeedData } = await import("../seed");
     const mergedData = createSeedData();
-    const target = mergedData.collections.find((collection) => collection.id === "code");
+    const target = mergedData.collections.find((collection) => collection.id === "fe-code");
     expect(target).toBeTruthy();
     if (target) {
       target.name = "远端集合标题";
@@ -304,7 +330,7 @@ describe("OpenDock store - CRUD operations", () => {
     const { useOpenDockStore } = await import("../store");
     const store = useOpenDockStore();
     await store.syncWebdavNow();
-    expect(store.state.data.collections.find((collection) => collection.id === "code")?.name).toBe("远端集合标题");
+    expect(store.state.data.collections.find((collection) => collection.id === "fe-code")?.name).toBe("远端集合标题");
     expect(store.state.data.settings.webdavSync.status).toContain("集合更新 1");
   });
   it("tracks WebDAV sync as a background task", async () => {
@@ -358,13 +384,13 @@ describe("OpenDock store - CRUD operations", () => {
       config.remotePath = "/OpenDock/workspaces";
       invokeMock.mockClear();
 
-      store.updateCollection("code", { name: "本机快速同步集合" });
+      store.updateCollection("fe-code", { name: "本机快速同步集合" });
 
       expect(store.latestTask.value?.status).toBe("pending");
       expect(store.runningTaskCount.value).toBe(0);
       expect(invokeMock).not.toHaveBeenCalledWith("sync_webdav_now", expect.anything());
 
-      await vi.advanceTimersByTimeAsync(900);
+      await vi.advanceTimersByTimeAsync(2100);
 
       expect(invokeMock).toHaveBeenCalledWith("sync_webdav_now", expect.objectContaining({
         remotePath: "/OpenDock/workspaces",
@@ -731,6 +757,13 @@ describe("OpenDock store - open tool configuration", () => {
   });
 });
 describe("OpenDock store - search suggestions", () => {
+  it("matches collection suggestions by tag", async () => {
+    const { useOpenDockStore } = await import("../store");
+    const store = useOpenDockStore();
+    store.createCollection("Tagged Docs", WEB_COLLECTION, null, "", ["release-docs"]);
+    store.state.search = "release-docs";
+    expect(store.searchSuggestions.value.some((entry) => entry.kind === "collection" && entry.title === "Tagged Docs")).toBe(true);
+  });
   it("matches scenes, collections, and URL items by pinyin initials", async () => {
     const { useOpenDockStore } = await import("../store");
     const store = useOpenDockStore();

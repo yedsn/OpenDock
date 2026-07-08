@@ -24,6 +24,28 @@ const DEFAULT_TOGGLE_WINDOW_HOTKEY = "Alt+O";
 
 type DetectedOpenTool = OpenTool;
 
+function isTauriRuntime(): boolean {
+  const win = window as unknown as { __TAURI__?: unknown; __TAURI_INTERNALS__?: unknown };
+  return Boolean(win.__TAURI__ || win.__TAURI_INTERNALS__);
+}
+
+function normalizeCollectionTags(input: unknown): string[] {
+  const values = Array.isArray(input)
+    ? input
+    : typeof input === "string"
+      ? input.split(/[\s,，;；、]+/)
+      : [];
+  const seen = new Set<string>();
+  const tags: string[] = [];
+  for (const value of values) {
+    const tag = String(value || "").trim();
+    if (!tag || seen.has(tag)) continue;
+    seen.add(tag);
+    tags.push(tag);
+  }
+  return tags;
+}
+
 function desktopPlatform(): "windows" | "macos" | "linux" {
   const platform = navigator.platform.toLowerCase();
   const userAgent = navigator.userAgent.toLowerCase();
@@ -132,6 +154,7 @@ const state = reactive({
   data: createSeedData(),  // async DB load happens in init()
   mainView: "workspace" as MainView,
   quickView: "all" as QuickViewId,
+  activeTag: "",
   collectionMode: "collections" as CollectionMode,
   settingsCategory: "general",
   search: "",
@@ -234,7 +257,7 @@ async function init() {
 
   // Check if tool setup is needed (only system default tool exists = fresh install)
   const nonSystemTools = state.data.tools.filter((t) => t.type !== "系统");
-  state.toolSetupDone = nonSystemTools.length > 0;
+  state.toolSetupDone = nonSystemTools.length > 0 || !isTauriRuntime();
 
   if (state.data.settings.general.openWebInNewWindow === undefined) {
     state.data.settings.general.openWebInNewWindow = false;
@@ -265,6 +288,9 @@ async function init() {
   if (!state.data.settings.search.sceneTagColor) state.data.settings.search.sceneTagColor = "#60a5fa";
   if (!state.data.settings.search.collectionTagColor) state.data.settings.search.collectionTagColor = "#34d399";
   if (!state.data.settings.search.itemTagColor) state.data.settings.search.itemTagColor = "#fbbf24";
+  state.data.collections.forEach((collection) => {
+    collection.tags = normalizeCollectionTags(collection.tags);
+  });
   ensureToggleWindowShortcut();
   const seed = createSeedData();
   // Backfill all built-in plugins so they always appear in the installed list
@@ -358,6 +384,17 @@ const currentCollections = computed(() =>
   state.data.collections.filter((c) => c.workspaceId === state.data.activeWorkspaceId)
 );
 
+const collectionTags = computed(() => {
+  const counts = new Map<string, number>();
+  for (const collection of currentCollections.value) {
+    for (const tag of normalizeCollectionTags(collection.tags)) {
+      counts.set(tag, (counts.get(tag) || 0) + 1);
+    }
+  }
+  return Array.from(counts, ([name, count]) => ({ name, count }))
+    .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name, "zh-CN"));
+});
+
 const activeScenes = computed(() => {
   const scenes = state.data.scenes.filter((s) => s.workspaceId === state.data.activeWorkspaceId);
   const mode = state.sceneSortMode || state.data.settings.general.sceneSort;
@@ -425,6 +462,9 @@ const visibleCollections = computed(() => {
   if (state.quickView === "favorites") collections = collections.filter((c) => c.favorite);
   if (state.quickView === "recent") collections = collections.filter((c) => c.recent);
   if (state.quickView === "unbound") collections = collections.filter((c) => c.unbound || c.sceneId === null);
+  if (state.quickView === "tags" && state.activeTag) {
+    collections = collections.filter((c) => normalizeCollectionTags(c.tags).includes(state.activeTag));
+  }
   if (state.collectionMode === "web") collections = collections.filter((c) => c.type === "网页集合");
   if (state.collectionMode === "tool") collections = collections.filter((c) => ["命令集合", "应用集合", "插件集合"].includes(c.type));
   if (state.search.trim()) {
@@ -436,7 +476,7 @@ const visibleCollections = computed(() => {
         keyword
       ));
       return matchesSearchText(
-        createSearchText([c.name, c.type, c.description, c.tool, scene?.name]),
+        createSearchText([c.name, c.type, c.description, c.tool, scene?.name, ...normalizeCollectionTags(c.tags)]),
         keyword
       ) || itemMatch;
     });
@@ -677,6 +717,7 @@ function createDefaultCollections(scene: Scene): void {
       icon: meta.icon,
       color: meta.color,
       openStrategy: "all",
+      tags: [],
       favorite: false,
       recent: false,
       unbound: false,
@@ -702,14 +743,14 @@ function createScene(name: string, type: SceneType, description = ""): void {
   scheduleWebdavQuickSync("场景变更");
 }
 
-function createCollection(name: string, type: CollectionType, sceneId: string | null, description = ""): void {
+function createCollection(name: string, type: CollectionType, sceneId: string | null, description = "", tags: string[] = []): void {
   const meta = collectionMeta[type];
   const toolId = defaultToolForCollection(type);
   const tool = state.data.tools.find((t) => t.id === toolId) || state.data.tools[0];
   const collection: Collection = {
     id: makeId("collection"), workspaceId: state.data.activeWorkspaceId, sceneId, name, type, description,
     defaultToolId: tool.id, tool: tool.name, icon: meta.icon, color: meta.color,
-    openStrategy: "all", favorite: false, recent: false, unbound: !sceneId,
+    openStrategy: "all", tags: normalizeCollectionTags(tags), favorite: false, recent: false, unbound: !sceneId,
     sort: currentCollections.value.length + 1, createdAt: nowIso(), updatedAt: nowIso()
   };
   state.data.collections.push(collection);
@@ -1664,7 +1705,9 @@ function deleteScene(id: string): void {
 function updateCollection(id: string, patch: Partial<Collection>): void {
   const collection = findCollectionById(id);
   if (!collection) return;
-  Object.assign(collection, patch, { updatedAt: nowIso() });
+  const normalizedPatch = { ...patch };
+  if (patch.tags !== undefined) normalizedPatch.tags = normalizeCollectionTags(patch.tags);
+  Object.assign(collection, normalizedPatch, { updatedAt: nowIso() });
   if (patch.sceneId !== undefined) collection.unbound = !patch.sceneId;
   if (patch.type !== undefined) {
     const toolId = defaultToolForCollection(collection.type);
@@ -1785,7 +1828,7 @@ const searchSuggestions = computed<SearchSuggestion[]>(() => {
 
   for (const collection of currentCollections.value) {
     const scene = sceneForCollection(collection);
-    const body = createSearchText([collection.type, collection.description, scene?.name]);
+    const body = createSearchText([collection.type, collection.description, scene?.name, ...normalizeCollectionTags(collection.tags)]);
     const score = scoreSearchText(collection.name, body, keyword);
     if (score > 0) {
       results.push({
@@ -2085,6 +2128,7 @@ export function useOpenDockStore() {
     pluginItemTypeConfig,
     pluginItemFields,
     activeScenes,
+    collectionTags,
     visibleCollections,
     collectionItems,
     findCollectionById,
@@ -2092,6 +2136,7 @@ export function useOpenDockStore() {
     setActiveCollection,
     createScene,
     createCollection,
+    normalizeCollectionTags,
     createItem,
     toggleFavorite,
     markCollectionRecent,

@@ -14,7 +14,7 @@ import {
   snapshotPrune as dbSnapshotPrune,
   snapshotClearAll as dbSnapshotClearAll,
 } from "./db";
-import type { AppData, SnapshotKind, SnapshotRecord } from "./types";
+import type { AppData, Collection, SnapshotKind, SnapshotRecord } from "./types";
 
 const ACTIVE_WORKSPACE_KEY = "activeWorkspaceId";
 const ACTIVE_SCENE_KEY = "activeSceneId";
@@ -23,6 +23,27 @@ const SCHEMA_VERSION_KEY = "schemaVersion";
 
 function parseJsonRows<T>(rows: string[]): T[] {
   return rows.map((raw) => JSON.parse(raw) as T);
+}
+
+function normalizeTags(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  const seen = new Set<string>();
+  const tags: string[] = [];
+  for (const entry of value) {
+    const tag = String(entry || "").trim();
+    if (!tag || seen.has(tag)) continue;
+    seen.add(tag);
+    tags.push(tag);
+  }
+  return tags;
+}
+
+function normalizeCollections(input: unknown, fallback: Collection[]): Collection[] {
+  const source = Array.isArray(input) ? input : fallback;
+  return source.map((entry) => {
+    const collection = entry as Collection & { tags?: unknown };
+    return { ...collection, tags: normalizeTags(collection.tags) };
+  });
 }
 
 /** Load full app data from SQLite. Falls back to seed data on first run. */
@@ -63,7 +84,7 @@ export async function loadAppData(): Promise<AppData> {
     activeCollectionId: activeCollectionId || "dev-web",
     workspaces: parseJsonRows(workspaces),
     scenes: parseJsonRows(scenes),
-    collections: parseJsonRows(collections),
+    collections: normalizeCollections(parseJsonRows(collections), []),
     items: parseJsonRows(items),
     tools: parseJsonRows(tools),
     plugins: parseJsonRows(plugins),
@@ -156,7 +177,7 @@ export function normalizeAppData(input: unknown): AppData {
     activeCollectionId: typeof raw.activeCollectionId === "string" ? raw.activeCollectionId : seed.activeCollectionId,
     workspaces: Array.isArray(raw.workspaces) ? raw.workspaces : seed.workspaces,
     scenes: Array.isArray(raw.scenes) ? raw.scenes : seed.scenes,
-    collections: Array.isArray(raw.collections) ? raw.collections : seed.collections,
+    collections: normalizeCollections(raw.collections, seed.collections),
     items: Array.isArray(raw.items) ? raw.items : seed.items,
     tools: Array.isArray(raw.tools) ? raw.tools : seed.tools,
     plugins: Array.isArray(raw.plugins) ? raw.plugins : seed.plugins,

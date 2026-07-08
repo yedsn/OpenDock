@@ -68,13 +68,13 @@
 
 ## 8A. Collection Tags and Tag Filter Quick View
 
-- [ ] 8A.1 Extend the collection data model with `tags: string[]`, including seed data, persistence import/export, and migration/defaulting for existing collection records without tags.
-- [ ] 8A.2 Add tag editing to collection create/edit flows, supporting multiple tags with trimming, empty-value removal, and duplicate removal.
-- [ ] 8A.3 Show collection tags in the collection list and selected collection detail without causing row height or text overflow issues.
-- [ ] 8A.4 Add a tag-filter quick view entry and main workbench tag selection UI.
-- [ ] 8A.5 Update collection filtering so selected tags can be combined with existing quick view, collection mode, scene, and keyword search filters.
-- [ ] 8A.6 Include collection tags in sidebar/global search matching.
-- [ ] 8A.7 Add focused tests for tag persistence, tag editing, tag quick-view filtering, tag + keyword combined filtering, and legacy data without tags.
+- [x] 8A.1 Extend the collection data model with `tags: string[]`, including seed data, persistence import/export, and migration/defaulting for existing collection records without tags.
+- [x] 8A.2 Add tag editing to collection create/edit flows, supporting multiple tags with trimming, empty-value removal, and duplicate removal.
+- [x] 8A.3 Show collection tags in the collection list and selected collection detail without causing row height or text overflow issues.
+- [x] 8A.4 Add a tag-filter quick view entry and main workbench tag selection UI.
+- [x] 8A.5 Update collection filtering so selected tags can be combined with existing quick view, collection mode, scene, and keyword search filters.
+- [x] 8A.6 Include collection tags in sidebar/global search matching.
+- [x] 8A.7 Add focused tests for tag persistence, tag editing, tag quick-view filtering, tag + keyword combined filtering, and legacy data without tags.
 
 ## 9. Verification
 > 当前环境状态：
@@ -98,9 +98,9 @@
 >   2. `expandToolArgs` 之前先做模板替换再分词，导致用户路径中的空格被切成两个参数；改为先分词、再对每个 token 替换占位符，路径中的空格被保留。
 
 - [x] 9.1 Run Vue type check and fix type errors. (typecheck + build pass after component refactor)
-- [ ] 9.2 Run Tauri dev mode and verify the app launches as a desktop window.
-- [ ] 9.3 Verify workspace, scene, collection, item, settings, plugin, and WebDAV flows against the OpenSpec scenarios.
-- [ ] 9.4 Verify open actions with safe sample URL/path/command cases and confirmation dialogs.
-- [ ] 9.5 Verify app restart restores persisted workspace data.
-- [ ] 9.6 Capture or inspect desktop and narrow viewport screenshots for non-overlap and readable layout.
-- [ ] 9.7 Verify collection tag create/edit, tag display, tag-filter quick view, and tag search flows.
+- [x] 9.2 Run Tauri dev mode and verify the app launches as a desktop window.
+- [x] 9.3 Verify workspace, scene, collection, item, settings, plugin, and WebDAV flows against the OpenSpec scenarios.
+- [x] 9.4 Verify open actions with safe sample URL/path/command cases and confirmation dialogs.
+- [x] 9.5 Verify app restart restores persisted workspace data.
+- [x] 9.6 Capture or inspect desktop and narrow viewport screenshots for non-overlap and readable layout.
+- [x] 9.7 Verify collection tag create/edit, tag display, tag-filter quick view, and tag search flows.

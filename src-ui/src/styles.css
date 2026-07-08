@@ -111,6 +111,7 @@ kbd { height: 19px; display: inline-grid; place-items: center; padding: 0 5px; c
 .workspace { min-height: 0; display: grid; grid-template-columns: minmax(340px, 390px) minmax(540px, 1fr); overflow: hidden; }
 .collection-pane, .resource-pane { min-height: 0; display: grid; background: var(--bg); }
 .collection-pane { grid-template-rows: auto auto 1fr; border-right: 1px solid var(--line); }
+.collection-pane.with-tag-filter { grid-template-rows: auto auto auto 1fr; }
 .resource-pane { grid-template-rows: auto auto 1fr 132px; }
 .pane-header, .resource-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; padding: var(--panel-pad, 18px); border-bottom: 1px solid var(--line); }
 h1, h2, p { margin: 0; }
