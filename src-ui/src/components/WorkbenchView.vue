@@ -260,13 +260,22 @@ function selectCollection(collection: { id: string; name: string; sceneId: strin
             <div class="tag-filter-title"><Tags />{{ $t("sidebar.tagFilter") }}</div>
             <p v-if="!store.collectionTags.value.length">{{ $t("workbench.tagFilterHint") }}</p>
           </div>
-          <button
-            class="tag-filter-reset"
-            type="button"
-            :class="{ active: !store.state.activeTag }"
-            @click="store.state.activeTag = ''">
-            {{ $t("workbench.allTags") }}
-          </button>
+          <div class="tag-filter-actions">
+            <button
+              class="tag-filter-open"
+              type="button"
+              :disabled="!store.state.activeTag || !collectionRows.length"
+              @click="store.openCollectionsBatch(collectionRows.map((row) => row.source), store.state.activeTag || $t('workbench.allTags'))">
+              <Play />{{ $t("workbench.openTaggedCollections") }}
+            </button>
+            <button
+              class="tag-filter-reset"
+              type="button"
+              :class="{ active: !store.state.activeTag }"
+              @click="store.state.activeTag = ''">
+              {{ $t("workbench.allTags") }}
+            </button>
+          </div>
         </div>
         <div v-if="store.collectionTags.value.length" class="tag-filter-grid">
           <button
@@ -483,9 +492,14 @@ function selectCollection(collection: { id: string; name: string; sceneId: strin
 .tag-filter-title { display: inline-flex; align-items: center; gap: 6px; color: var(--text); font-size: 12px; font-weight: 800; }
 .tag-filter-title svg { width: 14px; height: 14px; color: var(--accent); }
 .tag-filter-heading p { margin-top: 3px; color: var(--faint); font-size: 11px; line-height: 1.35; }
-.tag-filter-reset, .tag-filter-card { border: 1px solid var(--line); color: var(--muted); background: var(--bg); border-radius: var(--radius); cursor: pointer; }
-.tag-filter-reset { flex: 0 0 auto; min-height: 28px; padding: 0 10px; font-size: 11px; font-weight: 750; }
+.tag-filter-actions { display: inline-flex; align-items: center; gap: 6px; flex: 0 0 auto; }
+.tag-filter-reset, .tag-filter-open, .tag-filter-card { border: 1px solid var(--line); color: var(--muted); background: var(--bg); border-radius: var(--radius); cursor: pointer; }
+.tag-filter-reset, .tag-filter-open { min-height: 28px; padding: 0 10px; font-size: 11px; font-weight: 750; }
+.tag-filter-open { display: inline-flex; align-items: center; gap: 5px; color: var(--text); background: var(--accent-soft); border-color: color-mix(in srgb, var(--accent) 34%, var(--line)); }
+.tag-filter-open svg { width: 12px; height: 12px; }
+.tag-filter-open:disabled { opacity: 0.42; cursor: not-allowed; background: var(--bg); color: var(--faint); border-color: var(--line); }
 .tag-filter-reset:hover, .tag-filter-reset.active { color: var(--text); border-color: color-mix(in srgb, var(--accent) 38%, var(--line)); background: var(--accent-soft); }
+.tag-filter-open:not(:disabled):hover { border-color: color-mix(in srgb, var(--accent) 56%, var(--line)); background: color-mix(in srgb, var(--accent) 22%, var(--bg)); }
 .tag-filter-grid { display: flex; flex-wrap: wrap; gap: 6px; max-height: 68px; overflow-y: auto; padding-right: 2px; }
 .tag-filter-card { display: inline-grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 8px; min-width: 86px; max-width: 180px; height: 30px; padding: 0 9px; text-align: left; }
 .tag-filter-card:hover { color: var(--text); border-color: var(--line-strong); background: var(--bg-3); }

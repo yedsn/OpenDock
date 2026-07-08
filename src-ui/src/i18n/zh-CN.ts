@@ -65,6 +65,7 @@ export default {
     selectCollectionHint: "选择一个集合查看资源。",
     editCollection: "编辑集合",
     openCollection: "打开集合",
+    openTaggedCollections: "打开全部",
     open: "打开",
     confirmDeleteCollection: "确认删除集合「{name}」及其所有资源？",
     confirmDeleteItem: "确认删除资源「{name}」？",

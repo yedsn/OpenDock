@@ -1,4 +1,4 @@
-﻿import { computed, reactive, watch } from "vue";
+import { computed, reactive, watch } from "vue";
 import { invoke } from "@tauri-apps/api/core";
 import { collectionMeta, itemMeta, sceneMeta } from "./seed";
 import { exportAppData, loadAppData, normalizeAppData, resetAppData, saveActiveState, saveAppData } from "./storage";
@@ -987,10 +987,10 @@ async function openItem(item: CollectionItem): Promise<void> {
   log(`${result.ok ? "打开" : "打开失败"}: ${item.name}${tool ? ` via ${tool.name}` : ""} - ${result.message}`);
 }
 
-async function openCollection(collection: Collection): Promise<void> {
+async function openCollection(collection: Collection, options: { skipConfirm?: boolean } = {}): Promise<void> {
   const items = collectionItems(collection.id);
   if (!items.length) return log(`集合为空: ${collection.name}`);
-  if (state.data.settings.general.confirmBeforeOpen && items.length > 1 && !(await confirmAction(`确认打开集合「${collection.name}」中的 ${items.length} 个资源？`))) return;
+  if (!options.skipConfirm && state.data.settings.general.confirmBeforeOpen && items.length > 1 && !(await confirmAction(`确认打开集合「${collection.name}」中的 ${items.length} 个资源？`))) return;
   collection.usageCount = (collection.usageCount || 0) + 1;
   markCollectionRecent(collection);
 
@@ -1038,9 +1038,16 @@ async function openScene(scene: Scene): Promise<void> {
   const count = collections.reduce((sum, c) => sum + collectionItems(c.id).length, 0);
   if (state.data.settings.general.confirmBeforeOpen && !(await confirmAction(`确认打开场景「${scene.name}」中的 ${count} 个资源？`))) return;
   scene.usageCount = (scene.usageCount || 0) + 1;
-  for (const collection of collections) await openCollection(collection);
+  for (const collection of collections) await openCollection(collection, { skipConfirm: true });
 }
 
+async function openCollectionsBatch(collections: Collection[], label: string): Promise<void> {
+  const collectionsWithItems = collections.filter((collection) => collectionItems(collection.id).length > 0);
+  const count = collectionsWithItems.reduce((sum, collection) => sum + collectionItems(collection.id).length, 0);
+  if (!collectionsWithItems.length) return log(`没有可打开的集合: ${label}`);
+  if (state.data.settings.general.confirmBeforeOpen && !(await confirmAction(`确认打开「${label}」中的 ${collectionsWithItems.length} 个集合、${count} 个资源？`))) return;
+  for (const collection of collectionsWithItems) await openCollection(collection, { skipConfirm: true });
+}
 // ---- Workspace ----
 
 function createWorkspace(name: string, storage: string, remark: string): void {
@@ -2148,6 +2155,7 @@ export function useOpenDockStore() {
     updateToggleWindowHotkey,
     openItem,
     openCollection,
+    openCollectionsBatch,
     openScene,
     createWorkspace,
     switchWorkspace,

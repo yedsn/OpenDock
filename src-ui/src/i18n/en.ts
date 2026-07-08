@@ -62,6 +62,7 @@
     selectCollectionHint: "Select a collection to view resources.",
     editCollection: "Edit collection",
     openCollection: "Open collection",
+    openTaggedCollections: "Open all",
     open: "Open",
     confirmDeleteCollection: "Delete collection \"{name}\" and all of its resources?",
     confirmDeleteItem: "Delete resource \"{name}\"?",
