@@ -5,7 +5,6 @@ import {
   Copy,
   FileText,
   FolderPlus,
-  Globe,
   GripVertical,
   Layers,
   Pencil,
@@ -13,8 +12,7 @@ import {
   Plus,
   Star,
   Tags,
-  Trash2,
-  Wrench
+  Trash2
 } from "lucide-vue-next";
 import { useOpenDockStore } from "../store";
 import { useI18n } from "../i18n";
@@ -247,9 +245,6 @@ function selectCollection(collection: { id: string; name: string; sceneId: strin
       </div>
 
       <div class="pane-tools">
-        <button class="tool-chip" :class="{ active: store.state.collectionMode === 'collections' }" @click="store.state.collectionMode = 'collections'"><Layers />{{ $t("workbench.collections") }}</button>
-        <button class="tool-chip" :class="{ active: store.state.collectionMode === 'web' }" @click="store.state.collectionMode = 'web'"><Globe />{{ $t("workbench.webPages") }}</button>
-        <button class="tool-chip" :class="{ active: store.state.collectionMode === 'tool' }" @click="store.state.collectionMode = 'tool'"><Wrench />{{ $t("workbench.tools") }}</button>
         <span class="tool-spacer"></span>
         <button class="tool-chip action" @click="store.state.modal.kind = 'collection'; store.state.modal.editingId = undefined;"><FolderPlus />{{ $t("workbench.newCollection") }}</button>
       </div>

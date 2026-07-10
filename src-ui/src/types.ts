@@ -5,7 +5,6 @@ export type ToolType = string;
 export type OpenStrategy = "single" | "batch" | "all";
 export type QuickViewId = "all" | "favorites" | "recent" | "unbound" | "tags";
 export type MainView = "workspace" | "settings";
-export type CollectionMode = "collections" | "web" | "tool";
 export type SortMode = "手动" | "按名称" | "按使用次数";
 
 export interface ThemeColorTokens {

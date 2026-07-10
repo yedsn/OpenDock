@@ -9,7 +9,7 @@ import { createSeedData } from "./seed";
 import { nowIso, makeId, expandToolArgs, templateToCollectionType } from "./helpers";
 import { builtInThemes } from "./themes";
 import { getPluginOpenHandler } from "../../plugins/registry";
-import type { AppData, Collection, CollectionItem, CollectionMode, CollectionType, ItemType, MainView, MarketplaceIndex, MarketplacePlugin, ModalState, OpenTool, PluginItemFormField, PluginItemTypeContribution, PluginManifest, PluginToolTypeContribution, PluginToolTypeEntry, QuickViewId, Scene, SnapshotKind, SnapshotRecord, SceneType, Tab, TaskEntry, TaskStatus, ThemeDefinition, WebDavPendingConflict, SortMode, Workspace } from "./types";
+import type { AppData, Collection, CollectionItem, CollectionType, ItemType, MainView, MarketplaceIndex, MarketplacePlugin, ModalState, OpenTool, PluginItemFormField, PluginItemTypeContribution, PluginManifest, PluginToolTypeContribution, PluginToolTypeEntry, QuickViewId, Scene, SnapshotKind, SnapshotRecord, SceneType, Tab, TaskEntry, TaskStatus, ThemeDefinition, WebDavPendingConflict, SortMode, Workspace } from "./types";
 import type { SearchSuggestion } from "./types";
 import { matchesSearchText, scoreSearchText, createSearchText } from "./pinyin";
 import { useI18n } from "./i18n";
@@ -155,7 +155,6 @@ const state = reactive({
   mainView: "workspace" as MainView,
   quickView: "all" as QuickViewId,
   activeTag: "",
-  collectionMode: "collections" as CollectionMode,
   settingsCategory: "general",
   search: "",
   modal: { kind: null } as ModalState,
@@ -465,8 +464,6 @@ const visibleCollections = computed(() => {
   if (state.quickView === "tags" && state.activeTag) {
     collections = collections.filter((c) => normalizeCollectionTags(c.tags).includes(state.activeTag));
   }
-  if (state.collectionMode === "web") collections = collections.filter((c) => c.type === "网页集合");
-  if (state.collectionMode === "tool") collections = collections.filter((c) => ["命令集合", "应用集合", "插件集合"].includes(c.type));
   if (state.search.trim()) {
     const keyword = state.search.trim();
     collections = collections.filter((c) => {
