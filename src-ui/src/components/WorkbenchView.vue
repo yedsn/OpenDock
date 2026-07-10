@@ -237,16 +237,14 @@ function selectCollection(collection: { id: string; name: string; sceneId: strin
           <h1>{{ paneTitle }}</h1>
           <p>{{ paneDescription }}</p>
         </div>
-        <div v-if="!isQuickViewTab" class="pane-header-actions">
-          <button class="icon-button" :title="$t('workbench.editScene')" @click="editScene(store.state.data.activeSceneId)"><Pencil /></button>
-          <button class="icon-button" :title="$t('workbench.deleteScene')" @click="deleteSceneConfirm(store.state.data.activeSceneId)"><Trash2 /></button>
-          <button class="run-button" @click="store.openScene(store.activeScene())"><Play />{{ $t("workbench.openScene") }}</button>
+        <div class="pane-header-actions">
+          <template v-if="!isQuickViewTab">
+            <button class="icon-button" :title="$t('workbench.editScene')" @click="editScene(store.state.data.activeSceneId)"><Pencil /></button>
+            <button class="icon-button" :title="$t('workbench.deleteScene')" @click="deleteSceneConfirm(store.state.data.activeSceneId)"><Trash2 /></button>
+            <button class="run-button" @click="store.openScene(store.activeScene())"><Play />{{ $t("workbench.openScene") }}</button>
+          </template>
+          <button class="tool-chip action" @click="store.state.modal.kind = 'collection'; store.state.modal.editingId = undefined;"><FolderPlus />{{ $t("workbench.newCollection") }}</button>
         </div>
-      </div>
-
-      <div class="pane-tools">
-        <span class="tool-spacer"></span>
-        <button class="tool-chip action" @click="store.state.modal.kind = 'collection'; store.state.modal.editingId = undefined;"><FolderPlus />{{ $t("workbench.newCollection") }}</button>
       </div>
 
       <section v-if="store.state.quickView === 'tags'" class="tag-filter-panel">

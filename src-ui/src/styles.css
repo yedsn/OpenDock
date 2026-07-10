@@ -110,8 +110,8 @@ kbd { height: 19px; display: inline-grid; place-items: center; padding: 0 5px; c
 .tab-actions { display: flex; align-items: center; gap: 4px; padding-right: 8px; }
 .workspace { min-height: 0; display: grid; grid-template-columns: minmax(340px, 390px) minmax(540px, 1fr); overflow: hidden; }
 .collection-pane, .resource-pane { min-height: 0; display: grid; background: var(--bg); }
-.collection-pane { grid-template-rows: auto auto 1fr; border-right: 1px solid var(--line); }
-.collection-pane.with-tag-filter { grid-template-rows: auto auto auto 1fr; }
+.collection-pane { grid-template-rows: auto 1fr; border-right: 1px solid var(--line); }
+.collection-pane.with-tag-filter { grid-template-rows: auto auto 1fr; }
 .resource-pane { grid-template-rows: auto auto 1fr 132px; }
 .pane-header, .resource-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; padding: var(--panel-pad, 18px); border-bottom: 1px solid var(--line); }
 h1, h2, p { margin: 0; }
@@ -120,10 +120,8 @@ h1, h2, p { margin: 0; }
 .run-button, .settings-action-button { height: 32px; display: inline-flex; align-items: center; gap: 7px; padding: 0 11px; color: var(--text); background: var(--accent-soft); border: 1px solid color-mix(in srgb, var(--accent) 42%, transparent); border-radius: var(--radius); font-size: 12px; font-weight: 800; cursor: pointer; }
 .run-button:hover, .settings-action-button:hover { border-color: color-mix(in srgb, var(--accent) 62%, transparent); background: color-mix(in srgb, var(--accent) 24%, transparent); }
 .settings-action-button { font-weight: 500; }
-.pane-tools { height: 45px; display: flex; align-items: center; gap: 6px; padding: 0 14px; border-bottom: 1px solid var(--line); }
 .tool-chip { height: 30px; display: inline-flex; align-items: center; gap: 6px; padding: 0 9px; color: var(--muted); background: transparent; border-radius: var(--radius); font-size: 12px; font-weight: 750; cursor: pointer; }
 .tool-chip.active, .tool-chip.action { color: var(--text); background: var(--bg-3); }
-.tool-spacer { flex: 1; }
 .activity-log { min-height: 0; overflow: auto; padding: var(--list-pad, 10px); display: grid; align-content: start; gap: var(--row-gap, 8px); scrollbar-gutter: stable; }
 .collection-list, .item-list { min-height: 0; }
 .collection-list-empty, .item-list-empty { padding: var(--list-pad, 10px); }
