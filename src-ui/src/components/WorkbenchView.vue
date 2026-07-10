@@ -233,17 +233,19 @@ function selectCollection(collection: { id: string; name: string; sceneId: strin
   <section class="workspace">
     <section class="collection-pane" :class="{ 'with-tag-filter': store.state.quickView === 'tags' }">
       <div class="pane-header">
-        <div>
+        <div class="pane-heading">
           <h1>{{ paneTitle }}</h1>
           <p>{{ paneDescription }}</p>
         </div>
-        <div class="pane-header-actions">
-          <template v-if="!isQuickViewTab">
+        <div class="pane-header-actions two-line-actions">
+          <div v-if="!isQuickViewTab" class="action-row secondary-actions">
             <button class="icon-button" :title="$t('workbench.editScene')" @click="editScene(store.state.data.activeSceneId)"><Pencil /></button>
-            <button class="icon-button" :title="$t('workbench.deleteScene')" @click="deleteSceneConfirm(store.state.data.activeSceneId)"><Trash2 /></button>
-            <button class="run-button" @click="store.openScene(store.activeScene())"><Play />{{ $t("workbench.openScene") }}</button>
-          </template>
-          <button class="tool-chip action" @click="store.state.modal.kind = 'collection'; store.state.modal.editingId = undefined;"><FolderPlus />{{ $t("workbench.newCollection") }}</button>
+            <button class="icon-button danger" :title="$t('workbench.deleteScene')" @click="deleteSceneConfirm(store.state.data.activeSceneId)"><Trash2 /></button>
+          </div>
+          <div class="action-row primary-actions">
+            <button class="tool-chip action" @click="store.state.modal.kind = 'collection'; store.state.modal.editingId = undefined;"><FolderPlus />{{ $t("workbench.newCollection") }}</button>
+            <button v-if="!isQuickViewTab" class="run-button" @click="store.openScene(store.activeScene())"><Play />{{ $t("workbench.openScene") }}</button>
+          </div>
         </div>
       </div>
 
@@ -365,15 +367,19 @@ function selectCollection(collection: { id: string; name: string; sceneId: strin
 
     <section class="resource-pane">
       <div class="resource-header">
-        <div>
+        <div class="pane-heading">
           <h2>{{ activeCollection?.name || t("workbench.unselectedCollection") }}</h2>
           <p>{{ activeCollection?.description || t("workbench.selectCollectionHint") }}</p>
           <div v-if="activeCollection?.tags?.length" class="collection-tags detail-tags"><span v-for="tag in activeCollection.tags" :key="tag" class="collection-tag">{{ tag }}</span></div>
         </div>
-        <div class="resource-actions">
-          <button class="icon-button" @click="store.state.modal.kind = 'item'; store.state.modal.editingId = undefined;"><Plus /></button>
-          <button class="icon-button" v-if="activeCollection" :title="$t('workbench.editCollection')" @click="editCollection(activeCollection.id)"><Pencil /></button>
-          <button v-if="activeCollection" class="run-button" @click="store.openCollection(activeCollection)"><Play />{{ $t("workbench.openCollection") }}</button>
+        <div class="resource-actions two-line-actions">
+          <div class="action-row secondary-actions">
+            <button class="tool-chip" v-if="activeCollection" @click="editCollection(activeCollection.id)"><Pencil />{{ $t("workbench.editCollection") }}</button>
+          </div>
+          <div class="action-row primary-actions">
+            <button class="tool-chip action" @click="store.state.modal.kind = 'item'; store.state.modal.editingId = undefined;"><Plus />{{ $t("modal.addResource") }}</button>
+            <button v-if="activeCollection" class="run-button" @click="store.openCollection(activeCollection)"><Play />{{ $t("workbench.openCollection") }}</button>
+          </div>
         </div>
       </div>
 
@@ -471,7 +477,11 @@ function selectCollection(collection: { id: string; name: string; sceneId: strin
   gap: 8px;
   margin-left: 10px;
 }
-.pane-header-actions { display: flex; align-items: center; gap: 6px; }
+.pane-heading { min-width: 0; }
+.two-line-actions { flex: 0 0 auto; display: grid; justify-items: end; align-content: start; gap: 6px; max-width: min(340px, 54%); }
+.action-row { display: flex; align-items: center; justify-content: flex-end; gap: 6px; flex-wrap: wrap; }
+.secondary-actions { min-height: 28px; }
+.primary-actions { min-height: 32px; flex-wrap: nowrap; }
 .card-actions { display: flex; align-items: center; gap: 2px; }
 .item-actions { display: flex; align-items: center; gap: 4px; }
 .tag-filter-panel {
