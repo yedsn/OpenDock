@@ -15,7 +15,13 @@ const isTauri = typeof window !== "undefined" && "__TAURI_INTERNALS__" in window
 const store = useOpenDockStore();
 const { t } = useI18n();
 const general = store.state.data.settings.general;
+const webdavSettings = store.state.data.settings.webdavSync;
 watch(() => general.autoSnapshotIntervalMinutes, () => store.startAutoSnapshotTimer());
+watch(() => general.autoSnapshotKeepCount, () => store.startAutoSnapshotTimer());
+watch(
+  () => [webdavSettings.autoSync, webdavSettings.syncInterval] as const,
+  () => store.startWebdavAutoSync()
+);
 
 type FeedbackKind = "info" | "success" | "error";
 interface Feedback {

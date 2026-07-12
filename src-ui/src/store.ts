@@ -179,6 +179,36 @@ const state = reactive({
 });
 
 let saveTimer: ReturnType<typeof setTimeout> | null = null;
+let saveInFlight = false;
+let saveQueued = false;
+
+function saveDataWhenIdle(): void {
+  if (saveInFlight) {
+    saveQueued = true;
+    return;
+  }
+
+  saveInFlight = true;
+  saveAppData(state.data)
+    .catch((e) => console.error("DB save failed:", e))
+    .finally(() => {
+      saveInFlight = false;
+      state.reorderSavePending = false;
+      if (typeof window !== "undefined") window.vloading?.dismiss();
+
+      if (saveQueued) {
+        saveQueued = false;
+        if (saveTimer) clearTimeout(saveTimer);
+        saveTimer = setTimeout(saveDataWhenIdle, 300);
+      }
+    });
+}
+
+function scheduleDataSave(): void {
+  if (saveTimer) clearTimeout(saveTimer);
+  saveTimer = setTimeout(saveDataWhenIdle, 300);
+}
+
 watch(() => ({
   schemaVersion: state.data.schemaVersion,
   workspaces: state.data.workspaces,
@@ -191,15 +221,7 @@ watch(() => ({
   settings: state.data.settings,
   activity: state.data.activity
 }), () => {
-  if (saveTimer) clearTimeout(saveTimer);
-  saveTimer = setTimeout(() => {
-    saveAppData(state.data)
-      .catch((e) => console.error("DB save failed:", e))
-      .finally(() => {
-        state.reorderSavePending = false;
-        if (typeof window !== "undefined") window.vloading?.dismiss();
-      });
-  }, 300);
+  scheduleDataSave();
 }, { deep: true });
 
 
@@ -1629,6 +1651,7 @@ function startAutoSnapshotTimer(): void {
       console.error("Auto snapshot failed:", e);
     }
   }, ms);
+  (autoSnapshotTimer as unknown as { unref?: () => void }).unref?.();
 }
 
 function stopAutoSnapshotTimer(): void {
@@ -2030,6 +2053,7 @@ function startWebdavAutoSync(): void {
   webdavAutoSyncTimer = setInterval(() => {
     runWebdavSyncInBackground();
   }, intervalMs);
+  (webdavAutoSyncTimer as unknown as { unref?: () => void }).unref?.();
 }
 
 function stopWebdavAutoSync(): void {
