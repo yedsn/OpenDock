@@ -998,8 +998,12 @@ fn run_command(command: String, working_directory: Option<String>) -> OpenAction
 async fn test_webdav_connection(server_url: String, username: String, password: String, remote_path: Option<String>) -> OpenActionResult {
     if server_url.trim().is_empty() { return failure("WebDAV 地址不能为空"); }
     if username.trim().is_empty() { return failure("用户名不能为空"); }
-    let test_path = remote_path.as_deref().filter(|value| !value.trim().is_empty()).unwrap_or("/");
-    let r = webdav::test_connection(&server_url, &username, &password, test_path).await;
+    let test_path = remote_path
+        .as_deref()
+        .map(normalize_webdav_remote_dir)
+        .filter(|value| !value.is_empty())
+        .unwrap_or_else(|| "/".to_string());
+    let r = webdav::test_connection(&server_url, &username, &password, &test_path).await;
     OpenActionResult { ok: r.ok, message: r.message }
 }
 
@@ -1023,6 +1027,49 @@ fn sha256_hex(contents: &str) -> String {
 fn webdav_join_path(base: &str, child: &str) -> String {
     if child.starts_with('/') { return child.to_string(); }
     format!("{}/{}", base.trim_end_matches('/'), child.trim_start_matches('/'))
+}
+
+fn normalize_webdav_remote_dir(remote_path: &str) -> String {
+    let segments = remote_path
+        .trim()
+        .split('/')
+        .filter_map(|segment| {
+            let segment = segment.trim();
+            if segment.is_empty() { None } else { Some(segment) }
+        })
+        .collect::<Vec<_>>();
+    if segments.is_empty() {
+        "/".to_string()
+    } else {
+        format!("/{}", segments.join("/"))
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum WebDavConflictPolicy {
+    LocalFirst,
+    RemoteFirst,
+    KeepBoth,
+    Manual,
+    OverwriteRemote,
+    OverwriteLocal,
+}
+
+impl WebDavConflictPolicy {
+    fn from_label(value: &str) -> Self {
+        match value.trim() {
+            "覆盖远程" => Self::OverwriteRemote,
+            "覆盖本地" => Self::OverwriteLocal,
+            "本地优先" => Self::LocalFirst,
+            "远端优先" | "远程优先" => Self::RemoteFirst,
+            "保留两份" => Self::KeepBoth,
+            _ => Self::Manual,
+        }
+    }
+
+    fn should_auto_upload_merged(self) -> bool {
+        !matches!(self, Self::OverwriteRemote | Self::OverwriteLocal | Self::Manual)
+    }
 }
 
 fn json_values_equal(left: &str, right: &str) -> bool {
@@ -1612,13 +1659,14 @@ async fn sync_webdav_now_impl(
     if username.trim().is_empty() { return Ok(failure("WebDAV 用户名未配置")); }
     if remote_path.trim().is_empty() { return Ok(failure("远程目录未配置")); }
 
-    let remote_dir = remote_path.trim_end_matches('/');
-    let remote_file_path = format!("{remote_dir}/opendock-sync.json");
+    let conflict_policy = WebDavConflictPolicy::from_label(conflict_policy);
+    let remote_dir = normalize_webdav_remote_dir(remote_path);
+    let remote_file_path = webdav_join_path(&remote_dir, "opendock-sync.json");
 
     let remote_exists = webdav::remote_exists(server_url, username, password, &remote_file_path).await.unwrap_or(false);
 
     if remote_exists {
-        let remote_data = match download_webdav_sync_payload(server_url, username, password, remote_dir, &remote_file_path, Some(local_data)).await {
+        let remote_data = match download_webdav_sync_payload(server_url, username, password, &remote_dir, &remote_file_path, Some(local_data)).await {
             Ok(data) => data,
             Err(e) => return Ok(failure(format!("下载远程数据失败: {e}"))),
         };
@@ -1641,8 +1689,8 @@ async fn sync_webdav_now_impl(
         match outcome {
             WebDavMergeOutcome::Same => return Ok(success("同步成功（本地与远程一致）")),
             WebDavMergeOutcome::Merged(merged_data) => {
-                if conflict_policy != "覆盖远程" && conflict_policy != "覆盖本地" {
-                    if let Err(e) = upload_webdav_sync_payload(server_url, username, password, remote_dir, &remote_file_path, &merged_data).await {
+                if conflict_policy.should_auto_upload_merged() {
+                    if let Err(e) = upload_webdav_sync_payload(server_url, username, password, &remote_dir, &remote_file_path, &merged_data).await {
                         return Ok(failure(format!("上传合并数据失败: {e}")));
                     }
                     let local_for_eq = local_data.to_string();
@@ -1660,13 +1708,13 @@ async fn sync_webdav_now_impl(
         }
 
         match conflict_policy {
-            "覆盖远程" => {
-                match upload_webdav_sync_payload(server_url, username, password, remote_dir, &remote_file_path, local_data).await {
+            WebDavConflictPolicy::OverwriteRemote | WebDavConflictPolicy::LocalFirst => {
+                match upload_webdav_sync_payload(server_url, username, password, &remote_dir, &remote_file_path, local_data).await {
                     Ok(()) => Ok(success("同步成功（已覆盖远程数据）")),
                     Err(e) => Ok(failure(format!("上传失败: {e}"))),
                 }
             }
-            "覆盖本地" => {
+            WebDavConflictPolicy::OverwriteLocal | WebDavConflictPolicy::RemoteFirst => {
                 Ok(success(format!("SYNC_REMOTE_DATA:{remote_data}")))
             }
             _ => {
@@ -1674,7 +1722,7 @@ async fn sync_webdav_now_impl(
             }
         }
     } else {
-        match upload_webdav_sync_payload(server_url, username, password, remote_dir, &remote_file_path, local_data).await {
+        match upload_webdav_sync_payload(server_url, username, password, &remote_dir, &remote_file_path, local_data).await {
             Ok(()) => Ok(success("同步成功（首次上传本地数据到远程）")),
             Err(e) => Ok(failure(format!("上传失败: {e}"))),
         }
@@ -2710,6 +2758,26 @@ mod tests {
         assert!(restored.get("plugins").is_none(), "plugins should not be synced");
         assert!(restored.get("pluginStore").is_none(), "pluginStore should not be synced");
         assert!(restored.get("activity").is_none(), "activity should not be synced");
+    }
+
+    #[test]
+    fn webdav_remote_dir_is_normalized_before_sync() {
+        assert_eq!(normalize_webdav_remote_dir("/OpenDock/workspaces/"), "/OpenDock/workspaces");
+        assert_eq!(normalize_webdav_remote_dir("  OpenDock//workspaces  "), "/OpenDock/workspaces");
+        assert_eq!(normalize_webdav_remote_dir("/"), "/");
+        assert_eq!(webdav_join_path(&normalize_webdav_remote_dir("/"), "opendock-sync.json"), "/opendock-sync.json");
+    }
+
+    #[test]
+    fn webdav_conflict_policy_accepts_ui_and_manual_override_labels() {
+        assert_eq!(WebDavConflictPolicy::from_label("本地优先"), WebDavConflictPolicy::LocalFirst);
+        assert_eq!(WebDavConflictPolicy::from_label("远端优先"), WebDavConflictPolicy::RemoteFirst);
+        assert_eq!(WebDavConflictPolicy::from_label("远程优先"), WebDavConflictPolicy::RemoteFirst);
+        assert_eq!(WebDavConflictPolicy::from_label("覆盖远程"), WebDavConflictPolicy::OverwriteRemote);
+        assert_eq!(WebDavConflictPolicy::from_label("覆盖本地"), WebDavConflictPolicy::OverwriteLocal);
+        assert_eq!(WebDavConflictPolicy::from_label("手动处理"), WebDavConflictPolicy::Manual);
+        assert!(!WebDavConflictPolicy::Manual.should_auto_upload_merged());
+        assert!(WebDavConflictPolicy::LocalFirst.should_auto_upload_merged());
     }
 
     #[test]
