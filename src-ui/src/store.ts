@@ -671,8 +671,10 @@ function upsertTask(task: Omit<TaskEntry, "startedAt" | "updatedAt"> & Partial<P
   const existing = state.tasks.find((entry) => entry.id === task.id);
   const now = nowIso();
   if (existing) {
+    // Mutate in place so Vue reactivity only notifies the changed row instead
+    // of re-rendering the whole TaskDock list. Rebuilding the array on every
+    // progress tick was a measurable source of sync-time UI churn.
     Object.assign(existing, task, { updatedAt: now });
-    state.tasks = [existing, ...state.tasks.filter((entry) => entry.id !== existing.id)].slice(0, 30);
     return existing;
   }
   const next: TaskEntry = {
@@ -1228,17 +1230,6 @@ async function testWebdav(): Promise<void> {
 // Serialize WebDAV sync runs so auto-sync and manual sync never overlap on the UI thread.
 let webdavSyncPromise: Promise<void> | null = null;
 
-function runWhenIdle<T>(fn: () => T, timeout = 800): Promise<T> {
-  return new Promise((resolve) => {
-    const run = () => resolve(fn());
-    if (typeof window !== "undefined" && "requestIdleCallback" in window) {
-      (window as unknown as { requestIdleCallback: (cb: () => void, opts?: { timeout: number }) => number }).requestIdleCallback(run, { timeout });
-    } else {
-      setTimeout(run, 0);
-    }
-  });
-}
-
 async function syncWebdavNow(): Promise<void> {
   // Chain sync requests so only one runs at a time; callers still await their own run.
   const previous = webdavSyncPromise;
@@ -1263,17 +1254,18 @@ async function syncWebdavNowOnce(): Promise<void> {
     state.taskPanelOpen = true;
     return;
   }
+  // Single initial progress update: the old code fired 8% then 22% back-to-back
+  // (separated only by a fast credential read), producing two reactive
+  // notifications and two TaskDock renders within a few ms. Fold them into one.
   upsertTask({
     id: taskId,
     type: "webdav-sync",
     title: "WebDAV 同步",
-    message: "准备同步数据...",
+    message: "正在读取本地数据并连接 WebDAV...",
     status: "running",
-    progress: 8
+    progress: 15
   });
   const password = await webdavGetCredential();
-  updateTask(taskId, { message: "正在读取本地数据并连接 WebDAV...", progress: 22 });
-  // Serialize the (potentially large) app data snapshot on an idle frame so it does not block UI animation.
   // Serialize on a worker so the main thread stays free for UI clicks during sync.
   const localData = await serializeAppDataOffThread(state.data, false);
   const result = await callOpenCommand("sync_webdav_now", {
@@ -1352,14 +1344,22 @@ function scheduleWebdavQuickSync(reason: string): void {
   if (!webdavPluginInstalled.value) return;
   if (!config.serverUrl.trim() || !config.username.trim() || !config.remotePath.trim()) return;
   if (webdavQuickSyncTimer) clearTimeout(webdavQuickSyncTimer);
-  upsertTask({
-    id: "webdav-sync",
-    type: "webdav-sync",
-    title: "WebDAV 同步",
-    message: `等待同步${reason}...`,
-    status: "pending",
-    progress: 5
-  });
+  // Only insert the pending task entry once. Re-calling upsertTask on every
+  // debounce reset (e.g. during a drag-reorder burst) fired a reactive
+  // notification per call and made TaskDock flicker. If a pending/running entry
+  // already exists, leave it alone — the debounce timer below is the source of
+  // truth for when the sync actually runs.
+  const existing = state.tasks.find((task) => task.id === "webdav-sync");
+  if (!existing || (existing.status !== "pending" && existing.status !== "running")) {
+    upsertTask({
+      id: "webdav-sync",
+      type: "webdav-sync",
+      title: "WebDAV 同步",
+      message: `等待同步${reason}...`,
+      status: "pending",
+      progress: 5
+    });
+  }
   webdavQuickSyncTimer = setTimeout(() => {
     webdavQuickSyncTimer = null;
     runWebdavSyncInBackground();
@@ -2079,8 +2079,11 @@ async function saveWebdavPassword(password: string): Promise<void> {
 }
 
 function markReorderChanged(reason: string): void {
+  // Reorder is applied to reactive state instantly; the DB save is debounced
+  // (scheduleDataSave) and the WebDAV sync is debounced (scheduleWebdavQuickSync).
+  // A full-screen blocking overlay here only stuttered drag interactions, so
+  // rely on TaskDock for async feedback instead.
   state.reorderSavePending = true;
-  if (typeof window !== "undefined") window.vloading?.loading({ message: "保存排序中..." });
   scheduleWebdavQuickSync(reason);
 }
 

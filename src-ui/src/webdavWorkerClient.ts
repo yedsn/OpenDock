@@ -13,6 +13,21 @@ let worker: Worker | null = null;
 let seq = 0;
 const pending = new Map<number, (res: WorkerResponse) => void>();
 
+// Defer heavy main-thread work to an idle frame so pending UI events (clicks,
+// animation frames, drag updates) are processed first. Falls back to setTimeout
+// when requestIdleCallback is unavailable (e.g. Vitest node environment).
+function runWhenIdle<T>(fn: () => T, timeout = 200): Promise<T> {
+  return new Promise((resolve) => {
+    const run = () => resolve(fn());
+    if (typeof window !== "undefined" && "requestIdleCallback" in window) {
+      (window as unknown as { requestIdleCallback: (cb: () => void, opts?: { timeout: number }) => number })
+        .requestIdleCallback(run, { timeout });
+    } else {
+      setTimeout(run, 0);
+    }
+  });
+}
+
 function ensureWorker(): Worker | null {
   if (worker) return worker;
   if (typeof window === "undefined" || typeof Worker === "undefined") return null;
@@ -42,7 +57,11 @@ function callWorker(req: Omit<WorkerRequest, "id">): Promise<WorkerResponse> {
  * stored credential, and re-stringifies. Falls back to inline when no worker.
  */
 export async function serializeAppDataOffThread(data: unknown, pretty: boolean): Promise<string> {
-  const raw = JSON.stringify(data);
+  // JSON.stringify on a large reactive tree is the one genuinely main-thread
+  // bound step in the sync path (it must run here to strip Vue proxies before
+  // postMessage). Defer it to an idle frame so an in-flight animation or drag
+  // is not interrupted.
+  const raw = await runWhenIdle(() => JSON.stringify(data));
   const res = await callWorker({ kind: "serialize", raw, pretty });
   if (res.ok && typeof res.result === "string") return res.result;
   const { exportAppData } = await import("./storage");
