@@ -253,7 +253,7 @@ watch(() => [state.data.activeWorkspaceId, state.data.activeSceneId, state.data.
 /** Load data from SQLite, replacing seed data. Call once at app startup. */
 
 let webdavAutoSyncTimer: ReturnType<typeof setInterval> | null = null;
-const WEBDAV_QUICK_SYNC_DEBOUNCE_MS = 2000;
+const WEBDAV_QUICK_SYNC_DEBOUNCE_MS = 30 * 1000;
 
 async function init() {
   try {

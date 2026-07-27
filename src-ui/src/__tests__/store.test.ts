@@ -390,7 +390,7 @@ describe("OpenDock store - CRUD operations", () => {
       expect(store.runningTaskCount.value).toBe(0);
       expect(invokeMock).not.toHaveBeenCalledWith("sync_webdav_now", expect.anything());
 
-      await vi.advanceTimersByTimeAsync(2100);
+      await vi.advanceTimersByTimeAsync(30100);
 
       expect(invokeMock).toHaveBeenCalledWith("sync_webdav_now", expect.objectContaining({
         remotePath: "/OpenDock/workspaces",
