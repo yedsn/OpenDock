@@ -25,6 +25,7 @@ import SearchOverlay from "./SearchOverlay.vue";
 import { confirmDelete } from "../dialog";
 import { copyText, showToast } from "../helpers";
 import { useListReorder } from "../composables/useListReorder";
+import { isImeComposing } from "../keyboard";
 
 const store = useOpenDockStore();
 const { t } = useI18n();
@@ -115,6 +116,7 @@ async function handleSearchKeydown(event: KeyboardEvent) {
     return;
   }
   if (event.key === "Enter") {
+    if (isImeComposing(event)) return;
     event.preventDefault();
     await overlayRef.value?.run(undefined, event.ctrlKey || event.metaKey);
     return;
