@@ -60,6 +60,14 @@ def request_json(method: str, url: str, *, data=None, headers=None):
         fail(f"{method} {url} failed: {exc}")
 
 
+def build_github_headers() -> dict[str, str]:
+    token = os.environ.get("GH_TOKEN", "").strip() or os.environ.get("GITHUB_TOKEN", "").strip()
+    headers = {"User-Agent": "opendock-release-sync"}
+    if token:
+        headers["Authorization"] = f"Bearer {token}"
+    return headers
+
+
 def try_request_json(method: str, url: str, *, data=None):
     try:
         return request_json(method, url, data=data)
@@ -207,7 +215,7 @@ def main() -> None:
         github_url = f"https://api.github.com/repos/{args.github_owner}/{args.github_repo}/releases/tags/{args.tag}"
     else:
         github_url = f"https://api.github.com/repos/{args.github_owner}/{args.github_repo}/releases/latest"
-    github_release = request_json("GET", github_url, headers={"User-Agent": "opendock-release-sync"})
+    github_release = request_json("GET", github_url, headers=build_github_headers())
     tag_name = github_release.get("tag_name")
     assets = github_release.get("assets") or []
     if not tag_name or not assets:

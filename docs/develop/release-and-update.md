@@ -89,7 +89,7 @@ powershell -ExecutionPolicy Bypass -File scripts/release/release.ps1 0.1.1 -Push
 python scripts/release/sync_gitee_release.py --tag v0.1.1
 ```
 
-本地执行同步时需要先设置 `GITEE_ACCESS_TOKEN` 环境变量。
+本地执行同步时需要先设置 `GITEE_ACCESS_TOKEN` 环境变量；建议同时设置 `GH_TOKEN` 或 `GITHUB_TOKEN`，避免 GitHub API 匿名请求触发 60 次/小时的共享 IP 限流。
 
 ## 5. 应用内更新
 
