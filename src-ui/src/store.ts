@@ -6,7 +6,7 @@ import { createSnapshot, listSnapshots, loadSnapshot, deleteSnapshot, pruneSnaps
 import { webdavSetCredential, webdavGetCredential } from "./db";
 import { serializeAppDataOffThread, parseJsonOffThread, summarizeDiffOffThread } from "./webdavWorkerClient";
 import { createSeedData } from "./seed";
-import { nowIso, makeId, expandToolArgs, templateToCollectionType } from "./helpers";
+import { copyText, nowIso, makeId, expandToolArgs, templateToCollectionType } from "./helpers";
 import { builtInThemes } from "./themes";
 import { getPluginOpenHandler } from "../../plugins/registry";
 import type { AppData, Collection, CollectionItem, CollectionType, ItemType, MainView, MarketplaceIndex, MarketplacePlugin, ModalState, OpenTool, PluginItemFormField, PluginItemTypeContribution, PluginManifest, PluginToolTypeContribution, PluginToolTypeEntry, QuickViewId, Scene, SnapshotKind, SnapshotRecord, SceneType, Tab, TaskEntry, TaskStatus, ThemeDefinition, WebDavPendingConflict, SortMode, Workspace } from "./types";
@@ -292,6 +292,7 @@ async function init() {
       sceneEnterBehavior: legacySearchEnterBehavior || "open",
       collectionEnterBehavior: legacySearchEnterBehavior || "open",
       itemEnterBehavior: legacySearchEnterBehavior || "open",
+      copyNameOnEnter: false,
       sceneTagColor: "#60a5fa",
       collectionTagColor: "#34d399",
       itemTagColor: "#fbbf24"
@@ -306,6 +307,7 @@ async function init() {
   if (!state.data.settings.search.itemEnterBehavior) {
     state.data.settings.search.itemEnterBehavior = legacySearchEnterBehavior || "open";
   }
+  if (state.data.settings.search.copyNameOnEnter === undefined) state.data.settings.search.copyNameOnEnter = false;
   if (!state.data.settings.search.sceneTagColor) state.data.settings.search.sceneTagColor = "#60a5fa";
   if (!state.data.settings.search.collectionTagColor) state.data.settings.search.collectionTagColor = "#34d399";
   if (!state.data.settings.search.itemTagColor) state.data.settings.search.itemTagColor = "#fbbf24";
@@ -1939,7 +1941,10 @@ async function executeSuggestion(suggestion: SearchSuggestion, mode?: "open" | "
   return false;
 }
 
-async function executeSuggestionAndMaybeHide(suggestion: SearchSuggestion, mode?: "open" | "navigate"): Promise<void> {
+async function executeSuggestionAndMaybeHide(suggestion: SearchSuggestion, mode?: "open" | "navigate", copyName = false): Promise<void> {
+  if (copyName && state.data.settings.search.copyNameOnEnter) {
+    await copyText(suggestion.title);
+  }
   const opened = await executeSuggestion(suggestion, mode);
   if (opened && state.data.settings.general.closeWindowAfterOpen) {
     const { getCurrentWindow } = await import("@tauri-apps/api/window");

@@ -261,6 +261,7 @@ export interface SearchSettings {
   sceneEnterBehavior: SearchEnterBehavior;
   collectionEnterBehavior: SearchEnterBehavior;
   itemEnterBehavior: SearchEnterBehavior;
+  copyNameOnEnter: boolean;
   sceneTagColor: string;
   collectionTagColor: string;
   itemTagColor: string;

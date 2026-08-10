@@ -888,6 +888,27 @@ describe("OpenDock store - search suggestions", () => {
     expect(store.state.activeTabId).toBe(`collection-${collection.id}`);
     expect(invokeMock).not.toHaveBeenCalled();
   });
+  it("copies the search result name on Enter only when configured", async () => {
+    const clipboardWriteText = vi.fn(async (): Promise<void> => {});
+    vi.stubGlobal("navigator", { clipboard: { writeText: clipboardWriteText } });
+    (globalThis.window as any).isSecureContext = true;
+    const { useOpenDockStore } = await import("../store");
+    const store = useOpenDockStore();
+    store.state.data.settings.search.collectionEnterBehavior = "navigate";
+    store.createCollection("客户门户网页", WEB_COLLECTION, null, "站点入口");
+    store.state.search = "khmh";
+    const collectionSuggestion = store.searchSuggestions.value.find((entry) => entry.kind === "collection" && entry.title === "客户门户网页")!;
+
+    await store.executeSuggestionAndMaybeHide(collectionSuggestion, undefined, true);
+    expect(clipboardWriteText).not.toHaveBeenCalled();
+
+    store.state.data.settings.search.copyNameOnEnter = true;
+    await store.executeSuggestionAndMaybeHide(collectionSuggestion);
+    expect(clipboardWriteText).not.toHaveBeenCalled();
+
+    await store.executeSuggestionAndMaybeHide(collectionSuggestion, undefined, true);
+    expect(clipboardWriteText).toHaveBeenCalledWith("客户门户网页");
+  });
   it("sorts search suggestions by type first and usage count within each type", async () => {
     const { useOpenDockStore } = await import("../store");
     const store = useOpenDockStore();

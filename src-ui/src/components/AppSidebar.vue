@@ -118,7 +118,7 @@ async function handleSearchKeydown(event: KeyboardEvent) {
   if (event.key === "Enter") {
     if (isImeComposing(event)) return;
     event.preventDefault();
-    await overlayRef.value?.run(undefined, event.ctrlKey || event.metaKey);
+    await overlayRef.value?.run(undefined, event.ctrlKey || event.metaKey, true);
     return;
   }
   if (event.key === "Escape") {

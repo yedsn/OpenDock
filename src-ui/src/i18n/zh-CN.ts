@@ -262,6 +262,7 @@ export default {
     navigateToCollection: "定位到集合标签",
     itemResult: "资源结果",
     directlyOpenItem: "直接打开资源",
+    copyNameOnSearchEnter: "回车时复制名称",
     hideWindowAfterOpenLink: "打开后隐藏窗口",
     searchTagColors: "搜索标签颜色",
     searchTagColorsDesc: "分别设置场景、集合、资源在搜索结果中的类型标签颜色。",

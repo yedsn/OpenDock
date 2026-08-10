@@ -249,6 +249,7 @@
     navigateToCollection: "Navigate to collection tab",
     itemResult: "Resource result",
     directlyOpenItem: "Open resource directly",
+    copyNameOnSearchEnter: "Copy name on Enter",
     hideWindowAfterOpenLink: "Hide window after opening",
     searchTagColors: "Search tag colors",
     searchTagColorsDesc: "Set the type tag colors for scenes, collections, and resources in search results.",

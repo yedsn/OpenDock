@@ -78,9 +78,9 @@ function clearModifierPressed() {
   modifierPressed.value = false;
 }
 
-async function run(result = results.value[activeIndex.value], navigate = modifierPressed.value) {
+async function run(result = results.value[activeIndex.value], navigate = modifierPressed.value, copyName = false) {
   if (!result) return;
-  await store.executeSuggestionAndMaybeHide(result, navigate ? "navigate" : "open");
+  await store.executeSuggestionAndMaybeHide(result, navigate ? "navigate" : "open", copyName);
   emit("close");
 }
 
