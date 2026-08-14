@@ -18,12 +18,14 @@ const form = reactive({
   collectionSceneId: "",
   collectionDescription: "",
   collectionTags: [] as string[],
+  transferSceneId: "",
   itemName: "",
   itemType: "浏览器" as ItemType,
   itemValue: "",
   itemWorkingDirectory: "",
   itemToolId: "",
   itemPluginData: {} as Record<string, string>,
+  transferCollectionId: "",
   workspaceName: "",
   workspaceStorage: "本地数据",
   workspaceRemark: ""
@@ -40,6 +42,11 @@ const itemToolOptions = computed(() => {
   const allowed = new Set(store.allowedToolTypesForItem(form.itemType));
   return store.visibleTools().filter((tool) => allowed.has(tool.type));
 });
+const transferCollection = computed(() => store.state.modal.editingId ? store.findCollectionById(store.state.modal.editingId) : null);
+const transferItem = computed(() => store.state.modal.editingId ? store.state.data.items.find((item) => item.id === store.state.modal.editingId) : null);
+const transferActionText = computed(() => store.state.modal.transferAction === "copy" ? t("modal.copy") : t("modal.move"));
+const collectionTargets = computed(() => store.activeScenes.value);
+const itemTargets = computed(() => store.state.data.collections.filter((collection) => collection.workspaceId === store.state.data.activeWorkspaceId));
 const modalTitle = computed(() => {
   const kind = store.state.modal.kind;
   const verb = isEdit.value ? t("modal.edit") : t("modal.create");
@@ -47,6 +54,8 @@ const modalTitle = computed(() => {
   if (kind === "collection") return verb + t("modal.editCollection").replace(t("modal.edit"), "");
   if (kind === "workspace") return verb + t("modal.editWorkspace").replace(t("modal.edit"), "");
   if (kind === "item") return isEdit.value ? t("modal.editResource") : t("modal.addResource");
+  if (kind === "transferCollection") return store.state.modal.transferAction === "copy" ? t("modal.copyCollection") : t("modal.moveCollection");
+  if (kind === "transferItem") return store.state.modal.transferAction === "copy" ? t("modal.copyResource") : t("modal.moveResource");
   return "";
 });
 
@@ -88,6 +97,12 @@ watch(
       form.itemToolId = item?.toolId || "";
       resetItemPluginData(item?.pluginData || {});
       ensureItemToolCompatible();
+    } else if (kind === "transferCollection") {
+      const coll = id ? store.state.data.collections.find((c) => c.id === id) : null;
+      form.transferSceneId = coll?.sceneId || "";
+    } else if (kind === "transferItem") {
+      const item = id ? store.state.data.items.find((i) => i.id === id) : null;
+      form.transferCollectionId = item?.collectionId || store.state.data.activeCollectionId || itemTargets.value[0]?.id || "";
     } else if (kind === "workspace") {
       const ws = id ? store.state.data.workspaces.find((w) => w.id === id) : null;
       form.workspaceName = ws?.name || "";
@@ -110,6 +125,7 @@ watch(
 function closeModal() {
   store.state.modal.kind = null;
   store.state.modal.editingId = undefined;
+  store.state.modal.transferAction = undefined;
 }
 
 function submitModal() {
@@ -127,6 +143,13 @@ function submitModal() {
     const pluginData = Object.fromEntries(itemPluginFields.value.map((field) => [field.key, form.itemPluginData[field.key] || ""]));
     if (id) store.updateItem(id, { name: form.itemName.trim(), type: form.itemType, value: form.itemValue.trim(), workingDirectory: form.itemWorkingDirectory.trim(), toolId: form.itemToolId || undefined, pluginData });
     else if (activeColl) store.createItem(activeColl.id, form.itemName.trim(), form.itemType, form.itemValue.trim(), form.itemWorkingDirectory.trim(), form.itemToolId || undefined, pluginData);
+  } else if (kind === "transferCollection" && id) {
+    const targetSceneId = form.transferSceneId || null;
+    if (store.state.modal.transferAction === "copy") store.copyCollection(id, targetSceneId);
+    else store.moveCollection(id, targetSceneId);
+  } else if (kind === "transferItem" && id && form.transferCollectionId) {
+    if (store.state.modal.transferAction === "copy") store.copyItem(id, form.transferCollectionId);
+    else store.moveItem(id, form.transferCollectionId);
   } else if (kind === "workspace" && form.workspaceName.trim()) {
     if (id) store.updateWorkspace(id, { name: form.workspaceName.trim(), storage: form.workspaceStorage.trim(), remark: form.workspaceRemark.trim() });
     else store.createWorkspace(form.workspaceName.trim(), form.workspaceStorage.trim(), form.workspaceRemark.trim());
@@ -182,6 +205,25 @@ function submitModal() {
         <label class="setting-field"><span>{{ $t("modal.workingDirectory") }}</span><input v-model="form.itemWorkingDirectory" :placeholder="$t('modal.workingDirectoryHint')" /></label>
       </div>
 
+      <div v-if="store.state.modal.kind === 'transferCollection'" class="settings-grid">
+        <label class="setting-field full"><span>{{ $t("modal.currentCollection") }}</span><input :value="transferCollection?.name || ''" disabled /></label>
+        <label class="setting-field full"><span>{{ $t("modal.targetScene") }}</span>
+          <select v-model="form.transferSceneId">
+            <option value="">{{ $t("modal.noScene") }}</option>
+            <option v-for="scene in collectionTargets" :key="scene.id" :value="scene.id">{{ scene.name }}</option>
+          </select>
+        </label>
+      </div>
+
+      <div v-if="store.state.modal.kind === 'transferItem'" class="settings-grid">
+        <label class="setting-field full"><span>{{ $t("modal.currentResource") }}</span><input :value="transferItem?.name || ''" disabled /></label>
+        <label class="setting-field full"><span>{{ $t("modal.targetCollection") }}</span>
+          <select v-model="form.transferCollectionId" required>
+            <option v-for="collection in itemTargets" :key="collection.id" :value="collection.id">{{ collection.name }}</option>
+          </select>
+        </label>
+      </div>
+
       <div v-if="store.state.modal.kind === 'workspace'" class="settings-grid">
         <label class="setting-field"><span>{{ $t("modal.workspaceName") }}</span><input v-model="form.workspaceName" required /></label>
         <label class="setting-field"><span>{{ $t("modal.storageDescription") }}</span><input v-model="form.workspaceStorage" /></label>
@@ -190,7 +232,7 @@ function submitModal() {
 
       <div class="modal-actions">
         <button class="settings-action-button" type="button" @click="closeModal">{{ $t("modal.cancel") }}</button>
-        <button class="run-button" type="submit">{{ isEdit ? $t("modal.save") : $t("modal.confirm") }}</button>
+        <button class="run-button" type="submit">{{ store.state.modal.kind === 'transferCollection' || store.state.modal.kind === 'transferItem' ? transferActionText : (isEdit ? $t("modal.save") : $t("modal.confirm")) }}</button>
       </div>
     </form>
   </div>

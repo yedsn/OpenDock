@@ -347,6 +347,7 @@ export interface Tab {
 }
 
 export interface ModalState {
-  kind: "scene" | "collection" | "item" | "workspace" | "manageWorkspaces" | "confirmDelete" | null;
+  kind: "scene" | "collection" | "item" | "workspace" | "transferCollection" | "transferItem" | "manageWorkspaces" | "confirmDelete" | null;
   editingId?: string;
+  transferAction?: "move" | "copy";
 }

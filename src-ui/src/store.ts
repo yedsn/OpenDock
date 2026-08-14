@@ -797,6 +797,102 @@ function createItem(collectionId: string, name: string, type: ItemType, value: s
   scheduleWebdavQuickSync("资源变更");
 }
 
+function nextCollectionSort(workspaceId: string, sceneId: string | null): number {
+  return state.data.collections.filter((collection) => collection.workspaceId === workspaceId && collection.sceneId === sceneId).length + 1;
+}
+
+function nextItemSort(collectionId: string): number {
+  return collectionItems(collectionId).length + 1;
+}
+
+function moveCollection(id: string, targetSceneId: string | null): void {
+  const collection = findCollectionById(id);
+  if (!collection) return;
+  if (targetSceneId && !state.data.scenes.some((scene) => scene.id === targetSceneId && scene.workspaceId === collection.workspaceId)) return;
+  if (collection.sceneId === targetSceneId) return;
+  Object.assign(collection, {
+    sceneId: targetSceneId,
+    unbound: !targetSceneId,
+    sort: nextCollectionSort(collection.workspaceId, targetSceneId),
+    updatedAt: nowIso()
+  });
+  log(`移动集合: ${collection.name}`);
+  scheduleWebdavQuickSync("集合变更");
+}
+
+function copyCollection(id: string, targetSceneId: string | null): Collection | undefined {
+  const source = findCollectionById(id);
+  if (!source) return undefined;
+  if (targetSceneId && !state.data.scenes.some((scene) => scene.id === targetSceneId && scene.workspaceId === source.workspaceId)) return undefined;
+  const createdAt = nowIso();
+  const copy: Collection = {
+    ...source,
+    id: makeId("collection"),
+    sceneId: targetSceneId,
+    name: `${source.name} 副本`,
+    recent: false,
+    recentAt: undefined,
+    usageCount: 0,
+    sort: nextCollectionSort(source.workspaceId, targetSceneId),
+    createdAt,
+    updatedAt: createdAt,
+    unbound: !targetSceneId
+  };
+  state.data.collections.push(copy);
+  collectionItems(source.id).forEach((item, index) => {
+    const itemCopy: CollectionItem = {
+      ...item,
+      id: makeId("item"),
+      collectionId: copy.id,
+      usageCount: 0,
+      sort: index + 1,
+      createdAt,
+      updatedAt: createdAt
+    };
+    state.data.items.push(itemCopy);
+  });
+  setActiveCollection(copy);
+  log(`复制集合: ${source.name}`);
+  scheduleWebdavQuickSync("集合变更");
+  return copy;
+}
+
+function moveItem(id: string, targetCollectionId: string): void {
+  const item = state.data.items.find((entry) => entry.id === id);
+  const targetCollection = findCollectionById(targetCollectionId);
+  if (!item || !targetCollection || item.workspaceId !== targetCollection.workspaceId) return;
+  if (item.collectionId === targetCollectionId) return;
+  Object.assign(item, {
+    collectionId: targetCollectionId,
+    sort: nextItemSort(targetCollectionId),
+    updatedAt: nowIso()
+  });
+  state.data.activeCollectionId = targetCollectionId;
+  log(`移动资源: ${item.name}`);
+  scheduleWebdavQuickSync("资源变更");
+}
+
+function copyItem(id: string, targetCollectionId: string): CollectionItem | undefined {
+  const source = state.data.items.find((entry) => entry.id === id);
+  const targetCollection = findCollectionById(targetCollectionId);
+  if (!source || !targetCollection || source.workspaceId !== targetCollection.workspaceId) return undefined;
+  const createdAt = nowIso();
+  const copy: CollectionItem = {
+    ...source,
+    id: makeId("item"),
+    collectionId: targetCollectionId,
+    usageCount: 0,
+    sort: nextItemSort(targetCollectionId),
+    createdAt,
+    updatedAt: createdAt
+  };
+  state.data.items.push(copy);
+  state.data.activeCollectionId = targetCollectionId;
+  log(`复制资源: ${source.name}`);
+  scheduleWebdavQuickSync("资源变更");
+  return copy;
+}
+
 function toggleFavorite(collection: Collection): void {
   collection.favorite = !collection.favorite;
   log(`${collection.favorite ? "收藏" : "取消收藏"}集合: ${collection.name}`);
@@ -2184,8 +2280,12 @@ export function useOpenDockStore() {
     setActiveCollection,
     createScene,
     createCollection,
+    moveCollection,
+    copyCollection,
     normalizeCollectionTags,
     createItem,
+    moveItem,
+    copyItem,
     toggleFavorite,
     markCollectionRecent,
     createTool,

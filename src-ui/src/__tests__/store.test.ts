@@ -116,6 +116,32 @@ describe("OpenDock store - CRUD operations", () => {
     store.updateCollection(coll.id, { tags: ["daily", "docs", "daily", " "] });
     expect(store.state.data.collections.find((c) => c.id === coll.id)!.tags).toEqual(["daily", "docs"]);
   });
+  it("moves and copies a collection with its resources", async () => {
+    const { useOpenDockStore } = await import("../store");
+    const store = useOpenDockStore();
+    store.createScene("Target Scene", OFFICE);
+    const targetScene = store.state.data.scenes.find((s) => s.name === "Target Scene")!;
+    store.createCollection("Source Coll", WEB_COLLECTION, null, "desc", ["docs"]);
+    const source = store.state.data.collections.find((c) => c.name === "Source Coll")!;
+    store.createItem(source.id, "Item A", "浏览器", "https://a");
+    store.createItem(source.id, "Item B", "浏览器", "https://b");
+
+    store.moveCollection(source.id, targetScene.id);
+    expect(source.sceneId).toBe(targetScene.id);
+    expect(source.unbound).toBe(false);
+    expect(store.collectionItems(source.id).map((item) => item.name)).toEqual(["Item A", "Item B"]);
+
+    const copied = store.copyCollection(source.id, null)!;
+    expect(copied.id).not.toBe(source.id);
+    expect(copied.name).toBe("Source Coll 副本");
+    expect(copied.sceneId).toBeNull();
+    expect(copied.unbound).toBe(true);
+    expect(copied.recent).toBe(false);
+    expect(copied.tags).toEqual(["docs"]);
+    const copiedItems = store.collectionItems(copied.id);
+    expect(copiedItems.map((item) => item.name)).toEqual(["Item A", "Item B"]);
+    expect(copiedItems.map((item) => item.id)).not.toEqual(store.collectionItems(source.id).map((item) => item.id));
+  });
   it("creates and deletes individual collection items", async () => {
     const { useOpenDockStore } = await import("../store");
     const store = useOpenDockStore();
@@ -129,6 +155,27 @@ describe("OpenDock store - CRUD operations", () => {
     expect(updated.value).toBe("C:/new-path");
     store.deleteItem(item.id);
     expect(store.state.data.items.find((i) => i.id === item.id)).toBeUndefined();
+  });
+  it("moves and copies an item to another collection", async () => {
+    const { useOpenDockStore } = await import("../store");
+    const store = useOpenDockStore();
+    store.createCollection("Source Items", WEB_COLLECTION, null);
+    store.createCollection("Target Items", WEB_COLLECTION, null);
+    const source = store.state.data.collections.find((c) => c.name === "Source Items")!;
+    const target = store.state.data.collections.find((c) => c.name === "Target Items")!;
+    store.createItem(source.id, "Doc", "浏览器", "https://doc");
+    const item = store.collectionItems(source.id)[0];
+
+    store.copyItem(item.id, target.id);
+    expect(store.collectionItems(source.id).length).toBe(1);
+    const copied = store.collectionItems(target.id)[0];
+    expect(copied.id).not.toBe(item.id);
+    expect(copied.name).toBe("Doc");
+    expect(copied.collectionId).toBe(target.id);
+
+    store.moveItem(item.id, target.id);
+    expect(store.collectionItems(source.id).length).toBe(0);
+    expect(store.collectionItems(target.id).map((entry) => entry.name)).toEqual(["Doc", "Doc"]);
   });
   it("creates, updates, deletes a workspace", async () => {
     const { useOpenDockStore } = await import("../store");

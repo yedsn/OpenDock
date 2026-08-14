@@ -7,6 +7,8 @@ import {
   FolderPlus,
   GripVertical,
   Layers,
+  MoreHorizontal,
+  MoveRight,
   Pencil,
   Play,
   Plus,
@@ -41,6 +43,7 @@ onBeforeUnmount(() => {
   if (pendingItemsFrame) cancelAnimationFrame(pendingItemsFrame);
   if (copyCollectionTimer) window.clearTimeout(copyCollectionTimer);
   if (copyItemTimer) window.clearTimeout(copyItemTimer);
+  document.removeEventListener("click", closeRowMenu);
 });
 
 const activeItems = computed(() =>
@@ -153,7 +156,15 @@ function editCollection(collectionId: string) {
   store.state.modal.kind = "collection";
 }
 
+function transferCollection(collectionId: string, action: "move" | "copy") {
+  store.state.modal.editingId = collectionId;
+  store.state.modal.transferAction = action;
+  store.state.modal.kind = "transferCollection";
+  rowMenu.value = null;
+}
+
 async function deleteCollectionConfirm(collectionId: string) {
+  rowMenu.value = null;
   const coll = store.state.data.collections.find((c) => c.id === collectionId);
   if (!coll) return;
   if (await confirmDelete(t("workbench.confirmDeleteCollection", { name: coll.name }))) {
@@ -166,7 +177,15 @@ function editItem(itemId: string) {
   store.state.modal.kind = "item";
 }
 
+function transferItem(itemId: string, action: "move" | "copy") {
+  store.state.modal.editingId = itemId;
+  store.state.modal.transferAction = action;
+  store.state.modal.kind = "transferItem";
+  rowMenu.value = null;
+}
+
 async function deleteItemConfirm(itemId: string) {
+  rowMenu.value = null;
   const item = store.state.data.items.find((i) => i.id === itemId);
   if (!item) return;
   if (await confirmDelete(t("workbench.confirmDeleteItem", { name: item.name }))) {
@@ -178,6 +197,24 @@ const copiedCollectionId = ref<string | null>(null);
 const copiedItemId = ref<string | null>(null);
 let copyCollectionTimer = 0;
 let copyItemTimer = 0;
+
+const rowMenu = ref<{ kind: "collection" | "item"; id: string } | null>(null);
+
+function closeRowMenu() {
+  rowMenu.value = null;
+  document.removeEventListener("click", closeRowMenu);
+}
+
+function toggleRowMenu(kind: "collection" | "item", id: string) {
+  const sameMenu = rowMenu.value?.kind === kind && rowMenu.value.id === id;
+  rowMenu.value = sameMenu ? null : { kind, id };
+  document.removeEventListener("click", closeRowMenu);
+  if (!sameMenu) setTimeout(() => document.addEventListener("click", closeRowMenu), 0);
+}
+
+function isRowMenuOpen(kind: "collection" | "item", id: string) {
+  return rowMenu.value?.kind === kind && rowMenu.value.id === id;
+}
 
 async function copyCollectionName(collection: { id: string; name: string }) {
   if (await copyText(collection.name)) {
@@ -319,10 +356,17 @@ function selectCollection(collection: { id: string; name: string; sceneId: strin
             <span class="card-actions">
               <button class="icon-button" type="button" :title="$t('workbench.copyName')" @click.stop="copyCollectionName(item)"><component :is="copiedCollectionId === item.id ? Check : Copy" /></button>
               <button class="icon-button" type="button" :title="$t('workbench.edit')" @click.stop="editCollection(item.id)"><Pencil /></button>
-              <button class="icon-button danger" type="button" :title="$t('workbench.delete')" @click.stop="deleteCollectionConfirm(item.id)"><Trash2 /></button>
               <button class="icon-button" type="button" @click.stop="store.toggleFavorite(item.source)">
                 <Star :fill="item.favorite ? 'currentColor' : 'none'" />
               </button>
+              <span class="row-more" @click.stop>
+                <button class="icon-button" type="button" :title="$t('workbench.moreActions')" @click="toggleRowMenu('collection', item.id)"><MoreHorizontal /></button>
+                <span v-if="isRowMenuOpen('collection', item.id)" class="row-more-menu">
+                  <button type="button" @click="transferCollection(item.id, 'move')"><MoveRight /><span>{{ $t("workbench.moveCollection") }}</span></button>
+                  <button type="button" @click="transferCollection(item.id, 'copy')"><Copy /><span>{{ $t("workbench.copyCollection") }}</span></button>
+                  <button type="button" class="danger" @click="deleteCollectionConfirm(item.id)"><Trash2 /><span>{{ $t("workbench.delete") }}</span></button>
+                </span>
+              </span>
             </span>
           </div>
         </div>
@@ -352,10 +396,17 @@ function selectCollection(collection: { id: string; name: string; sceneId: strin
               <span class="card-actions">
                 <button class="icon-button" type="button" :title="$t('workbench.copyName')" @click.stop="copyCollectionName(item)"><component :is="copiedCollectionId === item.id ? Check : Copy" /></button>
                 <button class="icon-button" type="button" :title="$t('workbench.edit')" @click.stop="editCollection(item.id)"><Pencil /></button>
-                <button class="icon-button danger" type="button" :title="$t('workbench.delete')" @click.stop="deleteCollectionConfirm(item.id)"><Trash2 /></button>
                 <button class="icon-button" type="button" @click.stop="store.toggleFavorite(item.source)">
                   <Star :fill="item.favorite ? 'currentColor' : 'none'" />
                 </button>
+                <span class="row-more" @click.stop>
+                  <button class="icon-button" type="button" :title="$t('workbench.moreActions')" @click="toggleRowMenu('collection', item.id)"><MoreHorizontal /></button>
+                  <span v-if="isRowMenuOpen('collection', item.id)" class="row-more-menu">
+                    <button type="button" @click="transferCollection(item.id, 'move')"><MoveRight /><span>{{ $t("workbench.moveCollection") }}</span></button>
+                    <button type="button" @click="transferCollection(item.id, 'copy')"><Copy /><span>{{ $t("workbench.copyCollection") }}</span></button>
+                    <button type="button" class="danger" @click="deleteCollectionConfirm(item.id)"><Trash2 /><span>{{ $t("workbench.delete") }}</span></button>
+                  </span>
+                </span>
               </span>
             </div>
           </template>
@@ -412,7 +463,14 @@ function selectCollection(collection: { id: string; name: string; sceneId: strin
               <button class="row-open" @click="store.openItem(item.source)"><Play />{{ $t("workbench.open") }}</button>
               <button class="icon-button" :title="$t('workbench.copyName')" @click="copyItemName(item)"><component :is="copiedItemId === item.id ? Check : Copy" /></button>
               <button class="icon-button" :title="$t('workbench.edit')" @click="editItem(item.id)"><Pencil /></button>
-              <button class="icon-button danger" :title="$t('workbench.delete')" @click="deleteItemConfirm(item.id)"><Trash2 /></button>
+              <span class="row-more" @click.stop>
+                <button class="icon-button" type="button" :title="$t('workbench.moreActions')" @click="toggleRowMenu('item', item.id)"><MoreHorizontal /></button>
+                <span v-if="isRowMenuOpen('item', item.id)" class="row-more-menu">
+                  <button type="button" @click="transferItem(item.id, 'move')"><MoveRight /><span>{{ $t("workbench.moveResource") }}</span></button>
+                  <button type="button" @click="transferItem(item.id, 'copy')"><Copy /><span>{{ $t("workbench.copyResource") }}</span></button>
+                  <button type="button" class="danger" @click="deleteItemConfirm(item.id)"><Trash2 /><span>{{ $t("workbench.delete") }}</span></button>
+                </span>
+              </span>
             </span>
           </div>
         </div>
@@ -437,7 +495,14 @@ function selectCollection(collection: { id: string; name: string; sceneId: strin
                 <button class="row-open" @click="store.openItem(item.source)"><Play />{{ $t("workbench.open") }}</button>
                 <button class="icon-button" :title="$t('workbench.copyName')" @click="copyItemName(item)"><component :is="copiedItemId === item.id ? Check : Copy" /></button>
                 <button class="icon-button" :title="$t('workbench.edit')" @click="editItem(item.id)"><Pencil /></button>
-                <button class="icon-button danger" :title="$t('workbench.delete')" @click="deleteItemConfirm(item.id)"><Trash2 /></button>
+                <span class="row-more" @click.stop>
+                  <button class="icon-button" type="button" :title="$t('workbench.moreActions')" @click="toggleRowMenu('item', item.id)"><MoreHorizontal /></button>
+                  <span v-if="isRowMenuOpen('item', item.id)" class="row-more-menu">
+                    <button type="button" @click="transferItem(item.id, 'move')"><MoveRight /><span>{{ $t("workbench.moveResource") }}</span></button>
+                    <button type="button" @click="transferItem(item.id, 'copy')"><Copy /><span>{{ $t("workbench.copyResource") }}</span></button>
+                    <button type="button" class="danger" @click="deleteItemConfirm(item.id)"><Trash2 /><span>{{ $t("workbench.delete") }}</span></button>
+                  </span>
+                </span>
               </span>
             </div>
           </template>
@@ -484,6 +549,41 @@ function selectCollection(collection: { id: string; name: string; sceneId: strin
 .primary-actions { min-height: 32px; flex-wrap: nowrap; }
 .card-actions { display: flex; align-items: center; gap: 2px; }
 .item-actions { display: flex; align-items: center; gap: 4px; }
+.row-more { position: relative; display: inline-grid; place-items: center; }
+.row-more-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 20;
+  min-width: 132px;
+  padding: 5px;
+  display: grid;
+  gap: 2px;
+  color: var(--text);
+  background: var(--bg-2);
+  border: 1px solid var(--line-strong);
+  border-radius: 8px;
+  box-shadow: 0 12px 28px var(--shadow);
+}
+.row-more-menu button {
+  width: 100%;
+  min-height: 30px;
+  padding: 0 8px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--muted);
+  background: transparent;
+  border: 0;
+  border-radius: 6px;
+  font-size: 12px;
+  text-align: left;
+  cursor: pointer;
+}
+.row-more-menu button:hover { color: var(--text); background: var(--bg-3); }
+.row-more-menu button.danger { color: var(--red); }
+.row-more-menu button.danger:hover { background: rgba(210, 109, 109, 0.15); }
+.row-more-menu svg { width: 14px; height: 14px; flex: 0 0 auto; }
 .tag-filter-panel {
   display: grid;
   gap: 10px;
