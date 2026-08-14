@@ -931,13 +931,25 @@ function argsForTool(item: CollectionItem, tool: OpenTool): string[] {
   // is an editor, use --folder-uri instead of a positional argument so VS Code / Cursor
   // opens the remote directory correctly.
   const remoteUriPrefixes = ["vscode-remote://", "vscode://", "cursor-remote://", "cursor://"];
-  const isRemoteUri = remoteUriPrefixes.some((prefix) => item.value.startsWith(prefix));
-  const effectiveTemplate = (isRemoteUri && tool.type === "编辑器" && argsTemplate === "{path}")
-    ? "--folder-uri {path}"
+  const isRemoteUri = remoteUriPrefixes.some((prefix) => values.path.startsWith(prefix));
+  const shouldUseRemoteFolderUri = isRemoteUri
+    && tool.type === "编辑器"
+    && argsTemplate.includes("{path}")
+    && !argsTemplate.includes("--folder-uri")
+    && !argsTemplate.includes("--file-uri");
+  const effectiveTemplate = shouldUseRemoteFolderUri
+    ? argsTemplate.replace("{path}", "--folder-uri {path}")
     : argsTemplate;
 
   const args = expandToolArgs(effectiveTemplate, values);
 
+  if (tool.type === "编辑器") {
+    const editorArgs = args.filter((arg) => arg !== "--reuse-window" && arg !== "-r");
+    if (!editorArgs.some((arg) => arg === "--new-window" || arg === "-n")) {
+      return ["--new-window", ...editorArgs];
+    }
+    return editorArgs;
+  }
   if (item.type === "浏览器" && state.data.settings.general.openWebInNewWindow && !args.some((arg) => arg === "--new-window" || arg === "-new-window")) {
     return ["--new-window", ...args];
   }

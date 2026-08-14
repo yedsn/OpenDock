@@ -734,7 +734,7 @@ describe("OpenDock store - open tool configuration", () => {
     await store.openItem(remoteItem);
     expect(invokeMock).toHaveBeenCalledWith("open_application", {
       path: "C:/Editor/code.exe",
-      args: ["--folder-uri", "vscode-remote://ssh-remote+root@server/path/to/project"]
+      args: ["--new-window", "--folder-uri", "vscode-remote://ssh-remote+root@server/path/to/project"]
     });
     // Local path should still use positional argument
     store.createItem(collection.id, "Local Dir", "编辑器", "E:\\code\\project");
@@ -743,7 +743,7 @@ describe("OpenDock store - open tool configuration", () => {
     await store.openItem(localItem);
     expect(invokeMock).toHaveBeenCalledWith("open_application", {
       path: "C:/Editor/code.exe",
-      args: ["E:\\code\\project"]
+      args: ["--new-window", "E:\\code\\project"]
     });
     // cursor-remote:// URI should also use --folder-uri
     store.createItem(collection.id, "Cursor Remote", "编辑器", "cursor-remote://ssh-remote+user@host/workspace");
@@ -752,7 +752,27 @@ describe("OpenDock store - open tool configuration", () => {
     await store.openItem(cursorItem);
     expect(invokeMock).toHaveBeenCalledWith("open_application", {
       path: "C:/Editor/code.exe",
-      args: ["--folder-uri", "cursor-remote://ssh-remote+user@host/workspace"]
+      args: ["--new-window", "--folder-uri", "cursor-remote://ssh-remote+user@host/workspace"]
+    });
+
+    editor.args = "--reuse-window {path}";
+    store.createItem(collection.id, "Remote With Flags", "编辑器", "vscode-remote://ssh-remote+root@server/workspace");
+    const flaggedItem = store.state.data.items.find((entry) => entry.name === "Remote With Flags")!;
+    invokeMock.mockClear();
+    await store.openItem(flaggedItem);
+    expect(invokeMock).toHaveBeenCalledWith("open_application", {
+      path: "C:/Editor/code.exe",
+      args: ["--new-window", "--folder-uri", "vscode-remote://ssh-remote+root@server/workspace"]
+    });
+
+    editor.args = "--new-window {path}";
+    store.createItem(collection.id, "Remote Already New Window", "编辑器", "vscode-remote://ssh-remote+root@server/another-workspace");
+    const alreadyNewWindowItem = store.state.data.items.find((entry) => entry.name === "Remote Already New Window")!;
+    invokeMock.mockClear();
+    await store.openItem(alreadyNewWindowItem);
+    expect(invokeMock).toHaveBeenCalledWith("open_application", {
+      path: "C:/Editor/code.exe",
+      args: ["--new-window", "--folder-uri", "vscode-remote://ssh-remote+root@server/another-workspace"]
     });
   });
 });

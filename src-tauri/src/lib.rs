@@ -37,13 +37,32 @@ use windows_sys::Win32::UI::WindowsAndMessaging::{
 #[cfg(target_os = "windows")]
 const CREATE_NO_WINDOW: u32 = 0x08000000;
 
+const CHILD_ENV_VARS_TO_REMOVE: &[&str] = &[
+    "NODE_OPTIONS",
+    "ELECTRON_RUN_AS_NODE",
+    "VITE_DEV_SERVER_URL",
+    "TAURI_ENV_PLATFORM",
+    "TAURI_ENV_ARCH",
+    "TAURI_ENV_FAMILY",
+    "TAURI_ENV_PLATFORM_VERSION",
+    "TAURI_ENV_PLATFORM_TYPE",
+    "TAURI_ENV_DEBUG",
+];
+
+fn sanitize_child_env(cmd: &mut Command) -> &mut Command {
+    for key in CHILD_ENV_VARS_TO_REMOVE {
+        cmd.env_remove(key);
+    }
+    cmd
+}
+
 /// Apply platform-specific flags to prevent console window pop-ups.
 #[cfg(target_os = "windows")]
 fn no_console(cmd: &mut Command) -> &mut Command {
-    cmd.creation_flags(CREATE_NO_WINDOW)
+    sanitize_child_env(cmd).creation_flags(CREATE_NO_WINDOW)
 }
 #[cfg(not(target_os = "windows"))]
-fn no_console(cmd: &mut Command) -> &mut Command { cmd }
+fn no_console(cmd: &mut Command) -> &mut Command { sanitize_child_env(cmd) }
 
 // ---- OpenActionResult ----
 
@@ -370,6 +389,66 @@ fn macos_app_executable_path(path: &str) -> Option<String> {
     if executable.exists() { Some(executable.to_string_lossy().to_string()) } else { None }
 }
 
+fn macos_editor_cli_path(path: &str) -> Option<String> {
+    let app_name = macos_browser_app_name_from_path(path).to_lowercase();
+    let relative_cli = if app_name.contains("visual studio code") {
+        Some(["Contents", "Resources", "app", "bin", "code"])
+    } else if app_name.contains("cursor") {
+        Some(["Contents", "Resources", "app", "bin", "cursor"])
+    } else {
+        None
+    }?;
+    let cli = relative_cli
+        .iter()
+        .fold(std::path::PathBuf::from(path), |base, segment| base.join(segment));
+    if cli.exists() { Some(cli.to_string_lossy().to_string()) } else { None }
+}
+
+fn open_macos_editor_cli(cli: &str, args: &[String]) -> Result<(), String> {
+    let mut cmd = Command::new(cli);
+    cmd.args(args);
+    no_console(&mut cmd);
+    cmd.spawn().map(|_| ()).map_err(|e| format!("editor CLI failed: {e}"))
+}
+
+#[cfg(target_os = "windows")]
+fn windows_editor_cli_candidate_path(path: &str) -> Option<std::path::PathBuf> {
+    let app_path = std::path::PathBuf::from(path);
+    let file_name = app_path
+        .file_name()
+        .map(|name| name.to_string_lossy().to_lowercase())
+        .unwrap_or_default();
+    let app_dir = app_path.parent()?;
+
+    let candidate = if file_name == "code.exe" {
+        app_dir.join("bin").join("code.cmd")
+    } else if file_name == "cursor.exe" {
+        app_dir.join("resources").join("app").join("bin").join("cursor.cmd")
+    } else {
+        return None;
+    };
+    Some(candidate)
+}
+
+#[cfg(target_os = "windows")]
+fn windows_editor_cli_path(path: &str) -> Option<String> {
+    let candidate = windows_editor_cli_candidate_path(path)?;
+    if candidate.exists() { Some(candidate.to_string_lossy().to_string()) } else { None }
+}
+
+#[cfg(target_os = "windows")]
+fn open_windows_editor_cli(cli: &str, args: &[String]) -> Result<String, String> {
+    if !std::path::Path::new(cli).exists() {
+        return Err(format!("Editor CLI does not exist: {cli}"));
+    }
+    let mut cmd = Command::new(cli);
+    cmd.args(args);
+    no_console(&mut cmd);
+    cmd.spawn()
+        .map(|_| cli.to_string())
+        .map_err(|e| format!("editor CLI failed: {e}"))
+}
+
 fn macos_is_safari(app_name: &str) -> bool {
     app_name.eq_ignore_ascii_case("Safari") || app_name.eq_ignore_ascii_case("WebKit")
 }
@@ -488,6 +567,10 @@ fn is_macos_browser_app_name(app_name: &str) -> bool {
 }
 
 fn open_macos_app_bundle(path: &str, args: &[String]) -> Result<(), String> {
+    if let Some(cli) = macos_editor_cli_path(path) {
+        return open_macos_editor_cli(&cli, args);
+    }
+
     let app_name = macos_browser_app_name_from_path(path);
     let (targets, app_args) = split_macos_open_args(args);
     let wants_new_window = app_args.iter().any(|arg| arg == "--new-window" || arg == "-new-window");
@@ -839,6 +922,14 @@ fn open_application(path: String, args: Vec<String>) -> OpenActionResult {
         return match open_macos_app_bundle(&resolved_path, &args) {
             Ok(_) => success(format!("Started application: {resolved_path}")),
             Err(e) => failure(format!("Failed to start application: {e}")),
+        };
+    }
+
+    #[cfg(target_os = "windows")]
+    if let Some(cli) = windows_editor_cli_path(&resolved_path) {
+        return match open_windows_editor_cli(&cli, &args) {
+            Ok(executable) => success(format!("Started editor CLI: {executable}")),
+            Err(e) => failure(format!("Failed to start editor CLI: {e}")),
         };
     }
 
@@ -2766,6 +2857,15 @@ mod tests {
         assert_eq!(normalize_webdav_remote_dir("  OpenDock//workspaces  "), "/OpenDock/workspaces");
         assert_eq!(normalize_webdav_remote_dir("/"), "/");
         assert_eq!(webdav_join_path(&normalize_webdav_remote_dir("/"), "opendock-sync.json"), "/opendock-sync.json");
+    }
+
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn windows_editor_cli_path_resolves_vscode_and_cursor() {
+        let vscode = windows_editor_cli_candidate_path(r"C:\Users\me\AppData\Local\Programs\Microsoft VS Code\Code.exe");
+        assert!(vscode.expect("VS Code CLI candidate").ends_with(r"Microsoft VS Code\bin\code.cmd"));
+        let cursor = windows_editor_cli_candidate_path(r"C:\Users\me\AppData\Local\Programs\Cursor\Cursor.exe");
+        assert!(cursor.expect("Cursor CLI candidate").ends_with(r"Cursor\resources\app\bin\cursor.cmd"));
     }
 
     #[test]
