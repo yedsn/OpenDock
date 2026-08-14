@@ -1,6 +1,6 @@
 {
     "name": "opendock",
-    "version": "0.1.40",
+    "version": "0.1.42",
     "private": true,
     "type": "module",
     "scripts": {
