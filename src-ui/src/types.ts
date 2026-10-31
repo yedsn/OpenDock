@@ -261,6 +261,7 @@ export interface SearchSettings {
   sceneEnterBehavior: SearchEnterBehavior;
   collectionEnterBehavior: SearchEnterBehavior;
   itemEnterBehavior: SearchEnterBehavior;
+  // Legacy name: this setting now applies to every open action, not only search Enter.
   copyNameOnEnter: boolean;
   sceneTagColor: string;
   collectionTagColor: string;

@@ -1108,8 +1108,13 @@ async function openItemWithTool(item: CollectionItem, tool: OpenTool | undefined
   return callOpenCommand("open_application", { path: tool.path, args });
 }
 
-async function openItem(item: CollectionItem): Promise<void> {
+async function copyOpenedName(name: string): Promise<void> {
+  if (state.data.settings.search.copyNameOnEnter) await copyText(name);
+}
+
+async function openItem(item: CollectionItem, options: { skipCopyName?: boolean } = {}): Promise<void> {
   if (item.type === "终端" && state.data.settings.general.confirmBeforeOpen && !(await confirmAction(`确认执行命令？\n${item.value}`))) return;
+  if (!options.skipCopyName) await copyOpenedName(item.name);
   const tool = resolveToolForItem(item);
   const result = await openItemWithTool(item, tool);
   if (result.ok) item.usageCount = (item.usageCount || 0) + 1;
@@ -1118,10 +1123,11 @@ async function openItem(item: CollectionItem): Promise<void> {
   log(`${result.ok ? "打开" : "打开失败"}: ${item.name}${tool ? ` via ${tool.name}` : ""} - ${result.message}`);
 }
 
-async function openCollection(collection: Collection, options: { skipConfirm?: boolean } = {}): Promise<void> {
+async function openCollection(collection: Collection, options: { skipConfirm?: boolean; skipCopyName?: boolean } = {}): Promise<void> {
   const items = collectionItems(collection.id);
   if (!items.length) return log(`集合为空: ${collection.name}`);
   if (!options.skipConfirm && state.data.settings.general.confirmBeforeOpen && items.length > 1 && !(await confirmAction(`确认打开集合「${collection.name}」中的 ${items.length} 个资源？`))) return;
+  if (!options.skipCopyName) await copyOpenedName(collection.name);
   collection.usageCount = (collection.usageCount || 0) + 1;
   markCollectionRecent(collection);
 
@@ -1154,7 +1160,7 @@ async function openCollection(collection: Collection, options: { skipConfirm?: b
   }
   for (const item of items) {
     if (openedInBatch.has(item.id)) continue;
-    await openItem(item);
+    await openItem(item, { skipCopyName: true });
     // Delay between non-browser opens: macOS merges rapid `open` calls into
     // one activation event, so only the first path would open in the app.
     const remaining = items.filter((i) => !openedInBatch.has(i.id));
@@ -1168,8 +1174,9 @@ async function openScene(scene: Scene): Promise<void> {
   const collections = state.data.collections.filter((c) => c.sceneId === scene.id);
   const count = collections.reduce((sum, c) => sum + collectionItems(c.id).length, 0);
   if (state.data.settings.general.confirmBeforeOpen && !(await confirmAction(`确认打开场景「${scene.name}」中的 ${count} 个资源？`))) return;
+  await copyOpenedName(scene.name);
   scene.usageCount = (scene.usageCount || 0) + 1;
-  for (const collection of collections) await openCollection(collection, { skipConfirm: true });
+  for (const collection of collections) await openCollection(collection, { skipConfirm: true, skipCopyName: true });
 }
 
 async function openCollectionsBatch(collections: Collection[], label: string): Promise<void> {
@@ -1177,7 +1184,8 @@ async function openCollectionsBatch(collections: Collection[], label: string): P
   const count = collectionsWithItems.reduce((sum, collection) => sum + collectionItems(collection.id).length, 0);
   if (!collectionsWithItems.length) return log(`没有可打开的集合: ${label}`);
   if (state.data.settings.general.confirmBeforeOpen && !(await confirmAction(`确认打开「${label}」中的 ${collectionsWithItems.length} 个集合、${count} 个资源？`))) return;
-  for (const collection of collectionsWithItems) await openCollection(collection, { skipConfirm: true });
+  await copyOpenedName(collectionsWithItems.map((collection) => collection.name).join("\n"));
+  for (const collection of collectionsWithItems) await openCollection(collection, { skipConfirm: true, skipCopyName: true });
 }
 // ---- Workspace ----
 
@@ -2050,10 +2058,12 @@ async function executeSuggestion(suggestion: SearchSuggestion, mode?: "open" | "
 }
 
 async function executeSuggestionAndMaybeHide(suggestion: SearchSuggestion, mode?: "open" | "navigate", copyName = false): Promise<void> {
-  if (copyName && state.data.settings.search.copyNameOnEnter) {
-    await copyText(suggestion.title);
-  }
   const opened = await executeSuggestion(suggestion, mode);
+  // Opening copies the target name inside the shared open functions. Navigate
+  // actions do not open anything, so keep copying on search Enter here.
+  if (!opened && copyName) {
+    await copyOpenedName(suggestion.title);
+  }
   if (opened && state.data.settings.general.closeWindowAfterOpen) {
     const { getCurrentWindow } = await import("@tauri-apps/api/window");
     await getCurrentWindow().hide();

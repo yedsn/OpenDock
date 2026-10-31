@@ -955,14 +955,18 @@ describe("OpenDock store - search suggestions", () => {
     expect(store.state.activeTabId).toBe(`collection-${collection.id}`);
     expect(invokeMock).not.toHaveBeenCalled();
   });
-  it("copies the search result name on Enter only when configured", async () => {
+  it("copies names when opening from search or the main interface", async () => {
     const clipboardWriteText = vi.fn(async (): Promise<void> => {});
     vi.stubGlobal("navigator", { clipboard: { writeText: clipboardWriteText } });
     (globalThis.window as any).isSecureContext = true;
     const { useOpenDockStore } = await import("../store");
     const store = useOpenDockStore();
+    store.state.data.settings.general.confirmBeforeOpen = false;
     store.state.data.settings.search.collectionEnterBehavior = "navigate";
     store.createCollection("客户门户网页", WEB_COLLECTION, null, "站点入口");
+    const collection = store.state.data.collections.find((entry) => entry.name === "客户门户网页")!;
+    store.createItem(collection.id, "测试链接", "浏览器", "https://example.test/a");
+    const item = store.state.data.items.find((entry) => entry.name === "测试链接")!;
     store.state.search = "khmh";
     const collectionSuggestion = store.searchSuggestions.value.find((entry) => entry.kind === "collection" && entry.title === "客户门户网页")!;
 
@@ -970,10 +974,17 @@ describe("OpenDock store - search suggestions", () => {
     expect(clipboardWriteText).not.toHaveBeenCalled();
 
     store.state.data.settings.search.copyNameOnEnter = true;
-    await store.executeSuggestionAndMaybeHide(collectionSuggestion);
-    expect(clipboardWriteText).not.toHaveBeenCalled();
+    await store.openItem(item);
+    expect(clipboardWriteText).toHaveBeenCalledTimes(1);
+    expect(clipboardWriteText).toHaveBeenCalledWith("测试链接");
 
-    await store.executeSuggestionAndMaybeHide(collectionSuggestion, undefined, true);
+    clipboardWriteText.mockClear();
+    await store.openCollection(collection);
+    expect(clipboardWriteText).toHaveBeenCalledTimes(1);
+    expect(clipboardWriteText).toHaveBeenCalledWith("客户门户网页");
+
+    clipboardWriteText.mockClear();
+    await store.executeSuggestionAndMaybeHide(collectionSuggestion, "navigate", true);
     expect(clipboardWriteText).toHaveBeenCalledWith("客户门户网页");
   });
   it("sorts search suggestions by type first and usage count within each type", async () => {

@@ -39,7 +39,7 @@ const search = store.state.data.settings.search;
         </span>
       </label>
       <label class="setting-field">
-        <span>{{ $t("settings.copyNameOnSearchEnter") }}</span>
+        <span>{{ $t("settings.copyNameOnOpen") }}</span>
         <span class="setting-switch">
           <input v-model="search.copyNameOnEnter" type="checkbox" /><span></span>
         </span>
