@@ -118,8 +118,8 @@ defineExpose({
       >
         <span class="search-result-icon"><component :is="iconFor(result)" /></span>
         <span class="search-result-main">
-          <strong>{{ result.title }}</strong>
-          <small>{{ result.subtitle }}</small>
+          <strong :title="result.title">{{ result.title }}</strong>
+          <small :title="result.subtitle">{{ result.subtitle }}</small>
         </span>
         <span class="search-result-meta">
           <span class="search-result-action">{{ actionLabelFor(result) }}</span>
